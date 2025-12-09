@@ -16,28 +16,28 @@
       "3. archive it",
       "4. expect empty state placeholder in right panel"
     ],
-    "status": "backlog"
+    "status": "verified"
   },
   {
     "id": "feature-1765260557163-86b3tby5d",
     "category": "Core",
     "description": "Remove analysis link and related code, it's not useful",
     "steps": [],
-    "status": "backlog"
+    "status": "verified"
   },
   {
     "id": "feature-1765260608543-frhplaxss",
     "category": "Kanban",
     "description": "when clicking a value in the typeahead, there is a bug where it does not close automatically, fix this",
     "steps": [],
-    "status": "backlog"
+    "status": "verified"
   },
   {
     "id": "feature-1765260671085-7dgotl21h",
     "category": "Kanban",
     "description": "show a error toast when concurrency limit is hit and someone tries to drag a card into in progress to give them feedback why it won't work.",
     "steps": [],
-    "status": "backlog"
+    "status": "verified"
   },
   {
     "id": "feature-1765260791341-iaxxt172n",
@@ -58,12 +58,47 @@
     "category": "Kanban",
     "description": "add a count up timer for showing how long the card has been in progress",
     "steps": [],
-    "status": "backlog"
+    "status": "verified"
   },
   {
     "id": "feature-1765261027396-b78maajg7",
     "category": "Kanban",
     "description": "When the agent is marked as verified, remove their context file",
+    "steps": [],
+    "status": "verified"
+  },
+  {
+    "id": "feature-1765261574969-kaqzq39fh",
+    "category": "Core",
+    "description": "change the recent change for adding the ability to edit the context .automaker/context directory to instead be in .automaker/support and auto add it to prompts",
+    "steps": [],
+    "status": "verified"
+  },
+  {
+    "id": "feature-1765262225700-q2rkue6l8",
+    "category": "Context",
+    "description": "Add Context File should show a file name and a textarea for the context info, that text area should allow drag n drop for txt files and .md files which the system will parse and put into the text area",
+    "steps": [],
+    "status": "backlog"
+  },
+  {
+    "id": "feature-1765262261787-o84j26dty",
+    "category": "Kanban",
+    "description": "Ability to delete in progress cards which will auto stop their agents on delete",
+    "steps": [],
+    "status": "verified"
+  },
+  {
+    "id": "feature-1765262348401-hivjg6vuq",
+    "category": "Kanban",
+    "description": "Make in progress column  double width so that the cards display 2 columns masonry layout",
+    "steps": [],
+    "status": "backlog"
+  },
+  {
+    "id": "feature-1765262430461-vennhg2b5",
+    "category": "Core",
+    "description": "When the electron ui refreshes, it often redirects me back to the overview, remeber my last route and restore on app load",
     "steps": [],
     "status": "backlog"
   }

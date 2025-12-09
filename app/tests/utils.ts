@@ -516,3 +516,293 @@ export async function waitForSuccessToast(
   });
   return toast;
 }
+
+/**
+ * Get the delete button for an in_progress feature
+ */
+export async function getDeleteInProgressButton(
+  page: Page,
+  featureId: string
+): Promise<Locator> {
+  return page.locator(`[data-testid="delete-inprogress-feature-${featureId}"]`);
+}
+
+/**
+ * Click the delete button for an in_progress feature
+ */
+export async function clickDeleteInProgressFeature(
+  page: Page,
+  featureId: string
+): Promise<void> {
+  const button = page.locator(
+    `[data-testid="delete-inprogress-feature-${featureId}"]`
+  );
+  await button.click();
+}
+
+/**
+ * Check if the delete button is visible for an in_progress feature
+ */
+export async function isDeleteInProgressButtonVisible(
+  page: Page,
+  featureId: string
+): Promise<boolean> {
+  const button = page.locator(
+    `[data-testid="delete-inprogress-feature-${featureId}"]`
+  );
+  return await button.isVisible();
+}
+
+/**
+ * Set up a mock project with features in different states
+ */
+export async function setupMockProjectWithFeatures(
+  page: Page,
+  options?: {
+    maxConcurrency?: number;
+    runningTasks?: string[];
+    features?: Array<{
+      id: string;
+      category: string;
+      description: string;
+      status: "backlog" | "in_progress" | "verified";
+      steps?: string[];
+    }>;
+  }
+): Promise<void> {
+  await page.addInitScript(
+    (opts: typeof options) => {
+      const mockProject = {
+        id: "test-project-1",
+        name: "Test Project",
+        path: "/mock/test-project",
+        lastOpened: new Date().toISOString(),
+      };
+
+      const mockFeatures = opts?.features || [];
+
+      const mockState = {
+        state: {
+          projects: [mockProject],
+          currentProject: mockProject,
+          theme: "dark",
+          sidebarOpen: true,
+          apiKeys: { anthropic: "", google: "" },
+          chatSessions: [],
+          chatHistoryOpen: false,
+          maxConcurrency: opts?.maxConcurrency ?? 3,
+          isAutoModeRunning: false,
+          runningAutoTasks: opts?.runningTasks ?? [],
+          autoModeActivityLog: [],
+          features: mockFeatures,
+        },
+        version: 0,
+      };
+
+      localStorage.setItem("automaker-storage", JSON.stringify(mockState));
+    },
+    options
+  );
+}
+
+/**
+ * Set up a mock project with a feature context file
+ * This simulates an agent having created context for a feature
+ */
+export async function setupMockProjectWithContextFile(
+  page: Page,
+  featureId: string,
+  contextContent: string = "# Agent Context\n\nPrevious implementation work..."
+): Promise<void> {
+  await page.addInitScript(
+    ({ featureId, contextContent }: { featureId: string; contextContent: string }) => {
+      const mockProject = {
+        id: "test-project-1",
+        name: "Test Project",
+        path: "/mock/test-project",
+        lastOpened: new Date().toISOString(),
+      };
+
+      const mockState = {
+        state: {
+          projects: [mockProject],
+          currentProject: mockProject,
+          theme: "dark",
+          sidebarOpen: true,
+          apiKeys: { anthropic: "", google: "" },
+          chatSessions: [],
+          chatHistoryOpen: false,
+          maxConcurrency: 3,
+        },
+        version: 0,
+      };
+
+      localStorage.setItem("automaker-storage", JSON.stringify(mockState));
+
+      // Set up mock file system with a context file for the feature
+      // This will be used by the mock electron API
+      (window as any).__mockContextFile = {
+        featureId,
+        path: `/mock/test-project/.automaker/agents-context/${featureId}.md`,
+        content: contextContent,
+      };
+    },
+    { featureId, contextContent }
+  );
+}
+
+/**
+ * Get the category autocomplete input element
+ */
+export async function getCategoryAutocompleteInput(
+  page: Page,
+  testId: string = "feature-category-input"
+): Promise<Locator> {
+  return page.locator(`[data-testid="${testId}"]`);
+}
+
+/**
+ * Get the category autocomplete dropdown list
+ */
+export async function getCategoryAutocompleteList(page: Page): Promise<Locator> {
+  return page.locator('[data-testid="category-autocomplete-list"]');
+}
+
+/**
+ * Check if the category autocomplete dropdown is visible
+ */
+export async function isCategoryAutocompleteListVisible(page: Page): Promise<boolean> {
+  const list = page.locator('[data-testid="category-autocomplete-list"]');
+  return await list.isVisible();
+}
+
+/**
+ * Wait for the category autocomplete dropdown to be visible
+ */
+export async function waitForCategoryAutocompleteList(
+  page: Page,
+  options?: { timeout?: number }
+): Promise<Locator> {
+  return await waitForElement(page, "category-autocomplete-list", options);
+}
+
+/**
+ * Wait for the category autocomplete dropdown to be hidden
+ */
+export async function waitForCategoryAutocompleteListHidden(
+  page: Page,
+  options?: { timeout?: number }
+): Promise<void> {
+  await waitForElementHidden(page, "category-autocomplete-list", options);
+}
+
+/**
+ * Click a category option in the autocomplete dropdown
+ */
+export async function clickCategoryOption(
+  page: Page,
+  categoryName: string
+): Promise<void> {
+  const optionTestId = `category-option-${categoryName.toLowerCase().replace(/\s+/g, "-")}`;
+  const option = page.locator(`[data-testid="${optionTestId}"]`);
+  await option.click();
+}
+
+/**
+ * Get a category option element by name
+ */
+export async function getCategoryOption(
+  page: Page,
+  categoryName: string
+): Promise<Locator> {
+  const optionTestId = `category-option-${categoryName.toLowerCase().replace(/\s+/g, "-")}`;
+  return page.locator(`[data-testid="${optionTestId}"]`);
+}
+
+/**
+ * Navigate to the agent view
+ */
+export async function navigateToAgent(page: Page): Promise<void> {
+  await page.goto("/");
+
+  // Wait for the page to load
+  await page.waitForLoadState("networkidle");
+
+  // Click on the Agent nav button
+  const agentNav = page.locator('[data-testid="nav-agent"]');
+  if (await agentNav.isVisible().catch(() => false)) {
+    await agentNav.click();
+  }
+
+  // Wait for the agent view to be visible
+  await waitForElement(page, "agent-view", { timeout: 10000 });
+}
+
+/**
+ * Get the session list element
+ */
+export async function getSessionList(page: Page): Promise<Locator> {
+  return page.locator('[data-testid="session-list"]');
+}
+
+/**
+ * Get the new session button
+ */
+export async function getNewSessionButton(page: Page): Promise<Locator> {
+  return page.locator('[data-testid="new-session-button"]');
+}
+
+/**
+ * Click the new session button
+ */
+export async function clickNewSessionButton(page: Page): Promise<void> {
+  const button = await getNewSessionButton(page);
+  await button.click();
+}
+
+/**
+ * Get a session item by its ID
+ */
+export async function getSessionItem(
+  page: Page,
+  sessionId: string
+): Promise<Locator> {
+  return page.locator(`[data-testid="session-item-${sessionId}"]`);
+}
+
+/**
+ * Click the archive button for a session
+ */
+export async function clickArchiveSession(
+  page: Page,
+  sessionId: string
+): Promise<void> {
+  const button = page.locator(`[data-testid="archive-session-${sessionId}"]`);
+  await button.click();
+}
+
+/**
+ * Check if the no session placeholder is visible
+ */
+export async function isNoSessionPlaceholderVisible(page: Page): Promise<boolean> {
+  const placeholder = page.locator('[data-testid="no-session-placeholder"]');
+  return await placeholder.isVisible();
+}
+
+/**
+ * Wait for the no session placeholder to be visible
+ */
+export async function waitForNoSessionPlaceholder(
+  page: Page,
+  options?: { timeout?: number }
+): Promise<Locator> {
+  return await waitForElement(page, "no-session-placeholder", options);
+}
+
+/**
+ * Check if the message list is visible (indicates a session is selected)
+ */
+export async function isMessageListVisible(page: Page): Promise<boolean> {
+  const messageList = page.locator('[data-testid="message-list"]');
+  return await messageList.isVisible();
+}

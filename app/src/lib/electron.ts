@@ -157,8 +157,8 @@ export const getElectronAPI = (): ElectronAPI => {
           content: "<project_specification>\n  <project_name>Demo Project</project_name>\n</project_specification>",
         };
       }
-      // For any file in mock context directory, return empty string (file exists but is empty)
-      if (filePath.includes(".automaker/context/")) {
+      // For any file in mock agents-context directory, return empty string (file exists but is empty)
+      if (filePath.includes(".automaker/agents-context/")) {
         return { success: true, content: "" };
       }
       return { success: false, error: "File not found (mock)" };
@@ -176,8 +176,8 @@ export const getElectronAPI = (): ElectronAPI => {
     readdir: async (dirPath: string) => {
       // Return mock directory structure based on path
       if (dirPath) {
-        // Check if this is the context directory - return files from mock file system
-        if (dirPath.includes(".automaker/context")) {
+        // Check if this is the context or agents-context directory - return files from mock file system
+        if (dirPath.includes(".automaker/context") || dirPath.includes(".automaker/agents-context")) {
           const contextFiles = Object.keys(mockFileSystem)
             .filter(path => path.startsWith(dirPath) && path !== dirPath)
             .map(path => {
@@ -417,7 +417,7 @@ function createMockAutoModeAPI(): AutoModeAPI {
 
     contextExists: async (projectPath: string, featureId: string) => {
       // Mock implementation - simulate that context exists for some features
-      const exists = mockFileSystem[`${projectPath}/.automaker/context/${featureId}.md`] !== undefined;
+      const exists = mockFileSystem[`${projectPath}/.automaker/agents-context/${featureId}.md`] !== undefined;
       return { success: true, exists };
     },
 
@@ -538,6 +538,10 @@ async function simulateAutoModeLoop(projectPath: string, featureId: string) {
     passes: true,
     message: "Feature implemented successfully",
   });
+
+  // Delete context file when feature is verified (matches real auto-mode-service behavior)
+  const contextFilePath = `${projectPath}/.automaker/agents-context/${featureId}.md`;
+  delete mockFileSystem[contextFilePath];
 
   // Clean up this feature from running set
   mockRunningFeatures.delete(featureId);
