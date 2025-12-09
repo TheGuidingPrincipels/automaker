@@ -46,35 +46,6 @@ const DEFAULT_APP_SPEC = `<project_specification>
 const DEFAULT_FEATURE_LIST = JSON.stringify([], null, 2);
 
 /**
- * Default coding_prompt.md template for new projects
- */
-const DEFAULT_CODING_PROMPT = `# Coding Guidelines
-
-This file contains project-specific coding guidelines and conventions
-that the AI agent should follow when implementing features.
-
-## Code Style
-
-- Follow existing code conventions in the project
-- Use consistent formatting and naming conventions
-- Add appropriate comments for complex logic
-
-## Testing
-
-- Write tests for new features when applicable
-- Ensure existing tests pass before marking features complete
-
-## Git Commits
-
-- Use clear, descriptive commit messages
-- Reference feature IDs when relevant
-
-## Additional Notes
-
-Add any project-specific guidelines here.
-`;
-
-/**
  * Required files and directories in the .automaker directory
  */
 const REQUIRED_STRUCTURE = {
@@ -86,7 +57,6 @@ const REQUIRED_STRUCTURE = {
   files: {
     ".automaker/app_spec.txt": DEFAULT_APP_SPEC,
     ".automaker/feature_list.json": DEFAULT_FEATURE_LIST,
-    ".automaker/coding_prompt.md": DEFAULT_CODING_PROMPT,
   },
 };
 
@@ -96,7 +66,9 @@ const REQUIRED_STRUCTURE = {
  * @param projectPath - The root path of the project
  * @returns Result indicating what was created or if the project was already initialized
  */
-export async function initializeProject(projectPath: string): Promise<ProjectInitResult> {
+export async function initializeProject(
+  projectPath: string
+): Promise<ProjectInitResult> {
   const api = getElectronAPI();
   const createdFiles: string[] = [];
   const existingFiles: string[] = [];
@@ -109,7 +81,9 @@ export async function initializeProject(projectPath: string): Promise<ProjectIni
     }
 
     // Check and create required files
-    for (const [relativePath, defaultContent] of Object.entries(REQUIRED_STRUCTURE.files)) {
+    for (const [relativePath, defaultContent] of Object.entries(
+      REQUIRED_STRUCTURE.files
+    )) {
       const fullPath = `${projectPath}/${relativePath}`;
       const exists = await api.exists(fullPath);
 
@@ -122,7 +96,8 @@ export async function initializeProject(projectPath: string): Promise<ProjectIni
     }
 
     // Determine if this is a new project (all files were created)
-    const isNewProject = createdFiles.length === Object.keys(REQUIRED_STRUCTURE.files).length;
+    const isNewProject =
+      createdFiles.length === Object.keys(REQUIRED_STRUCTURE.files).length;
 
     return {
       success: true,
@@ -146,7 +121,9 @@ export async function initializeProject(projectPath: string): Promise<ProjectIni
  * @param projectPath - The root path of the project
  * @returns true if all required files/directories exist
  */
-export async function isProjectInitialized(projectPath: string): Promise<boolean> {
+export async function isProjectInitialized(
+  projectPath: string
+): Promise<boolean> {
   const api = getElectronAPI();
 
   try {
@@ -161,7 +138,10 @@ export async function isProjectInitialized(projectPath: string): Promise<boolean
 
     return true;
   } catch (error) {
-    console.error("[project-init] Error checking project initialization:", error);
+    console.error(
+      "[project-init] Error checking project initialization:",
+      error
+    );
     return false;
   }
 }

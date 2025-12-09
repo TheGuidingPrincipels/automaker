@@ -11,6 +11,7 @@ interface KanbanColumnProps {
   count: number;
   children: ReactNode;
   isDoubleWidth?: boolean;
+  headerAction?: ReactNode;
 }
 
 export function KanbanColumn({
@@ -20,6 +21,7 @@ export function KanbanColumn({
   count,
   children,
   isDoubleWidth = false,
+  headerAction,
 }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
@@ -37,6 +39,7 @@ export function KanbanColumn({
       <div className="flex items-center gap-2 p-3 border-b border-white/5">
         <div className={cn("w-3 h-3 rounded-full", color)} />
         <h3 className="font-medium text-sm flex-1">{title}</h3>
+        {headerAction}
         <span className="text-xs text-muted-foreground bg-background px-2 py-0.5 rounded-full">
           {count}
         </span>

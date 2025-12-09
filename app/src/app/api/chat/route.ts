@@ -88,38 +88,43 @@ export async function POST(request: NextRequest) {
     // Convert message history to SDK format to preserve conversation context
     // Include both user and assistant messages for full context
     const sessionId = `api-session-${Date.now()}`;
-    const conversationMessages = messages.map((msg: { role: string; content: string }) => {
-      if (msg.role === 'user') {
-        return {
-          type: 'user' as const,
-          message: {
-            role: 'user' as const,
-            content: msg.content
-          },
-          parent_tool_use_id: null,
-          session_id: sessionId,
-        };
-      } else {
-        // Assistant message
-        return {
-          type: 'assistant' as const,
-          message: {
-            role: 'assistant' as const,
-            content: [
-              {
-                type: 'text' as const,
-                text: msg.content
-              }
-            ]
-          },
-          session_id: sessionId,
-        };
+    const conversationMessages = messages.map(
+      (msg: { role: string; content: string }) => {
+        if (msg.role === "user") {
+          return {
+            type: "user" as const,
+            message: {
+              role: "user" as const,
+              content: msg.content,
+            },
+            parent_tool_use_id: null,
+            session_id: sessionId,
+          };
+        } else {
+          // Assistant message
+          return {
+            type: "assistant" as const,
+            message: {
+              role: "assistant" as const,
+              content: [
+                {
+                  type: "text" as const,
+                  text: msg.content,
+                },
+              ],
+            },
+            session_id: sessionId,
+          };
+        }
       }
-    });
+    );
 
     // Execute query with full conversation context
     const queryResult = query({
-      prompt: conversationMessages.length > 0 ? conversationMessages : lastMessage.content,
+      prompt:
+        conversationMessages.length > 0
+          ? conversationMessages
+          : lastMessage.content,
       options,
     });
 

@@ -98,16 +98,6 @@ export function SpecView() {
         </div>
         <div className="flex gap-2">
           <Button
-            variant="outline"
-            size="sm"
-            onClick={loadSpec}
-            disabled={isLoading}
-            data-testid="reload-spec"
-          >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Reload
-          </Button>
-          <Button
             size="sm"
             onClick={saveSpec}
             disabled={!hasChanges || isSaving}

@@ -104,6 +104,10 @@ export function BoardView() {
     };
   }, [currentProject]);
 
+  // Track previous project to detect switches
+  const prevProjectPathRef = useRef<string | null>(null);
+  const isSwitchingProjectRef = useRef<boolean>(false);
+
   // Auto mode hook
   const autoMode = useAutoMode();
 
@@ -196,6 +200,20 @@ export function BoardView() {
   const loadFeatures = useCallback(async () => {
     if (!currentProject) return;
 
+    const currentPath = currentProject.path;
+    const previousPath = prevProjectPathRef.current;
+
+    // If project switched, clear features first to prevent cross-contamination
+    if (previousPath !== null && currentPath !== previousPath) {
+      console.log(`[BoardView] Project switch detected: ${previousPath} -> ${currentPath}, clearing features`);
+      isSwitchingProjectRef.current = true;
+      setFeatures([]);
+      setPersistedCategories([]); // Also clear categories
+    }
+
+    // Update the ref to track current project
+    prevProjectPathRef.current = currentPath;
+
     setIsLoading(true);
     try {
       const api = getElectronAPI();
@@ -219,6 +237,7 @@ export function BoardView() {
       console.error("Failed to load features:", error);
     } finally {
       setIsLoading(false);
+      isSwitchingProjectRef.current = false;
     }
   }, [currentProject, setFeatures]);
 
@@ -237,10 +256,14 @@ export function BoardView() {
         if (Array.isArray(parsed)) {
           setPersistedCategories(parsed);
         }
+      } else {
+        // File doesn't exist, ensure categories are cleared
+        setPersistedCategories([]);
       }
     } catch (error) {
       console.error("Failed to load categories:", error);
-      // If file doesn't exist, that's fine - start with empty array
+      // If file doesn't exist, ensure categories are cleared
+      setPersistedCategories([]);
     }
   }, [currentProject]);
 
@@ -384,7 +407,7 @@ export function BoardView() {
 
   // Save when features change (after initial load is complete)
   useEffect(() => {
-    if (!isLoading) {
+    if (!isLoading && !isSwitchingProjectRef.current) {
       saveFeatures();
     }
   }, [features, saveFeatures, isLoading]);

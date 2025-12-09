@@ -116,4 +116,5 @@ export const ACTION_SHORTCUTS: Record<string, string> = {
   startNext: "Q", // Q for Queue (start next features from backlog)
   newSession: "W", // W for new session (in agent view)
   openProject: "O", // O for Open project (navigate to welcome view)
+  projectPicker: "P", // P for Project picker
 };

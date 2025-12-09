@@ -1607,8 +1607,6 @@ Analyze this project's codebase and update the .automaker/app_spec.txt file with
 
 6. Ensure .automaker/agents-context/ directory exists
 
-7. Ensure .automaker/coding_prompt.md exists with default guidelines
-
 **Important:**
 - Be concise but accurate
 - Only include information you can verify from the codebase

@@ -1701,3 +1701,90 @@ export async function getOutputModalDescription(page: Page): Promise<string | nu
   const modalDescription = page.locator('[data-testid="agent-output-modal"] [data-slot="dialog-description"]');
   return await modalDescription.textContent().catch(() => null);
 }
+
+/**
+ * Check if the project picker dropdown is open
+ */
+export async function isProjectPickerDropdownOpen(page: Page): Promise<boolean> {
+  const dropdown = page.locator('[data-testid="project-picker-dropdown"]');
+  return await dropdown.isVisible().catch(() => false);
+}
+
+/**
+ * Wait for the project picker dropdown to be visible
+ */
+export async function waitForProjectPickerDropdown(
+  page: Page,
+  options?: { timeout?: number }
+): Promise<Locator> {
+  return await waitForElement(page, "project-picker-dropdown", options);
+}
+
+/**
+ * Wait for the project picker dropdown to be hidden
+ */
+export async function waitForProjectPickerDropdownHidden(
+  page: Page,
+  options?: { timeout?: number }
+): Promise<void> {
+  await waitForElementHidden(page, "project-picker-dropdown", options);
+}
+
+/**
+ * Get a project hotkey indicator element by number (1-5)
+ */
+export async function getProjectHotkey(page: Page, num: number): Promise<Locator> {
+  return page.locator(`[data-testid="project-hotkey-${num}"]`);
+}
+
+/**
+ * Check if a project hotkey indicator is visible
+ */
+export async function isProjectHotkeyVisible(page: Page, num: number): Promise<boolean> {
+  const hotkey = page.locator(`[data-testid="project-hotkey-${num}"]`);
+  return await hotkey.isVisible().catch(() => false);
+}
+
+/**
+ * Get the project picker shortcut indicator (P key)
+ */
+export async function getProjectPickerShortcut(page: Page): Promise<Locator> {
+  return page.locator('[data-testid="project-picker-shortcut"]');
+}
+
+/**
+ * Set up a mock state with multiple projects
+ */
+export async function setupMockMultipleProjects(
+  page: Page,
+  projectCount: number = 3
+): Promise<void> {
+  await page.addInitScript((count: number) => {
+    const mockProjects = [];
+    for (let i = 0; i < count; i++) {
+      mockProjects.push({
+        id: `test-project-${i + 1}`,
+        name: `Test Project ${i + 1}`,
+        path: `/mock/test-project-${i + 1}`,
+        lastOpened: new Date(Date.now() - i * 86400000).toISOString(),
+      });
+    }
+
+    const mockState = {
+      state: {
+        projects: mockProjects,
+        currentProject: mockProjects[0],
+        currentView: "board",
+        theme: "dark",
+        sidebarOpen: true,
+        apiKeys: { anthropic: "", google: "" },
+        chatSessions: [],
+        chatHistoryOpen: false,
+        maxConcurrency: 3,
+      },
+      version: 0,
+    };
+
+    localStorage.setItem("automaker-storage", JSON.stringify(mockState));
+  }, projectCount);
+}

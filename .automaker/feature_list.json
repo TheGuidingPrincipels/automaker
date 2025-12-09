@@ -5,5 +5,13 @@
     "description": "Can you add a shortcut key for O to open up a new project? To click on the open new project button that's in like the logo header area.",
     "steps": [],
     "status": "verified"
+  },
+  {
+    "id": "feature-1765300273422-a8ovhdlwq",
+    "category": "Core",
+    "description": "I want the ability to press P which will automatically select my projects drop down and show all my projects. And then for each one, put a hotkey in the left that says 12345 and selecting one of those with my keyboard should automatically select that project.\n",
+    "steps": [],
+    "status": "in_progress",
+    "startedAt": "2025-12-09T17:11:14.402Z"
   }
 ]

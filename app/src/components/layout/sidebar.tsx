@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
 import Link from "next/link";
@@ -62,6 +62,9 @@ export function Sidebar() {
     removeProject,
   } = useAppStore();
 
+  // State for project picker dropdown
+  const [isProjectPickerOpen, setIsProjectPickerOpen] = useState(false);
+
 
   const navSections: NavSection[] = [
     {
@@ -81,6 +84,33 @@ export function Sidebar() {
     },
   ];
 
+  // Handler for selecting a project by number key
+  const selectProjectByNumber = useCallback((num: number) => {
+    const projectIndex = num - 1;
+    if (projectIndex >= 0 && projectIndex < projects.length) {
+      setCurrentProject(projects[projectIndex]);
+      setIsProjectPickerOpen(false);
+    }
+  }, [projects, setCurrentProject]);
+
+  // Handle number key presses when project picker is open
+  useEffect(() => {
+    if (!isProjectPickerOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const num = parseInt(event.key, 10);
+      if (num >= 1 && num <= 5) {
+        event.preventDefault();
+        selectProjectByNumber(num);
+      } else if (event.key === "Escape") {
+        setIsProjectPickerOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isProjectPickerOpen, selectProjectByNumber]);
+
   // Build keyboard shortcuts for navigation
   const navigationShortcuts: KeyboardShortcut[] = useMemo(() => {
     const shortcuts: KeyboardShortcut[] = [];
@@ -98,6 +128,15 @@ export function Sidebar() {
       action: () => setCurrentView("welcome"),
       description: "Open project (navigate to welcome view)",
     });
+
+    // Project picker shortcut - only when we have projects
+    if (projects.length > 0) {
+      shortcuts.push({
+        key: ACTION_SHORTCUTS.projectPicker,
+        action: () => setIsProjectPickerOpen(true),
+        description: "Open project picker",
+      });
+    }
 
     // Only enable nav shortcuts if there's a current project
     if (currentProject) {
@@ -122,7 +161,7 @@ export function Sidebar() {
     }
 
     return shortcuts;
-  }, [currentProject, setCurrentView, toggleSidebar]);
+  }, [currentProject, setCurrentView, toggleSidebar, projects.length]);
 
   // Register keyboard shortcuts
   useKeyboardShortcuts(navigationShortcuts);
@@ -216,7 +255,7 @@ export function Sidebar() {
         {/* Project Selector */}
         {sidebarOpen && projects.length > 0 && (
           <div className="px-2 mt-3">
-            <DropdownMenu>
+            <DropdownMenu open={isProjectPickerOpen} onOpenChange={setIsProjectPickerOpen}>
               <DropdownMenuTrigger asChild>
                 <button
                   className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-white titlebar-no-drag"
@@ -228,20 +267,38 @@ export function Sidebar() {
                       {currentProject?.name || "Select Project"}
                     </span>
                   </div>
-                  <ChevronDown className="h-4 w-4 text-zinc-400 flex-shrink-0" />
+                  <div className="flex items-center gap-1">
+                    <span
+                      className="hidden lg:flex items-center justify-center w-5 h-5 text-[10px] font-mono rounded bg-white/5 border border-white/10 text-zinc-500"
+                      data-testid="project-picker-shortcut"
+                    >
+                      {ACTION_SHORTCUTS.projectPicker}
+                    </span>
+                    <ChevronDown className="h-4 w-4 text-zinc-400 flex-shrink-0" />
+                  </div>
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 className="w-56 bg-zinc-800 border-zinc-700"
                 align="start"
+                data-testid="project-picker-dropdown"
               >
-                {projects.map((project) => (
+                {projects.slice(0, 5).map((project, index) => (
                   <DropdownMenuItem
                     key={project.id}
-                    onClick={() => setCurrentProject(project)}
+                    onClick={() => {
+                      setCurrentProject(project);
+                      setIsProjectPickerOpen(false);
+                    }}
                     className="flex items-center gap-2 cursor-pointer text-zinc-300 hover:text-white hover:bg-zinc-700/50"
                     data-testid={`project-option-${project.id}`}
                   >
+                    <span
+                      className="flex items-center justify-center w-5 h-5 text-[10px] font-mono rounded bg-white/5 border border-white/10 text-zinc-400"
+                      data-testid={`project-hotkey-${index + 1}`}
+                    >
+                      {index + 1}
+                    </span>
                     <Folder className="h-4 w-4" />
                     <span className="flex-1 truncate">{project.name}</span>
                     {currentProject?.id === project.id && (
