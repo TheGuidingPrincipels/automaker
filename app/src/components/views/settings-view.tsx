@@ -41,7 +41,6 @@ import {
   RefreshCw,
   Info,
   Keyboard,
-  RotateCcw,
 } from "lucide-react";
 import { getElectronAPI } from "@/lib/electron";
 import {
@@ -52,7 +51,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useSetupStore } from "@/store/setup-store";
+import { useSetupStore, type ClaudeAuthStatus, type CodexAuthStatus } from "@/store/setup-store";
 import { KeyboardMap, ShortcutReferencePanel } from "@/components/ui/keyboard-map";
 import { Checkbox } from "../ui/checkbox";
 
@@ -163,9 +162,6 @@ export function SettingsView() {
     hasOpenAIKey: boolean;
     hasGoogleKey: boolean;
   } | null>(null);
-  const [editingShortcut, setEditingShortcut] = useState<string | null>(null);
-  const [shortcutValue, setShortcutValue] = useState("");
-  const [shortcutError, setShortcutError] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
   // Get authentication status from setup store
@@ -217,20 +213,19 @@ export function SettingsView() {
         try {
           const result = await api.setup.getClaudeStatus();
           if (result.success && result.auth) {
-            // Cast to any because runtime API returns more properties than type definition
-            const auth = result.auth as any;
-            const authStatus = {
+            const auth = result.auth;
+            const authStatus: ClaudeAuthStatus = {
               authenticated: auth.authenticated,
               method: auth.method === "oauth_token"
                 ? "oauth"
                 : auth.method?.includes("api_key")
                 ? "api_key"
                 : "none",
-              hasCredentialsFile: false,
+              hasCredentialsFile: auth.hasCredentialsFile ?? false,
               oauthTokenValid: auth.hasStoredOAuthToken,
               apiKeyValid: auth.hasStoredApiKey || auth.hasEnvApiKey,
             };
-            setClaudeAuthStatus(authStatus as any);
+            setClaudeAuthStatus(authStatus);
           }
         } catch (error) {
           console.error("Failed to check Claude auth status:", error);
@@ -242,13 +237,13 @@ export function SettingsView() {
         try {
           const result = await api.setup.getCodexStatus();
           if (result.success && result.auth) {
-            // Cast to any because runtime API returns more properties than type definition
-            const auth = result.auth as any;
-            setCodexAuthStatus({
+            const auth = result.auth;
+            const authStatus: CodexAuthStatus = {
               authenticated: auth.authenticated,
               method: auth.hasEnvApiKey ? "env" : auth.hasStoredApiKey ? "api_key" : "none",
               apiKeyValid: auth.hasStoredApiKey || auth.hasEnvApiKey,
-            });
+            };
+            setCodexAuthStatus(authStatus);
           }
         } catch (error) {
           console.error("Failed to check Codex auth status:", error);

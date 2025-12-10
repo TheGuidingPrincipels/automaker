@@ -184,6 +184,9 @@ export interface ElectronAPI {
         method: string;
         hasCredentialsFile: boolean;
         hasToken: boolean;
+        hasStoredOAuthToken?: boolean;
+        hasStoredApiKey?: boolean;
+        hasEnvApiKey?: boolean;
       };
       error?: string;
     }>;
@@ -198,6 +201,8 @@ export interface ElectronAPI {
         method: string;
         hasAuthFile: boolean;
         hasEnvKey: boolean;
+        hasStoredApiKey?: boolean;
+        hasEnvApiKey?: boolean;
       };
       error?: string;
     }>;
@@ -542,6 +547,9 @@ interface SetupAPI {
       method: string;
       hasCredentialsFile: boolean;
       hasToken: boolean;
+      hasStoredOAuthToken?: boolean;
+      hasStoredApiKey?: boolean;
+      hasEnvApiKey?: boolean;
     };
     error?: string;
   }>;
@@ -556,6 +564,8 @@ interface SetupAPI {
       method: string;
       hasAuthFile: boolean;
       hasEnvKey: boolean;
+      hasStoredApiKey?: boolean;
+      hasEnvApiKey?: boolean;
     };
     error?: string;
   }>;
