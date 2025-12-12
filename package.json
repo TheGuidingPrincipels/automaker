@@ -10,6 +10,7 @@
     "dev": "npm run dev --workspace=apps/app",
     "dev:web": "npm run dev:web --workspace=apps/app",
     "dev:electron": "npm run dev:electron --workspace=apps/app",
+    "dev:electron:debug": "npm run dev:electron:debug --workspace=apps/app",
     "dev:electron:wsl": "npm run dev:electron:wsl --workspace=apps/app",
     "dev:electron:wsl:gpu": "npm run dev:electron:wsl:gpu --workspace=apps/app",
     "build": "npm run build --workspace=apps/app",

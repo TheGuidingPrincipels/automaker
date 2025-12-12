@@ -18,6 +18,7 @@
     "dev": "next dev -p 3007",
     "dev:web": "next dev -p 3007",
     "dev:electron": "concurrently \"next dev -p 3007\" \"wait-on http://localhost:3007 && electron .\"",
+    "dev:electron:debug": "concurrently \"next dev -p 3007\" \"wait-on http://localhost:3007 && OPEN_DEVTOOLS=true electron .\"",
     "build": "next build",
     "build:electron": "next build && electron-builder",
     "start": "next start",

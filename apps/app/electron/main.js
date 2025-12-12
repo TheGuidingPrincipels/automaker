@@ -42,7 +42,10 @@ function createWindow() {
   const isDev = !app.isPackaged;
   if (isDev) {
     mainWindow.loadURL("http://localhost:3007");
-    // mainWindow.webContents.openDevTools();
+    // Open DevTools if OPEN_DEVTOOLS environment variable is set
+    if (process.env.OPEN_DEVTOOLS === "true") {
+      mainWindow.webContents.openDevTools();
+    }
   } else {
     mainWindow.loadFile(path.join(__dirname, "../.next/server/app/index.html"));
   }
@@ -894,12 +897,9 @@ ipcMain.handle(
   async (_, { featureId, status, projectPath, summary }) => {
     try {
       const featureLoader = require("./services/feature-loader");
-      await featureLoader.updateFeatureStatus(
-        featureId,
-        status,
-        projectPath,
-        { summary }
-      );
+      await featureLoader.updateFeatureStatus(featureId, status, projectPath, {
+        summary,
+      });
 
       // Notify renderer if window is available
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -931,51 +931,59 @@ let suggestionsExecution = null;
  * @param {string} projectPath - The path to the project
  * @param {string} suggestionType - Type of suggestions: "features", "refactoring", "security", "performance"
  */
-ipcMain.handle("suggestions:generate", async (_, { projectPath, suggestionType = "features" }) => {
-  try {
-    // Check if already running
-    if (suggestionsExecution && suggestionsExecution.isActive()) {
-      return {
-        success: false,
-        error: "Suggestions generation is already running",
-      };
-    }
-
-    // Create execution context
-    suggestionsExecution = {
-      abortController: null,
-      query: null,
-      isActive: () => suggestionsExecution !== null,
-    };
-
-    const sendToRenderer = (data) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("suggestions:event", data);
+ipcMain.handle(
+  "suggestions:generate",
+  async (_, { projectPath, suggestionType = "features" }) => {
+    try {
+      // Check if already running
+      if (suggestionsExecution && suggestionsExecution.isActive()) {
+        return {
+          success: false,
+          error: "Suggestions generation is already running",
+        };
       }
-    };
 
-    // Start generating suggestions (runs in background)
-    featureSuggestionsService
-      .generateSuggestions(projectPath, sendToRenderer, suggestionsExecution, suggestionType)
-      .catch((error) => {
-        console.error("[IPC] suggestions:generate background error:", error);
-        sendToRenderer({
-          type: "suggestions_error",
-          error: error.message,
+      // Create execution context
+      suggestionsExecution = {
+        abortController: null,
+        query: null,
+        isActive: () => suggestionsExecution !== null,
+      };
+
+      const sendToRenderer = (data) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("suggestions:event", data);
+        }
+      };
+
+      // Start generating suggestions (runs in background)
+      featureSuggestionsService
+        .generateSuggestions(
+          projectPath,
+          sendToRenderer,
+          suggestionsExecution,
+          suggestionType
+        )
+        .catch((error) => {
+          console.error("[IPC] suggestions:generate background error:", error);
+          sendToRenderer({
+            type: "suggestions_error",
+            error: error.message,
+          });
+        })
+        .finally(() => {
+          suggestionsExecution = null;
         });
-      })
-      .finally(() => {
-        suggestionsExecution = null;
-      });
 
-    // Return immediately
-    return { success: true };
-  } catch (error) {
-    console.error("[IPC] suggestions:generate error:", error);
-    suggestionsExecution = null;
-    return { success: false, error: error.message };
+      // Return immediately
+      return { success: true };
+    } catch (error) {
+      console.error("[IPC] suggestions:generate error:", error);
+      suggestionsExecution = null;
+      return { success: false, error: error.message };
+    }
   }
-});
+);
 
 /**
  * Stop the current suggestions generation
@@ -1248,7 +1256,10 @@ ipcMain.handle(
 
       // Check if already running
       if (specRegenerationExecution && specRegenerationExecution.isActive()) {
-        return { success: false, error: "Spec regeneration is already running" };
+        return {
+          success: false,
+          error: "Spec regeneration is already running",
+        };
       }
 
       // Create execution context
@@ -1266,7 +1277,11 @@ ipcMain.handle(
 
       // Start generating features (runs in background)
       specRegenerationService
-        .generateFeaturesOnly(projectPath, sendToRenderer, specRegenerationExecution)
+        .generateFeaturesOnly(
+          projectPath,
+          sendToRenderer,
+          specRegenerationExecution
+        )
         .catch((error) => {
           console.error(
             "[IPC] spec-regeneration:generate-features background error:",
@@ -1788,7 +1803,10 @@ ipcMain.handle(
       }
 
       const featureLoader = require("./services/feature-loader");
-      const content = await featureLoader.getAgentOutput(projectPath, featureId);
+      const content = await featureLoader.getAgentOutput(
+        projectPath,
+        featureId
+      );
       return { success: true, content };
     } catch (error) {
       console.error("[IPC] features:getAgentOutput error:", error);
