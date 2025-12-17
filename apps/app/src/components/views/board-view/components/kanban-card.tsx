@@ -164,13 +164,6 @@ export const KanbanCard = memo(function KanbanCard({
     return getBlockingDependencies(feature, features);
   }, [enableDependencyBlocking, feature, features]);
 
-  // Determine if a badge occupies the top-right position
-  const hasBadgeAtTopRight = useMemo(() => {
-    return feature.status === "backlog" &&
-           !feature.error &&
-           (feature.skipTests || blockingDependencies.length > 0);
-  }, [feature.status, feature.error, feature.skipTests, blockingDependencies.length]);
-
   const showSteps =
     kanbanCardDetailLevel === "standard" ||
     kanbanCardDetailLevel === "detailed";

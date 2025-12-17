@@ -92,7 +92,11 @@ export function resolveDependencies(features: Feature[]): DependencyResolutionRe
 
     // Process features that depend on this one
     for (const dependentId of adjacencyList.get(current.id) || []) {
-      const newDegree = (inDegree.get(dependentId) || 1) - 1;
+      const currentDegree = inDegree.get(dependentId);
+      if (currentDegree === undefined) {
+        throw new Error(`In-degree not initialized for feature ${dependentId}`);
+      }
+      const newDegree = currentDegree - 1;
       inDegree.set(dependentId, newDegree);
 
       if (newDegree === 0) {
