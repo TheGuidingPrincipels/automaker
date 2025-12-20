@@ -1513,6 +1513,10 @@ export const useAppStore = create<AppState & AppActions>()(
         // Only allow removing non-built-in profiles
         const profile = get().aiProfiles.find((p) => p.id === id);
         if (profile && !profile.isBuiltIn) {
+          // Clear default if this profile was selected
+          if (get().defaultAIProfileId === id) {
+            set({ defaultAIProfileId: null });
+          }
           set({ aiProfiles: get().aiProfiles.filter((p) => p.id !== id) });
         }
       },
