@@ -134,6 +134,12 @@ async function startServer(): Promise<void> {
     logger: (msg) => console.log(`[Electron] ${msg}`),
   });
   const command = nodeResult.nodePath;
+
+  // Validate that the found Node executable actually exists
+  if (command !== 'node' && !fs.existsSync(command)) {
+    throw new Error(`Node.js executable not found at: ${command} (source: ${nodeResult.source})`);
+  }
+
   let args: string[];
   let serverPath: string;
 
@@ -338,9 +344,15 @@ app.whenReady().then(async () => {
     createWindow();
   } catch (error) {
     console.error('[Electron] Failed to start:', error);
+    const errorMessage = (error as Error).message;
+    const isNodeError = errorMessage.includes('Node.js');
     dialog.showErrorBox(
       'Automaker Failed to Start',
-      `The application failed to start.\n\n${(error as Error).message}\n\nPlease ensure Node.js is installed and accessible.`
+      `The application failed to start.\n\n${errorMessage}\n\n${
+        isNodeError
+          ? 'Please install Node.js from https://nodejs.org or via a package manager (Homebrew, nvm, fnm).'
+          : 'Please check the application logs for more details.'
+      }`
     );
     app.quit();
   }

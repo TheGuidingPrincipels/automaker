@@ -334,8 +334,10 @@ export function buildEnhancedPath(nodePath: string, currentPath: string = ''): s
 
   // Don't add if already present or if it's just '.'
   // Use path segment matching to avoid false positives (e.g., /opt/node vs /opt/node-v18)
-  const pathSegments = currentPath.split(path.delimiter);
-  if (nodeDir === '.' || pathSegments.includes(nodeDir)) {
+  // Normalize paths for comparison to handle mixed separators on Windows
+  const normalizedNodeDir = path.normalize(nodeDir);
+  const pathSegments = currentPath.split(path.delimiter).map((s) => path.normalize(s));
+  if (normalizedNodeDir === '.' || pathSegments.includes(normalizedNodeDir)) {
     return currentPath;
   }
 
