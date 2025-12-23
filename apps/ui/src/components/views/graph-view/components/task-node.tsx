@@ -21,7 +21,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -225,7 +224,7 @@ export const TaskNode = memo(function TaskNode({ data, selected }: TaskNodeProps
                   className="text-xs cursor-pointer"
                   onClick={(e) => {
                     e.stopPropagation();
-                    data.onViewLogs?.();
+                    data.onViewDetails?.();
                   }}
                 >
                   <Eye className="w-3 h-3 mr-2" />
@@ -265,19 +264,6 @@ export const TaskNode = memo(function TaskNode({ data, selected }: TaskNodeProps
                   >
                     <RotateCcw className="w-3 h-3 mr-2" />
                     Resume Task
-                  </DropdownMenuItem>
-                )}
-                {Boolean(data.branchName) && <DropdownMenuSeparator />}
-                {Boolean(data.branchName) && (
-                  <DropdownMenuItem
-                    className="text-xs cursor-pointer"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      data.onViewBranch?.();
-                    }}
-                  >
-                    <GitBranch className="w-3 h-3 mr-2" />
-                    View Branch
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>

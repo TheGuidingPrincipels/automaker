@@ -14,10 +14,10 @@ export interface TaskNodeData extends Feature {
   isDimmed?: boolean;
   // Action callbacks
   onViewLogs?: () => void;
+  onViewDetails?: () => void;
   onStartTask?: () => void;
   onStopTask?: () => void;
   onResumeTask?: () => void;
-  onViewBranch?: () => void;
 }
 
 export type TaskNode = Node<TaskNodeData, 'task'>;
@@ -30,10 +30,10 @@ export type DependencyEdge = Edge<{
 
 export interface NodeActionCallbacks {
   onViewLogs?: (featureId: string) => void;
+  onViewDetails?: (featureId: string) => void;
   onStartTask?: (featureId: string) => void;
   onStopTask?: (featureId: string) => void;
   onResumeTask?: (featureId: string) => void;
-  onViewBranch?: (featureId: string) => void;
 }
 
 interface UseGraphNodesProps {
@@ -94,6 +94,9 @@ export function useGraphNodes({
           onViewLogs: actionCallbacks?.onViewLogs
             ? () => actionCallbacks.onViewLogs!(feature.id)
             : undefined,
+          onViewDetails: actionCallbacks?.onViewDetails
+            ? () => actionCallbacks.onViewDetails!(feature.id)
+            : undefined,
           onStartTask: actionCallbacks?.onStartTask
             ? () => actionCallbacks.onStartTask!(feature.id)
             : undefined,
@@ -102,9 +105,6 @@ export function useGraphNodes({
             : undefined,
           onResumeTask: actionCallbacks?.onResumeTask
             ? () => actionCallbacks.onResumeTask!(feature.id)
-            : undefined,
-          onViewBranch: actionCallbacks?.onViewBranch
-            ? () => actionCallbacks.onViewBranch!(feature.id)
             : undefined,
         },
       };

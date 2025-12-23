@@ -83,6 +83,12 @@ export function GraphView({
           onViewOutput(feature);
         }
       },
+      onViewDetails: (featureId: string) => {
+        const feature = features.find((f) => f.id === featureId);
+        if (feature) {
+          onEditFeature(feature);
+        }
+      },
       onStartTask: (featureId: string) => {
         const feature = features.find((f) => f.id === featureId);
         if (feature) {
@@ -101,15 +107,8 @@ export function GraphView({
           onResumeTask?.(feature);
         }
       },
-      onViewBranch: (featureId: string) => {
-        const feature = features.find((f) => f.id === featureId);
-        if (feature?.branchName) {
-          // TODO: Implement view branch action
-          console.log('View branch:', feature.branchName);
-        }
-      },
     }),
-    [features, onViewOutput, onStartTask, onStopTask, onResumeTask]
+    [features, onViewOutput, onEditFeature, onStartTask, onStopTask, onResumeTask]
   );
 
   return (
