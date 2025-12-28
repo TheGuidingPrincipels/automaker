@@ -27,7 +27,15 @@ import {
   CURSOR_MODEL_MAP,
 } from '@automaker/types';
 import { createLogger, isAbortError } from '@automaker/utils';
-import { spawnJSONLProcess, type SubprocessOptions } from '@automaker/platform';
+import {
+  spawnJSONLProcess,
+  type SubprocessOptions,
+  isWslAvailable,
+  findCliInWsl,
+  createWslCommand,
+  execInWsl,
+  windowsToWslPath,
+} from '@automaker/platform';
 
 // Create logger for this module
 const logger = createLogger('CursorProvider');
@@ -69,6 +77,10 @@ export class CursorProvider extends BaseProvider {
    * The install script creates versioned folders like:
    *   ~/.local/share/cursor-agent/versions/2025.12.17-996666f/cursor-agent
    * And symlinks to ~/.local/bin/cursor-agent
+   *
+   * Windows:
+   * - cursor-agent CLI only supports Linux/macOS, NOT native Windows
+   * - On Windows, users must install in WSL and we invoke via wsl.exe
    */
   private static COMMON_PATHS: Record<string, string[]> = {
     linux: [
@@ -79,11 +91,8 @@ export class CursorProvider extends BaseProvider {
       path.join(os.homedir(), '.local/bin/cursor-agent'), // Primary symlink location
       '/usr/local/bin/cursor-agent',
     ],
-    win32: [
-      path.join(os.homedir(), 'AppData/Local/Programs/cursor-agent/cursor-agent.exe'),
-      path.join(os.homedir(), '.local/bin/cursor-agent.exe'),
-      'C:\\Program Files\\cursor-agent\\cursor-agent.exe',
-    ],
+    // Windows paths are not used - we check for WSL installation instead
+    win32: [],
   };
 
   // Version data directory where cursor-agent stores versions
@@ -91,9 +100,14 @@ export class CursorProvider extends BaseProvider {
 
   private cliPath: string | null = null;
 
+  // WSL execution mode for Windows
+  private useWsl: boolean = false;
+  private wslCliPath: string | null = null;
+  private wslDistribution: string | undefined = undefined;
+
   constructor(config: ProviderConfig = {}) {
     super(config);
-    this.cliPath = config.cliPath || this.findCliPath();
+    this.findCliPath();
   }
 
   getName(): string {
@@ -102,15 +116,45 @@ export class CursorProvider extends BaseProvider {
 
   /**
    * Find cursor-agent CLI in PATH or common installation locations
+   *
+   * On Windows, uses WSL utilities from @automaker/platform since
+   * cursor-agent CLI only supports Linux/macOS natively.
    */
-  private findCliPath(): string | null {
-    // Try 'which' / 'where' first
+  private findCliPath(): void {
+    const wslLogger = (msg: string) => logger.debug(msg);
+
+    // On Windows, we need to use WSL (cursor-agent has no native Windows build)
+    if (process.platform === 'win32') {
+      if (isWslAvailable({ logger: wslLogger })) {
+        const wslResult = findCliInWsl('cursor-agent', { logger: wslLogger });
+        if (wslResult) {
+          this.useWsl = true;
+          this.wslCliPath = wslResult.wslPath;
+          this.wslDistribution = wslResult.distribution;
+          this.cliPath = 'wsl.exe'; // We'll use wsl.exe to invoke
+          logger.debug(
+            `Using cursor-agent via WSL (${wslResult.distribution || 'default'}): ${wslResult.wslPath}`
+          );
+          return;
+        }
+      }
+      logger.debug(
+        'cursor-agent CLI not found (WSL not available or cursor-agent not installed in WSL)'
+      );
+      this.cliPath = null;
+      return;
+    }
+
+    // Linux/macOS - direct execution
+    // Try 'which' first
     try {
-      const cmd = process.platform === 'win32' ? 'where cursor-agent' : 'which cursor-agent';
-      const result = execSync(cmd, { encoding: 'utf8', timeout: 5000 }).trim().split('\n')[0];
+      const result = execSync('which cursor-agent', { encoding: 'utf8', timeout: 5000 })
+        .trim()
+        .split('\n')[0];
       if (result && fs.existsSync(result)) {
         logger.debug(`Found cursor-agent in PATH: ${result}`);
-        return result;
+        this.cliPath = result;
+        return;
       }
     } catch {
       // Not in PATH
@@ -123,7 +167,8 @@ export class CursorProvider extends BaseProvider {
     for (const p of platformPaths) {
       if (fs.existsSync(p)) {
         logger.debug(`Found cursor-agent at: ${p}`);
-        return p;
+        this.cliPath = p;
+        return;
       }
     }
 
@@ -137,11 +182,11 @@ export class CursorProvider extends BaseProvider {
           .reverse(); // Most recent first
 
         for (const version of versions) {
-          const binaryName = platform === 'win32' ? 'cursor-agent.exe' : 'cursor-agent';
-          const versionPath = path.join(CursorProvider.VERSIONS_DIR, version, binaryName);
+          const versionPath = path.join(CursorProvider.VERSIONS_DIR, version, 'cursor-agent');
           if (fs.existsSync(versionPath)) {
             logger.debug(`Found cursor-agent version ${version} at: ${versionPath}`);
-            return versionPath;
+            this.cliPath = versionPath;
+            return;
           }
         }
       } catch {
@@ -150,7 +195,7 @@ export class CursorProvider extends BaseProvider {
     }
 
     logger.debug('cursor-agent CLI not found');
-    return null;
+    this.cliPath = null;
   }
 
   /**
@@ -167,6 +212,14 @@ export class CursorProvider extends BaseProvider {
     if (!this.cliPath) return null;
 
     try {
+      if (this.useWsl && this.wslCliPath) {
+        // Execute via WSL using utility from @automaker/platform
+        const result = execInWsl(`${this.wslCliPath} --version`, {
+          timeout: 5000,
+          distribution: this.wslDistribution,
+        });
+        return result;
+      }
       const result = execSync(`"${this.cliPath}" --version`, {
         encoding: 'utf8',
         timeout: 5000,
@@ -190,7 +243,43 @@ export class CursorProvider extends BaseProvider {
       return { authenticated: true, method: 'api_key' };
     }
 
-    // Check for credentials file (location may vary)
+    // For WSL mode, check credentials inside WSL
+    if (this.useWsl && this.wslCliPath) {
+      const wslOpts = { timeout: 5000, distribution: this.wslDistribution };
+
+      // Check for credentials file inside WSL (use $HOME for proper expansion)
+      const wslCredPaths = [
+        '$HOME/.cursor/credentials.json',
+        '$HOME/.config/cursor/credentials.json',
+      ];
+
+      for (const credPath of wslCredPaths) {
+        const content = execInWsl(`sh -c "cat ${credPath} 2>/dev/null || echo ''"`, wslOpts);
+        if (content && content.trim()) {
+          try {
+            const creds = JSON.parse(content);
+            if (creds.accessToken || creds.token) {
+              return { authenticated: true, method: 'login', hasCredentialsFile: true };
+            }
+          } catch {
+            // Invalid credentials file
+          }
+        }
+      }
+
+      // Try running --version to check if CLI works
+      const versionResult = execInWsl(`${this.wslCliPath} --version`, {
+        timeout: 10000,
+        distribution: this.wslDistribution,
+      });
+      if (versionResult) {
+        return { authenticated: true, method: 'login' };
+      }
+
+      return { authenticated: false, method: 'none' };
+    }
+
+    // Native mode (Linux/macOS) - check local credentials
     const credentialPaths = [
       path.join(os.homedir(), '.cursor', 'credentials.json'),
       path.join(os.homedir(), '.config', 'cursor', 'credentials.json'),
@@ -238,11 +327,17 @@ export class CursorProvider extends BaseProvider {
     const version = installed ? await this.getVersion() : undefined;
     const auth = await this.checkAuth();
 
+    // Determine the display path - for WSL, show the WSL path with distribution
+    const displayPath =
+      this.useWsl && this.wslCliPath
+        ? `(WSL${this.wslDistribution ? `:${this.wslDistribution}` : ''}) ${this.wslCliPath}`
+        : this.cliPath || undefined;
+
     return {
       installed,
       version: version || undefined,
-      path: this.cliPath || undefined,
-      method: 'cli',
+      path: displayPath,
+      method: this.useWsl ? 'wsl' : 'cli',
       hasApiKey: !!process.env.CURSOR_API_KEY,
       authenticated: auth.authenticated,
     };
@@ -500,11 +595,17 @@ export class CursorProvider extends BaseProvider {
    */
   async *executeQuery(options: ExecuteOptions): AsyncGenerator<ProviderMessage> {
     if (!this.cliPath) {
+      // Provide platform-specific installation instructions
+      const installSuggestion =
+        process.platform === 'win32'
+          ? 'cursor-agent requires WSL on Windows. Install WSL, then run in WSL: curl https://cursor.com/install -fsS | bash'
+          : 'Install with: curl https://cursor.com/install -fsS | bash';
+
       throw this.createError(
         CursorErrorCode.NOT_INSTALLED,
         'Cursor CLI is not installed',
         true,
-        'Install with: curl https://cursor.com/install -fsS | bash'
+        installSuggestion
       );
     }
 
@@ -532,8 +633,8 @@ export class CursorProvider extends BaseProvider {
       throw new Error('Invalid prompt format');
     }
 
-    // Build CLI arguments
-    const args: string[] = [
+    // Build CLI arguments for cursor-agent
+    const cliArgs: string[] = [
       '-p', // Print mode (non-interactive)
       '--force', // Allow file modifications
       '--output-format',
@@ -543,13 +644,46 @@ export class CursorProvider extends BaseProvider {
 
     // Add model if not auto
     if (model !== 'auto') {
-      args.push('--model', model);
+      cliArgs.push('--model', model);
     }
 
     // Add the prompt
-    args.push(promptText);
+    cliArgs.push(promptText);
 
-    logger.debug(`Executing: ${this.cliPath} ${args.slice(0, 6).join(' ')}...`);
+    // Determine command and args based on WSL mode
+    let command: string;
+    let args: string[];
+    let workingDir: string;
+
+    if (this.useWsl && this.wslCliPath) {
+      // Build WSL command with --cd flag to change directory inside WSL
+      const wslCmd = createWslCommand(this.wslCliPath, cliArgs, {
+        distribution: this.wslDistribution,
+      });
+      command = wslCmd.command;
+      const wslCwd = windowsToWslPath(cwd);
+
+      // Construct args with --cd flag inserted before the CLI path
+      // createWslCommand returns: ['-d', distro, cliPath, ...cliArgs] or [cliPath, ...cliArgs]
+      if (this.wslDistribution) {
+        // With distribution: wsl.exe -d <distro> --cd <path> <cli> <args>
+        args = ['-d', this.wslDistribution, '--cd', wslCwd, this.wslCliPath, ...cliArgs];
+      } else {
+        // Without distribution: wsl.exe --cd <path> <cli> <args>
+        args = ['--cd', wslCwd, this.wslCliPath, ...cliArgs];
+      }
+
+      // Keep Windows path for spawn's cwd (spawn runs on Windows)
+      workingDir = cwd;
+      logger.debug(
+        `Executing via WSL (${this.wslDistribution || 'default'}): ${command} ${args.slice(0, 6).join(' ')}...`
+      );
+    } else {
+      command = this.cliPath;
+      args = cliArgs;
+      workingDir = cwd;
+      logger.debug(`Executing: ${command} ${args.slice(0, 6).join(' ')}...`);
+    }
 
     // Use spawnJSONLProcess from @automaker/platform for JSONL streaming
     // This handles line buffering, timeouts, and abort signals automatically
@@ -562,9 +696,9 @@ export class CursorProvider extends BaseProvider {
     }
 
     const subprocessOptions: SubprocessOptions = {
-      command: this.cliPath,
+      command,
       args,
-      cwd,
+      cwd: workingDir,
       env: filteredEnv,
       abortController: options.abortController,
       timeout: 120000, // 2 min timeout for CLI operations (may take longer than default 30s)

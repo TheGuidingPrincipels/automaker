@@ -72,7 +72,15 @@ export interface InstallationStatus {
   installed: boolean;
   path?: string;
   version?: string;
-  method?: 'cli' | 'npm' | 'brew' | 'sdk';
+  /**
+   * How the provider was installed/detected
+   * - cli: Direct CLI binary
+   * - wsl: CLI accessed via Windows Subsystem for Linux
+   * - npm: Installed via npm
+   * - brew: Installed via Homebrew
+   * - sdk: Using SDK library
+   */
+  method?: 'cli' | 'wsl' | 'npm' | 'brew' | 'sdk';
   hasApiKey?: boolean;
   authenticated?: boolean;
   error?: string;

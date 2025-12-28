@@ -42,7 +42,8 @@ describe('model-resolver.ts', () => {
     });
 
     it('should treat unknown models as falling back to default', () => {
-      const models = ['o1', 'o1-mini', 'o3', 'gpt-5.2', 'unknown-model'];
+      // Note: Don't include valid Cursor model IDs here (e.g., 'gpt-5.2' is in CURSOR_MODEL_MAP)
+      const models = ['o1', 'o1-mini', 'o3', 'unknown-model', 'fake-model-123'];
       models.forEach((model) => {
         const result = resolveModelString(model);
         // Should fall back to default since these aren't supported

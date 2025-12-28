@@ -55,3 +55,18 @@ export {
   type NodeFinderResult,
   type NodeFinderOptions,
 } from './node-finder.js';
+
+// WSL (Windows Subsystem for Linux) utilities
+export {
+  isWslAvailable,
+  clearWslCache,
+  getDefaultWslDistribution,
+  getWslDistributions,
+  findCliInWsl,
+  execInWsl,
+  createWslCommand,
+  windowsToWslPath,
+  wslToWindowsPath,
+  type WslCliResult,
+  type WslOptions,
+} from './wsl.js';

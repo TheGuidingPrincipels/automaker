@@ -85,7 +85,7 @@ export function SettingsView() {
     switch (activeView) {
       case 'providers':
       case 'claude': // Backwards compatibility
-        return <ProviderTabs defaultTab={activeView === 'claude' ? 'claude' : 'claude'} />;
+        return <ProviderTabs defaultTab={activeView === 'claude' ? 'claude' : undefined} />;
       case 'ai-enhancement':
         return <AIEnhancementSection />;
       case 'appearance':
