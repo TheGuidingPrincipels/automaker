@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useAppStore } from '@/store/app-store';
 import type { ModelAlias, CursorModelId, PhaseModelKey, PhaseModelEntry } from '@automaker/types';
+import { DEFAULT_PHASE_MODELS } from '@automaker/types';
 
 export interface UseModelOverrideOptions {
   /** Which phase this override is for */
@@ -79,8 +80,9 @@ export function useModelOverride({
     initialOverride ? normalizeEntry(initialOverride) : null
   );
 
-  // Normalize global default to PhaseModelEntry
-  const globalDefault = normalizeEntry(phaseModels[phase]);
+  // Normalize global default to PhaseModelEntry, with fallback to DEFAULT_PHASE_MODELS
+  // This handles cases where settings haven't been migrated to include new phase models
+  const globalDefault = normalizeEntry(phaseModels[phase] ?? DEFAULT_PHASE_MODELS[phase]);
 
   const effectiveModelEntry = useMemo(() => {
     return override ?? globalDefault;
