@@ -294,6 +294,29 @@ export async function getSkillsConfiguration(settingsService: SettingsService): 
 }
 
 /**
+ * Get Subagents configuration from settings.
+ * Returns configuration for enabling subagents and which sources to load from.
+ *
+ * @param settingsService - Settings service instance
+ * @returns Subagents configuration with enabled state, sources, and tool inclusion flag
+ */
+export async function getSubagentsConfiguration(settingsService: SettingsService): Promise<{
+  enabled: boolean;
+  sources: Array<'user' | 'project'>;
+  shouldIncludeInTools: boolean;
+}> {
+  const settings = await settingsService.getGlobalSettings();
+  const enabled = settings.enableSubagents ?? true; // Default enabled
+  const sources = settings.subagentsSources ?? ['user', 'project']; // Default both sources
+
+  return {
+    enabled,
+    sources,
+    shouldIncludeInTools: enabled && sources.length > 0,
+  };
+}
+
+/**
  * Get custom subagents from settings, merging global and project-level definitions.
  * Project-level subagents take precedence over global ones with the same name.
  *

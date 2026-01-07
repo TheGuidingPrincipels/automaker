@@ -504,7 +504,21 @@ export interface GlobalSettings {
 
   // Subagents Configuration
   /**
-   * Custom subagent definitions for specialized task delegation
+   * Enable Custom Subagents functionality (loads from .claude/agents/ directories)
+   * @default true
+   */
+  enableSubagents?: boolean;
+
+  /**
+   * Which directories to load Subagents from
+   * - 'user': ~/.claude/agents/ (personal agents)
+   * - 'project': .claude/agents/ (project-specific agents)
+   * @default ['user', 'project']
+   */
+  subagentsSources?: Array<'user' | 'project'>;
+
+  /**
+   * Custom subagent definitions for specialized task delegation (programmatic)
    * Key: agent name (e.g., 'code-reviewer', 'test-runner')
    * Value: agent configuration
    */
@@ -707,6 +721,10 @@ export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
   enableSandboxMode: false,
   skipSandboxWarning: false,
   mcpServers: [],
+  enableSkills: true,
+  skillsSources: ['user', 'project'],
+  enableSubagents: true,
+  subagentsSources: ['user', 'project'],
 };
 
 /** Default credentials (empty strings - user must provide API keys) */

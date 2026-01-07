@@ -236,6 +236,8 @@ export async function syncSettingsToServer(): Promise<boolean> {
       mcpServers: state.mcpServers,
       enableSkills: state.enableSkills,
       skillsSources: state.skillsSources,
+      enableSubagents: state.enableSubagents,
+      subagentsSources: state.subagentsSources,
       promptCustomization: state.promptCustomization,
       projects: state.projects,
       trashedProjects: state.trashedProjects,

@@ -96,17 +96,9 @@ describe('claude-provider.ts', () => {
       expect(sdk.query).toHaveBeenCalledWith({
         prompt: 'Test',
         options: expect.objectContaining({
-          allowedTools: [
-            'Read',
-            'Write',
-            'Edit',
-            'Glob',
-            'Grep',
-            'Bash',
-            'WebSearch',
-            'WebFetch',
-            'Skill',
-          ],
+          // Note: 'Skill' and 'Task' tools are added dynamically by agent-service.ts
+          // based on settings, not included in base default tools
+          allowedTools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', 'WebSearch', 'WebFetch'],
         }),
       });
     });

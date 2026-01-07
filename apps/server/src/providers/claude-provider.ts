@@ -72,17 +72,10 @@ export class ClaudeProvider extends BaseProvider {
     // Build Claude SDK options
     // AUTONOMOUS MODE: Always bypass permissions for fully autonomous operation
     const hasMcpServers = options.mcpServers && Object.keys(options.mcpServers).length > 0;
-    const defaultTools = [
-      'Read',
-      'Write',
-      'Edit',
-      'Glob',
-      'Grep',
-      'Bash',
-      'WebSearch',
-      'WebFetch',
-      'Skill',
-    ];
+    // Base tools available to all agents
+    // Note: 'Skill' and 'Task' tools are added dynamically by agent-service.ts
+    // based on whether skills/subagents are enabled in settings
+    const defaultTools = ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', 'WebSearch', 'WebFetch'];
 
     // AUTONOMOUS MODE: Always bypass permissions and allow unrestricted tools
     // Only restrict tools when no MCP servers are configured

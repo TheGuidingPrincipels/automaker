@@ -516,6 +516,10 @@ export interface AppState {
   enableSkills: boolean; // Enable Skills functionality (loads from .claude/skills/ directories)
   skillsSources: Array<'user' | 'project'>; // Which directories to load Skills from
 
+  // Subagents Configuration
+  enableSubagents: boolean; // Enable Custom Subagents functionality (loads from .claude/agents/ directories)
+  subagentsSources: Array<'user' | 'project'>; // Which directories to load Subagents from
+
   // Prompt Customization
   promptCustomization: PromptCustomization; // Custom prompts for Auto Mode, Agent, Backlog Plan, Enhancement
 
@@ -1028,6 +1032,8 @@ const initialState: AppState = {
   mcpServers: [], // No MCP servers configured by default
   enableSkills: true, // Skills enabled by default
   skillsSources: ['user', 'project'] as Array<'user' | 'project'>, // Load from both sources by default
+  enableSubagents: true, // Subagents enabled by default
+  subagentsSources: ['user', 'project'] as Array<'user' | 'project'>, // Load from both sources by default
   promptCustomization: {}, // Empty by default - all prompts use built-in defaults
   aiProfiles: DEFAULT_AI_PROFILES,
   projectAnalysis: null,
