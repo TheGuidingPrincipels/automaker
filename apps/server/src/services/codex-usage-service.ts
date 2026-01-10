@@ -157,9 +157,9 @@ export class CodexUsageService {
       if (rateLimitsResult?.rateLimits?.primary) {
         const primary = rateLimitsResult.rateLimits.primary;
         result.rateLimits!.primary = {
-          limit: 100, // Not provided by API, using placeholder
-          used: primary.usedPercent,
-          remaining: 100 - primary.usedPercent,
+          limit: -1, // Not provided by API
+          used: -1, // Not provided by API
+          remaining: -1, // Not provided by API
           usedPercent: primary.usedPercent,
           windowDurationMins: primary.windowDurationMins,
           resetsAt: primary.resetsAt,
@@ -170,9 +170,9 @@ export class CodexUsageService {
       if (rateLimitsResult?.rateLimits?.secondary) {
         const secondary = rateLimitsResult.rateLimits.secondary;
         result.rateLimits!.secondary = {
-          limit: 100,
-          used: secondary.usedPercent,
-          remaining: 100 - secondary.usedPercent,
+          limit: -1, // Not provided by API
+          used: -1, // Not provided by API
+          remaining: -1, // Not provided by API
           usedPercent: secondary.usedPercent,
           windowDurationMins: secondary.windowDurationMins,
           resetsAt: secondary.resetsAt,

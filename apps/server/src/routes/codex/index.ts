@@ -12,7 +12,7 @@ export function createCodexRoutes(
   const router = Router();
 
   // Get current usage (attempts to fetch from Codex CLI)
-  router.get('/usage', async (req: Request, res: Response) => {
+  router.get('/usage', async (_req: Request, res: Response) => {
     try {
       // Check if Codex CLI is available first
       const isAvailable = await usageService.isAvailable();
@@ -60,7 +60,7 @@ export function createCodexRoutes(
   router.get('/models', async (req: Request, res: Response) => {
     try {
       const forceRefresh = req.query.refresh === 'true';
-      const models = await modelCacheService.getModels(forceRefresh);
+      const { models, cachedAt } = await modelCacheService.getModelsWithMetadata(forceRefresh);
 
       if (models.length === 0) {
         res.status(503).json({
@@ -74,7 +74,7 @@ export function createCodexRoutes(
       res.json({
         success: true,
         models,
-        cachedAt: Date.now(),
+        cachedAt,
       });
     } catch (error) {
       logger.error('Error fetching models:', error);

@@ -21,6 +21,7 @@ import {
   extractTextFromContent,
   classifyError,
   getUserFriendlyErrorMessage,
+  createLogger,
 } from '@automaker/utils';
 import type {
   ExecuteOptions,
@@ -658,6 +659,8 @@ async function loadCodexInstructions(cwd: string, enabled: boolean): Promise<str
     .join('\n\n');
 }
 
+const logger = createLogger('CodexProvider');
+
 export class CodexProvider extends BaseProvider {
   getName(): string {
     return 'codex';
@@ -1045,7 +1048,7 @@ export class CodexProvider extends BaseProvider {
           return { authenticated: true, method: 'oauth' };
         }
       } catch (error) {
-        // Silent fail
+        logger.warn('Error running login status command during auth check:', error);
       }
     }
 

@@ -87,6 +87,24 @@ export class CodexModelCacheService {
   }
 
   /**
+   * Get models with cache metadata
+   *
+   * @param forceRefresh - If true, bypass cache and fetch fresh data
+   * @returns Object containing models and cache timestamp
+   */
+  async getModelsWithMetadata(
+    forceRefresh = false
+  ): Promise<{ models: CodexModel[]; cachedAt: number }> {
+    const models = await this.getModels(forceRefresh);
+
+    // Try to get the actual cache timestamp
+    const cached = await this.loadFromCache();
+    const cachedAt = cached?.cachedAt ?? Date.now();
+
+    return { models, cachedAt };
+  }
+
+  /**
    * Refresh models from app-server and update cache
    *
    * Thread-safe: Deduplicates concurrent refresh requests
