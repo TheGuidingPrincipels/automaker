@@ -730,7 +730,7 @@ export class OpencodeProvider extends CliProvider {
 
       if (this.detectedStrategy === 'npx') {
         // NPX strategy: execute npx with opencode-ai package
-        command = 'npx';
+        command = process.platform === 'win32' ? 'npx.cmd' : 'npx';
         args = ['opencode-ai@latest', 'models'];
         opencodeLogger.debug(`Executing: ${command} ${args.join(' ')}`);
       } else if (this.useWsl && this.wslCliPath) {
@@ -751,6 +751,8 @@ export class OpencodeProvider extends CliProvider {
         encoding: 'utf-8',
         timeout: 30000,
         windowsHide: true,
+        // Use shell on Windows for .cmd files
+        shell: process.platform === 'win32' && command.endsWith('.cmd'),
       });
 
       opencodeLogger.debug(
@@ -963,7 +965,7 @@ export class OpencodeProvider extends CliProvider {
 
       if (this.detectedStrategy === 'npx') {
         // NPX strategy
-        command = 'npx';
+        command = process.platform === 'win32' ? 'npx.cmd' : 'npx';
         args = ['opencode-ai@latest', 'auth', 'list'];
         opencodeLogger.debug(`Executing: ${command} ${args.join(' ')}`);
       } else if (this.useWsl && this.wslCliPath) {
@@ -984,6 +986,8 @@ export class OpencodeProvider extends CliProvider {
         encoding: 'utf-8',
         timeout: 15000,
         windowsHide: true,
+        // Use shell on Windows for .cmd files
+        shell: process.platform === 'win32' && command.endsWith('.cmd'),
       });
 
       opencodeLogger.debug(

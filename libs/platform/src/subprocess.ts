@@ -45,7 +45,9 @@ export async function* spawnJSONLProcess(options: SubprocessOptions): AsyncGener
   }
 
   // On Windows, .cmd files must be run through shell (cmd.exe)
-  const needsShell = process.platform === 'win32' && command.toLowerCase().endsWith('.cmd');
+  const needsShell =
+    process.platform === 'win32' &&
+    (command.toLowerCase().endsWith('.cmd') || command === 'npx' || command === 'npm');
 
   const childProcess: ChildProcess = spawn(command, args, {
     cwd,
@@ -199,7 +201,9 @@ export async function spawnProcess(options: SubprocessOptions): Promise<Subproce
 
   return new Promise((resolve, reject) => {
     // On Windows, .cmd files must be run through shell (cmd.exe)
-    const needsShell = process.platform === 'win32' && command.toLowerCase().endsWith('.cmd');
+    const needsShell =
+      process.platform === 'win32' &&
+      (command.toLowerCase().endsWith('.cmd') || command === 'npx' || command === 'npm');
 
     const childProcess = spawn(command, args, {
       cwd,
