@@ -1,36 +1,26 @@
 import { useCallback } from 'react';
-import { createLogger } from '@automaker/utils/logger';
 import { useAppStore } from '@/store/app-store';
-import { getHttpApiClient } from '@/lib/http-api-client';
-import { toast } from 'sonner';
-
-const logger = createLogger('BoardBackground');
+import { useUpdateProjectSettings } from '@/hooks/mutations';
 
 /**
- * Hook for managing board background settings with automatic persistence to server
+ * Hook for managing board background settings with automatic persistence to server.
+ * Uses React Query mutation for server persistence with automatic error handling.
  */
 export function useBoardBackgroundSettings() {
   const store = useAppStore();
-  const httpClient = getHttpApiClient();
+
+  // Get the mutation without a fixed project path - we'll pass it with each call
+  const updateProjectSettings = useUpdateProjectSettings();
 
   // Helper to persist settings to server
   const persistSettings = useCallback(
-    async (projectPath: string, settingsToUpdate: Record<string, unknown>) => {
-      try {
-        const result = await httpClient.settings.updateProject(projectPath, {
-          boardBackground: settingsToUpdate,
-        });
-
-        if (!result.success) {
-          logger.error('Failed to persist settings:', result.error);
-          toast.error('Failed to save settings');
-        }
-      } catch (error) {
-        logger.error('Failed to persist settings:', error);
-        toast.error('Failed to save settings');
-      }
+    (projectPath: string, settingsToUpdate: Record<string, unknown>) => {
+      updateProjectSettings.mutate({
+        projectPath,
+        settings: { boardBackground: settingsToUpdate },
+      });
     },
-    [httpClient]
+    [updateProjectSettings]
   );
 
   // Get current background settings for a project

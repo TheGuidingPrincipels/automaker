@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useGuidedPrompts } from '@/hooks/use-guided-prompts';
 import { useIdeationStore } from '@/store/ideation-store';
 import { useAppStore } from '@/store/app-store';
-import { getElectronAPI } from '@/lib/electron';
+import { useGenerateIdeationSuggestions } from '@/hooks/mutations';
 import { toast } from 'sonner';
 import { useNavigate } from '@tanstack/react-router';
 import type { IdeaCategory, IdeationPrompt } from '@automaker/types';
@@ -27,6 +27,9 @@ export function PromptList({ category, onBack }: PromptListProps) {
   const [loadingPromptId, setLoadingPromptId] = useState<string | null>(null);
   const [startedPrompts, setStartedPrompts] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
+
+  // React Query mutation
+  const generateMutation = useGenerateIdeationSuggestions(currentProject?.path ?? '');
   const {
     getPromptsByCategory,
     isLoading: isLoadingPrompts,
@@ -56,7 +59,7 @@ export function PromptList({ category, onBack }: PromptListProps) {
       return;
     }
 
-    if (loadingPromptId || generatingPromptIds.has(prompt.id)) return;
+    if (loadingPromptId || generateMutation.isPending || generatingPromptIds.has(prompt.id)) return;
 
     setLoadingPromptId(prompt.id);
 
@@ -68,42 +71,31 @@ export function PromptList({ category, onBack }: PromptListProps) {
     toast.info(`Generating ideas for "${prompt.title}"...`);
     setMode('dashboard');
 
-    try {
-      const api = getElectronAPI();
-      const result = await api.ideation?.generateSuggestions(
-        currentProject.path,
-        prompt.id,
-        category
-      );
-
-      if (result?.success && result.suggestions) {
-        updateJobStatus(jobId, 'ready', result.suggestions);
-        toast.success(`Generated ${result.suggestions.length} ideas for "${prompt.title}"`, {
-          duration: 10000,
-          action: {
-            label: 'View Ideas',
-            onClick: () => {
-              setMode('dashboard');
-              navigate({ to: '/ideation' });
+    generateMutation.mutate(
+      { promptId: prompt.id, category },
+      {
+        onSuccess: (data) => {
+          updateJobStatus(jobId, 'ready', data.suggestions);
+          toast.success(`Generated ${data.suggestions.length} ideas for "${prompt.title}"`, {
+            duration: 10000,
+            action: {
+              label: 'View Ideas',
+              onClick: () => {
+                setMode('dashboard');
+                navigate({ to: '/ideation' });
+              },
             },
-          },
-        });
-      } else {
-        updateJobStatus(
-          jobId,
-          'error',
-          undefined,
-          result?.error || 'Failed to generate suggestions'
-        );
-        toast.error(result?.error || 'Failed to generate suggestions');
+          });
+          setLoadingPromptId(null);
+        },
+        onError: (error) => {
+          console.error('Failed to generate suggestions:', error);
+          updateJobStatus(jobId, 'error', undefined, error.message);
+          toast.error(error.message);
+          setLoadingPromptId(null);
+        },
       }
-    } catch (error) {
-      console.error('Failed to generate suggestions:', error);
-      updateJobStatus(jobId, 'error', undefined, (error as Error).message);
-      toast.error((error as Error).message);
-    } finally {
-      setLoadingPromptId(null);
-    }
+    );
   };
 
   return (
