@@ -30,6 +30,8 @@ interface MergeWorktreeDialogProps {
   onMerged: (mergedWorktree: WorktreeInfo) => void;
   /** Number of features assigned to this worktree's branch */
   affectedFeatureCount?: number;
+  /** Target branch to merge into (defaults to 'main') */
+  targetBranch?: string;
 }
 
 type DialogStep = 'confirm' | 'verify';
@@ -41,6 +43,7 @@ export function MergeWorktreeDialog({
   worktree,
   onMerged,
   affectedFeatureCount = 0,
+  targetBranch = 'main',
 }: MergeWorktreeDialogProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<DialogStep>('confirm');
@@ -70,11 +73,16 @@ export function MergeWorktreeDialog({
         return;
       }
 
-      // Pass branchName and worktreePath directly to the API
-      const result = await api.worktree.mergeFeature(projectPath, worktree.branch, worktree.path);
+      // Pass branchName, worktreePath, and targetBranch to the API
+      const result = await api.worktree.mergeFeature(
+        projectPath,
+        worktree.branch,
+        worktree.path,
+        targetBranch
+      );
 
       if (result.success) {
-        toast.success('Branch merged to main', {
+        toast.success(`Branch merged to ${targetBranch}`, {
           description: `Branch "${worktree.branch}" has been merged and cleaned up`,
         });
         onMerged(worktree);
@@ -106,20 +114,23 @@ export function MergeWorktreeDialog({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <GitMerge className="w-5 h-5 text-green-600" />
-              Merge to Main
+              Merge to {targetBranch}
             </DialogTitle>
             <DialogDescription asChild>
               <div className="space-y-3">
                 <span className="block">
                   Merge branch{' '}
-                  <code className="font-mono bg-muted px-1 rounded">{worktree.branch}</code> into
-                  main?
+                  <code className="font-mono bg-muted px-1 rounded">{worktree.branch}</code> into{' '}
+                  <code className="font-mono bg-muted px-1 rounded">{targetBranch}</code>?
                 </span>
 
                 <div className="text-sm text-muted-foreground mt-2">
                   This will:
                   <ul className="list-disc list-inside mt-1 space-y-1">
-                    <li>Merge the branch into the main branch</li>
+                    <li>
+                      Merge the branch into{' '}
+                      <code className="font-mono bg-muted px-1 rounded">{targetBranch}</code>
+                    </li>
                     <li>Remove the worktree directory</li>
                     <li>Delete the branch</li>
                   </ul>
@@ -223,7 +234,7 @@ export function MergeWorktreeDialog({
             ) : (
               <>
                 <CheckCircle2 className="w-4 h-4 mr-2" />
-                Merge to Main
+                Merge to {targetBranch}
               </>
             )}
           </Button>

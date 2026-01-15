@@ -270,8 +270,10 @@ export function Sidebar() {
           'border-r border-border/60 shadow-[1px_0_20px_-5px_rgba(0,0,0,0.1)]',
           // Smooth width transition
           'transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
-          // Mobile: overlay when open, collapsed when closed
-          sidebarOpen ? 'fixed inset-y-0 left-0 w-72 lg:relative lg:w-72' : 'relative w-16'
+          // Mobile: overlay when open (positioned after ProjectSwitcher), hidden when closed; Desktop: normal behavior
+          sidebarOpen
+            ? 'fixed inset-y-0 left-16 w-72 lg:relative lg:inset-auto lg:w-72'
+            : 'hidden lg:relative lg:flex lg:w-16'
         )}
         data-testid="sidebar"
       >

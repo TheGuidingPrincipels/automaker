@@ -22,6 +22,7 @@ import {
   FileUp,
   Loader2,
   MoreVertical,
+  ArrowLeft,
 } from 'lucide-react';
 import {
   useKeyboardShortcuts,
@@ -43,6 +44,7 @@ import { cn } from '@/lib/utils';
 const logger = createLogger('ContextView');
 import { sanitizeFilename } from '@/lib/image-utils';
 import { Markdown } from '../ui/markdown';
+import { useIsMobile } from '@/hooks/use-media-query';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -79,6 +81,7 @@ export function ContextView() {
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadingFileName, setUploadingFileName] = useState<string | null>(null);
+  const isMobile = useIsMobile();
 
   // Create Markdown modal state
   const [isCreateMarkdownOpen, setIsCreateMarkdownOpen] = useState(false);
@@ -699,8 +702,8 @@ export function ContextView() {
             disabled={isUploading}
             data-testid="import-file-button"
           >
-            <FileUp className="w-4 h-4 mr-2" />
-            Import File
+            <FileUp className={cn('w-4 h-4', !isMobile && 'mr-2')} />
+            {!isMobile && 'Import File'}
           </Button>
           <HotkeyButton
             size="sm"
@@ -709,8 +712,8 @@ export function ContextView() {
             hotkeyActive={false}
             data-testid="create-markdown-button"
           >
-            <FilePlus className="w-4 h-4 mr-2" />
-            Create Markdown
+            <FilePlus className={cn('w-4 h-4', !isMobile && 'mr-2')} />
+            {!isMobile && 'Create Markdown'}
           </HotkeyButton>
         </div>
       </div>
@@ -749,230 +752,262 @@ export function ContextView() {
           </div>
         )}
 
-        {/* Left Panel - File List */}
-        <div className="w-64 border-r border-border flex flex-col overflow-hidden">
-          <div className="p-3 border-b border-border">
-            <h2 className="text-sm font-semibold text-muted-foreground">
-              Context Files ({contextFiles.length})
-            </h2>
-          </div>
-          <div className="flex-1 overflow-y-auto p-2" data-testid="context-file-list">
-            {contextFiles.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center p-4">
-                <Upload className="w-8 h-8 text-muted-foreground mb-2" />
-                <p className="text-sm text-muted-foreground">
-                  No context files yet.
-                  <br />
-                  Drop files here or use the buttons above.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {contextFiles.map((file) => {
-                  const isGenerating = generatingDescriptions.has(file.name);
-                  return (
-                    <div
-                      key={file.path}
-                      onClick={() => handleSelectFile(file)}
-                      className={cn(
-                        'group w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors cursor-pointer',
-                        selectedFile?.path === file.path
-                          ? 'bg-primary/20 text-foreground border border-primary/30'
-                          : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                      )}
-                      data-testid={`context-file-${file.name}`}
-                    >
-                      {file.type === 'image' ? (
-                        <ImageIcon className="w-4 h-4 flex-shrink-0" />
-                      ) : (
-                        <FileText className="w-4 h-4 flex-shrink-0" />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <span className="truncate text-sm block">{file.name}</span>
-                        {isGenerating ? (
-                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            Generating description...
-                          </span>
-                        ) : file.description ? (
-                          <span className="truncate text-xs text-muted-foreground block">
-                            {file.description}
-                          </span>
-                        ) : null}
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            onClick={(e) => e.stopPropagation()}
-                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-accent rounded transition-opacity"
-                            data-testid={`context-file-menu-${file.name}`}
-                          >
-                            <MoreVertical className="w-4 h-4" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => {
-                              setRenameFileName(file.name);
-                              setSelectedFile(file);
-                              setIsRenameDialogOpen(true);
-                            }}
-                            data-testid={`rename-context-file-${file.name}`}
-                          >
-                            <Pencil className="w-4 h-4 mr-2" />
-                            Rename
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleDeleteFromList(file)}
-                            className="text-red-500 focus:text-red-500"
-                            data-testid={`delete-context-file-${file.name}`}
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
+        {/* On mobile, hide list when a file is selected */}
+        {(() => {
+          const showList = !isMobile || !selectedFile;
+          const showDetail = selectedFile !== null;
 
-        {/* Right Panel - Editor/Preview */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {selectedFile ? (
+          return (
             <>
-              {/* File toolbar */}
-              <div className="flex items-center justify-between p-3 border-b border-border bg-card">
-                <div className="flex items-center gap-2 min-w-0">
-                  {selectedFile.type === 'image' ? (
-                    <ImageIcon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                  ) : (
-                    <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              {/* Left Panel - File List - hidden on mobile when detail is shown */}
+              {showList && (
+                <div
+                  className={cn(
+                    'border-r border-border flex flex-col overflow-hidden',
+                    // On mobile, always full width; on desktop, fixed width
+                    isMobile ? 'flex-1' : 'w-64'
                   )}
-                  <span className="text-sm font-medium truncate">{selectedFile.name}</span>
-                </div>
-                <div className="flex gap-2">
-                  {selectedFile.type === 'text' && isMarkdownFile(selectedFile.name) && (
-                    <Button
-                      variant={'outline'}
-                      size="sm"
-                      onClick={() => setIsPreviewMode(!isPreviewMode)}
-                      data-testid="toggle-preview-mode"
-                    >
-                      {isPreviewMode ? (
-                        <>
-                          <Pencil className="w-4 h-4 mr-2" />
-                          Edit
-                        </>
-                      ) : (
-                        <>
-                          <Eye className="w-4 h-4 mr-2" />
-                          Preview
-                        </>
-                      )}
-                    </Button>
-                  )}
-                  {selectedFile.type === 'text' && (
-                    <Button
-                      size="sm"
-                      onClick={saveFile}
-                      disabled={!hasChanges || isSaving}
-                      data-testid="save-context-file"
-                    >
-                      <Save className="w-4 h-4 mr-2" />
-                      {isSaving ? 'Saving...' : hasChanges ? 'Save' : 'Saved'}
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsDeleteDialogOpen(true)}
-                    className="text-red-500 hover:text-red-400 hover:border-red-500/50"
-                    data-testid="delete-context-file"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Description section */}
-              <div className="px-4 pt-4 pb-2">
-                <div className="bg-muted/50 rounded-lg p-3 border border-border">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                        Description
-                      </span>
-                      {generatingDescriptions.has(selectedFile.name) ? (
-                        <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Generating description with AI...</span>
-                        </div>
-                      ) : selectedFile.description ? (
-                        <p className="text-sm mt-1">{selectedFile.description}</p>
-                      ) : (
-                        <p className="text-sm text-muted-foreground mt-1 italic">
-                          No description. Click edit to add one.
+                >
+                  <div className="p-3 border-b border-border">
+                    <h2 className="text-sm font-semibold text-muted-foreground">
+                      Context Files ({contextFiles.length})
+                    </h2>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-2" data-testid="context-file-list">
+                    {contextFiles.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center h-full text-center p-4">
+                        <Upload className="w-8 h-8 text-muted-foreground mb-2" />
+                        <p className="text-sm text-muted-foreground">
+                          No context files yet.
+                          <br />
+                          Drop files here or use the buttons above.
                         </p>
-                      )}
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEditDescription(selectedFile)}
-                      className="flex-shrink-0"
-                      data-testid="edit-description-button"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </Button>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        {contextFiles.map((file) => {
+                          const isGenerating = generatingDescriptions.has(file.name);
+                          return (
+                            <div
+                              key={file.path}
+                              onClick={() => handleSelectFile(file)}
+                              className={cn(
+                                'group w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors cursor-pointer',
+                                selectedFile?.path === file.path
+                                  ? 'bg-primary/20 text-foreground border border-primary/30'
+                                  : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                              )}
+                              data-testid={`context-file-${file.name}`}
+                            >
+                              {file.type === 'image' ? (
+                                <ImageIcon className="w-4 h-4 flex-shrink-0" />
+                              ) : (
+                                <FileText className="w-4 h-4 flex-shrink-0" />
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <span className="truncate text-sm block">{file.name}</span>
+                                {isGenerating ? (
+                                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                    Generating description...
+                                  </span>
+                                ) : file.description ? (
+                                  <span className="truncate text-xs text-muted-foreground block">
+                                    {file.description}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-accent rounded transition-opacity"
+                                    data-testid={`context-file-menu-${file.name}`}
+                                  >
+                                    <MoreVertical className="w-4 h-4" />
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setRenameFileName(file.name);
+                                      setSelectedFile(file);
+                                      setIsRenameDialogOpen(true);
+                                    }}
+                                    data-testid={`rename-context-file-${file.name}`}
+                                  >
+                                    <Pencil className="w-4 h-4 mr-2" />
+                                    Rename
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => handleDeleteFromList(file)}
+                                    className="text-red-500 focus:text-red-500"
+                                    data-testid={`delete-context-file-${file.name}`}
+                                  >
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
+              )}
 
-              {/* Content area */}
-              <div className="flex-1 overflow-hidden px-4 pb-4">
-                {selectedFile.type === 'image' ? (
-                  <div
-                    className="h-full flex items-center justify-center bg-card rounded-lg"
-                    data-testid="image-preview"
-                  >
-                    <img
-                      src={editedContent}
-                      alt={selectedFile.name}
-                      className="max-w-full max-h-full object-contain"
-                    />
+              {/* Right Panel - Editor/Preview */}
+              {showDetail && selectedFile && (
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  {/* File toolbar */}
+                  <div className="flex items-center justify-between p-3 border-b border-border bg-card">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {/* Back button on mobile */}
+                      {isMobile && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSelectedFile(null)}
+                          className="mr-1 -ml-1"
+                        >
+                          <ArrowLeft className="w-4 h-4" />
+                        </Button>
+                      )}
+                      {selectedFile.type === 'image' ? (
+                        <ImageIcon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      ) : (
+                        <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      )}
+                      <span className="text-sm font-medium truncate">{selectedFile.name}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      {selectedFile.type === 'text' && isMarkdownFile(selectedFile.name) && (
+                        <Button
+                          variant={'outline'}
+                          size="sm"
+                          onClick={() => setIsPreviewMode(!isPreviewMode)}
+                          data-testid="toggle-preview-mode"
+                        >
+                          {isPreviewMode ? (
+                            <>
+                              <Pencil className={cn('w-4 h-4', !isMobile && 'mr-2')} />
+                              {!isMobile && 'Edit'}
+                            </>
+                          ) : (
+                            <>
+                              <Eye className={cn('w-4 h-4', !isMobile && 'mr-2')} />
+                              {!isMobile && 'Preview'}
+                            </>
+                          )}
+                        </Button>
+                      )}
+                      {selectedFile.type === 'text' && (
+                        <Button
+                          size="sm"
+                          onClick={saveFile}
+                          disabled={!hasChanges || isSaving}
+                          data-testid="save-context-file"
+                        >
+                          <Save className={cn('w-4 h-4', !isMobile && 'mr-2')} />
+                          {!isMobile && (isSaving ? 'Saving...' : hasChanges ? 'Save' : 'Saved')}
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsDeleteDialogOpen(true)}
+                        className="text-red-500 hover:text-red-400 hover:border-red-500/50"
+                        data-testid="delete-context-file"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
-                ) : isPreviewMode ? (
-                  <Card className="h-full overflow-auto p-4" data-testid="markdown-preview">
-                    <Markdown>{editedContent}</Markdown>
-                  </Card>
-                ) : (
-                  <Card className="h-full overflow-hidden">
-                    <textarea
-                      className="w-full h-full p-4 font-mono text-sm bg-transparent resize-none focus:outline-none"
-                      value={editedContent}
-                      onChange={(e) => handleContentChange(e.target.value)}
-                      placeholder="Enter context content here..."
-                      spellCheck={false}
-                      data-testid="context-editor"
-                    />
-                  </Card>
-                )}
-              </div>
+
+                  {/* Description section */}
+                  <div className="px-4 pt-4 pb-2">
+                    <div className="bg-muted/50 rounded-lg p-3 border border-border">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Description
+                          </span>
+                          {generatingDescriptions.has(selectedFile.name) ? (
+                            <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span>Generating description with AI...</span>
+                            </div>
+                          ) : selectedFile.description ? (
+                            <p className="text-sm mt-1">{selectedFile.description}</p>
+                          ) : (
+                            <p className="text-sm text-muted-foreground mt-1 italic">
+                              No description. Click edit to add one.
+                            </p>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditDescription(selectedFile)}
+                          className="flex-shrink-0"
+                          data-testid="edit-description-button"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Content area */}
+                  <div className="flex-1 overflow-hidden px-4 pb-4">
+                    {selectedFile.type === 'image' ? (
+                      <div
+                        className="h-full flex items-center justify-center bg-card rounded-lg"
+                        data-testid="image-preview"
+                      >
+                        <img
+                          src={editedContent}
+                          alt={selectedFile.name}
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      </div>
+                    ) : isPreviewMode ? (
+                      <Card className="h-full overflow-auto p-4" data-testid="markdown-preview">
+                        <Markdown>{editedContent}</Markdown>
+                      </Card>
+                    ) : (
+                      <Card className="h-full overflow-hidden">
+                        <textarea
+                          className="w-full h-full p-4 font-mono text-sm bg-transparent resize-none focus:outline-none"
+                          value={editedContent}
+                          onChange={(e) => handleContentChange(e.target.value)}
+                          placeholder="Enter context content here..."
+                          spellCheck={false}
+                          data-testid="context-editor"
+                        />
+                      </Card>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Empty state - shown on desktop when no file selected */}
+              {!selectedFile && !isMobile && (
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="text-center">
+                    <File className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+                    <p className="text-foreground-secondary">Select a file to view or edit</p>
+                    <p className="text-muted-foreground text-sm mt-1">
+                      Or drop files here to add them
+                    </p>
+                  </div>
+                </div>
+              )}
             </>
-          ) : (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center">
-                <File className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
-                <p className="text-foreground-secondary">Select a file to view or edit</p>
-                <p className="text-muted-foreground text-sm mt-1">Or drop files here to add them</p>
-              </div>
-            </div>
-          )}
-        </div>
+          );
+        })()}
       </div>
 
       {/* Create Markdown Dialog */}

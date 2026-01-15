@@ -9,6 +9,7 @@ export function useBranches() {
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [aheadCount, setAheadCount] = useState(0);
   const [behindCount, setBehindCount] = useState(0);
+  const [hasRemoteTracking, setHasRemoteTracking] = useState(false);
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
   const [branchFilter, setBranchFilter] = useState('');
   const [gitRepoStatus, setGitRepoStatus] = useState<GitRepoStatus>({
@@ -21,6 +22,7 @@ export function useBranches() {
     setBranches([]);
     setAheadCount(0);
     setBehindCount(0);
+    setHasRemoteTracking(false);
   }, []);
 
   const fetchBranches = useCallback(
@@ -37,6 +39,7 @@ export function useBranches() {
           setBranches(result.result.branches);
           setAheadCount(result.result.aheadCount || 0);
           setBehindCount(result.result.behindCount || 0);
+          setHasRemoteTracking(result.result.hasRemoteTracking ?? false);
           setGitRepoStatus({ isGitRepo: true, hasCommits: true });
         } else if (result.code === 'NOT_GIT_REPO') {
           // Not a git repository - clear branches silently without logging an error
@@ -76,6 +79,7 @@ export function useBranches() {
     filteredBranches,
     aheadCount,
     behindCount,
+    hasRemoteTracking,
     isLoadingBranches,
     branchFilter,
     setBranchFilter,

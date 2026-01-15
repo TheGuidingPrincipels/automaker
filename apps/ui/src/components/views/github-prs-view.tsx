@@ -1,11 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createLogger } from '@automaker/utils/logger';
-import { GitPullRequest, Loader2, RefreshCw, ExternalLink, GitMerge, X } from 'lucide-react';
+import {
+  GitPullRequest,
+  Loader2,
+  RefreshCw,
+  ExternalLink,
+  GitMerge,
+  X,
+  ArrowLeft,
+} from 'lucide-react';
 import { getElectronAPI, GitHubPR } from '@/lib/electron';
 import { useAppStore } from '@/store/app-store';
 import { Button } from '@/components/ui/button';
 import { Markdown } from '@/components/ui/markdown';
 import { cn } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/use-media-query';
 
 const logger = createLogger('GitHubPRsView');
 
@@ -17,6 +26,7 @@ export function GitHubPRsView() {
   const [error, setError] = useState<string | null>(null);
   const [selectedPR, setSelectedPR] = useState<GitHubPR | null>(null);
   const { currentProject } = useAppStore();
+  const isMobile = useIsMobile();
 
   const fetchPRs = useCallback(async () => {
     if (!currentProject?.path) {
@@ -109,99 +119,117 @@ export function GitHubPRsView() {
 
   const totalPRs = openPRs.length + mergedPRs.length;
 
+  // On mobile, hide list when a PR is selected
+  const showList = !isMobile || !selectedPR;
+  const showDetail = selectedPR !== null;
+
   return (
     <div className="flex-1 flex overflow-hidden">
-      {/* PR List */}
-      <div
-        className={cn(
-          'flex flex-col overflow-hidden border-r border-border',
-          selectedPR ? 'w-80' : 'flex-1'
-        )}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-blue-500/10">
-              <GitPullRequest className="h-5 w-5 text-blue-500" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold">Pull Requests</h1>
-              <p className="text-xs text-muted-foreground">
-                {totalPRs === 0
-                  ? 'No pull requests found'
-                  : `${openPRs.length} open, ${mergedPRs.length} merged`}
-              </p>
-            </div>
-          </div>
-          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
-            <RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} />
-          </Button>
-        </div>
-
-        {/* PR List */}
-        <div className="flex-1 overflow-auto">
-          {totalPRs === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center p-6">
-              <div className="p-4 rounded-full bg-muted/50 mb-4">
-                <GitPullRequest className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <h2 className="text-base font-medium mb-2">No Pull Requests</h2>
-              <p className="text-sm text-muted-foreground">
-                This repository has no pull requests yet.
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-border">
-              {/* Open PRs */}
-              {openPRs.map((pr) => (
-                <PRRow
-                  key={pr.number}
-                  pr={pr}
-                  isSelected={selectedPR?.number === pr.number}
-                  onClick={() => setSelectedPR(pr)}
-                  onOpenExternal={() => handleOpenInGitHub(pr.url)}
-                  formatDate={formatDate}
-                  getReviewStatus={getReviewStatus}
-                />
-              ))}
-
-              {/* Merged PRs Section */}
-              {mergedPRs.length > 0 && (
-                <>
-                  <div className="px-4 py-2 bg-muted/30 text-xs font-medium text-muted-foreground">
-                    Merged ({mergedPRs.length})
-                  </div>
-                  {mergedPRs.map((pr) => (
-                    <PRRow
-                      key={pr.number}
-                      pr={pr}
-                      isSelected={selectedPR?.number === pr.number}
-                      onClick={() => setSelectedPR(pr)}
-                      onOpenExternal={() => handleOpenInGitHub(pr.url)}
-                      formatDate={formatDate}
-                      getReviewStatus={getReviewStatus}
-                    />
-                  ))}
-                </>
-              )}
-            </div>
+      {/* PR List - hidden on mobile when detail is shown */}
+      {showList && (
+        <div
+          className={cn(
+            'flex flex-col overflow-hidden border-r border-border',
+            // On mobile, always full width; on desktop, narrow when detail is shown
+            isMobile ? 'flex-1' : selectedPR ? 'w-80' : 'flex-1'
           )}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b border-border">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-blue-500/10">
+                <GitPullRequest className="h-5 w-5 text-blue-500" />
+              </div>
+              <div>
+                <h1 className="text-lg font-bold">Pull Requests</h1>
+                <p className="text-xs text-muted-foreground">
+                  {totalPRs === 0
+                    ? 'No pull requests found'
+                    : `${openPRs.length} open, ${mergedPRs.length} merged`}
+                </p>
+              </div>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
+              <RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} />
+            </Button>
+          </div>
+
+          {/* PR List */}
+          <div className="flex-1 overflow-auto">
+            {totalPRs === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center p-6">
+                <div className="p-4 rounded-full bg-muted/50 mb-4">
+                  <GitPullRequest className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h2 className="text-base font-medium mb-2">No Pull Requests</h2>
+                <p className="text-sm text-muted-foreground">
+                  This repository has no pull requests yet.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {/* Open PRs */}
+                {openPRs.map((pr) => (
+                  <PRRow
+                    key={pr.number}
+                    pr={pr}
+                    isSelected={selectedPR?.number === pr.number}
+                    onClick={() => setSelectedPR(pr)}
+                    onOpenExternal={() => handleOpenInGitHub(pr.url)}
+                    formatDate={formatDate}
+                    getReviewStatus={getReviewStatus}
+                  />
+                ))}
+
+                {/* Merged PRs Section */}
+                {mergedPRs.length > 0 && (
+                  <>
+                    <div className="px-4 py-2 bg-muted/30 text-xs font-medium text-muted-foreground">
+                      Merged ({mergedPRs.length})
+                    </div>
+                    {mergedPRs.map((pr) => (
+                      <PRRow
+                        key={pr.number}
+                        pr={pr}
+                        isSelected={selectedPR?.number === pr.number}
+                        onClick={() => setSelectedPR(pr)}
+                        onOpenExternal={() => handleOpenInGitHub(pr.url)}
+                        formatDate={formatDate}
+                        getReviewStatus={getReviewStatus}
+                      />
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* PR Detail Panel */}
-      {selectedPR && (
+      {showDetail && selectedPR && (
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Detail Header */}
           <div className="flex items-center justify-between p-3 border-b border-border bg-muted/30">
             <div className="flex items-center gap-2 min-w-0">
+              {/* Back button on mobile */}
+              {isMobile && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedPR(null)}
+                  className="mr-1 -ml-1"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+              )}
               {selectedPR.state === 'MERGED' ? (
                 <GitMerge className="h-4 w-4 text-purple-500 flex-shrink-0" />
               ) : (
                 <GitPullRequest className="h-4 w-4 text-green-500 flex-shrink-0" />
               )}
               <span className="text-sm font-medium truncate">
-                #{selectedPR.number} {selectedPR.title}
+                #{selectedPR.number} {isMobile ? '' : selectedPR.title}
               </span>
               {selectedPR.isDraft && (
                 <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-muted text-muted-foreground">
@@ -216,11 +244,14 @@ export function GitHubPRsView() {
                 onClick={() => handleOpenInGitHub(selectedPR.url)}
               >
                 <ExternalLink className="h-4 w-4 mr-1" />
-                Open in GitHub
+                {!isMobile && 'Open in GitHub'}
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => setSelectedPR(null)}>
-                <X className="h-4 w-4" />
-              </Button>
+              {/* Close button hidden on mobile (back button serves this purpose) */}
+              {!isMobile && (
+                <Button variant="ghost" size="sm" onClick={() => setSelectedPR(null)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           </div>
 

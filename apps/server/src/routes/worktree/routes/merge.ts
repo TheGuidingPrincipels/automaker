@@ -1,5 +1,5 @@
 /**
- * POST /merge endpoint - Merge feature (merge worktree branch into main)
+ * POST /merge endpoint - Merge feature (merge worktree branch into target branch)
  *
  * Note: Git repository validation (isGitRepo, hasCommits) is handled by
  * the requireValidProject middleware in index.ts
@@ -15,10 +15,11 @@ const execAsync = promisify(exec);
 export function createMergeHandler() {
   return async (req: Request, res: Response): Promise<void> => {
     try {
-      const { projectPath, branchName, worktreePath, options } = req.body as {
+      const { projectPath, branchName, worktreePath, targetBranch, options } = req.body as {
         projectPath: string;
         branchName: string;
         worktreePath: string;
+        targetBranch?: string;
         options?: { squash?: boolean; message?: string };
       };
 
@@ -30,13 +31,27 @@ export function createMergeHandler() {
         return;
       }
 
-      // Validate branch exists
+      // Default to 'main' if no target branch specified
+      const mergeTarget = targetBranch || 'main';
+
+      // Validate source branch exists
       try {
         await execAsync(`git rev-parse --verify ${branchName}`, { cwd: projectPath });
       } catch {
         res.status(400).json({
           success: false,
           error: `Branch "${branchName}" does not exist`,
+        });
+        return;
+      }
+
+      // Validate target branch exists
+      try {
+        await execAsync(`git rev-parse --verify ${mergeTarget}`, { cwd: projectPath });
+      } catch {
+        res.status(400).json({
+          success: false,
+          error: `Target branch "${mergeTarget}" does not exist`,
         });
         return;
       }

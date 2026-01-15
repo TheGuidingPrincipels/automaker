@@ -110,9 +110,10 @@ export function createListBranchesHandler() {
         }
       }
 
-      // Get ahead/behind count for current branch
+      // Get ahead/behind count for current branch and check for remote tracking branch
       let aheadCount = 0;
       let behindCount = 0;
+      let hasRemoteTracking = false;
       try {
         // First check if there's a remote tracking branch
         const { stdout: upstreamOutput } = await execAsync(
@@ -121,6 +122,7 @@ export function createListBranchesHandler() {
         );
 
         if (upstreamOutput.trim()) {
+          hasRemoteTracking = true;
           const { stdout: aheadBehindOutput } = await execAsync(
             `git rev-list --left-right --count ${currentBranch}@{upstream}...HEAD`,
             { cwd: worktreePath }
@@ -130,7 +132,7 @@ export function createListBranchesHandler() {
           behindCount = behind || 0;
         }
       } catch {
-        // No upstream branch set, that's okay
+        // No upstream branch set, that's okay - hasRemoteTracking stays false
       }
 
       res.json({
@@ -140,6 +142,7 @@ export function createListBranchesHandler() {
           branches,
           aheadCount,
           behindCount,
+          hasRemoteTracking,
         },
       });
     } catch (error) {

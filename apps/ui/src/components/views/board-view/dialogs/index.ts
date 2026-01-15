@@ -8,3 +8,4 @@ export { EditFeatureDialog } from './edit-feature-dialog';
 export { FollowUpDialog, type FollowUpHistoryEntry } from './follow-up-dialog';
 export { PlanApprovalDialog } from './plan-approval-dialog';
 export { MassEditDialog } from './mass-edit-dialog';
+export { ViewWorktreeChangesDialog } from './view-worktree-changes-dialog';

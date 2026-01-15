@@ -60,7 +60,11 @@ import { CreatePRDialog } from './board-view/dialogs/create-pr-dialog';
 import { CreateBranchDialog } from './board-view/dialogs/create-branch-dialog';
 import { MergeWorktreeDialog } from './board-view/dialogs/merge-worktree-dialog';
 import { WorktreePanel } from './board-view/worktree-panel';
-import type { PRInfo, WorktreeInfo } from './board-view/worktree-panel/types';
+import type {
+  PRInfo,
+  WorktreeInfo,
+  ConflictResolutionSource,
+} from './board-view/worktree-panel/types';
 import { COLUMNS, getColumnsWithPipeline } from './board-view/constants';
 import {
   useBoardFeatures,
@@ -414,6 +418,11 @@ export function BoardView() {
   const selectedWorktreeBranch =
     currentWorktreeBranch || worktrees.find((w) => w.isMain)?.branch || 'main';
 
+  // Get the branch from the main worktree (the far-left "Branch" dropdown)
+  // This is used for operations like merge and pull/resolve conflicts that should target
+  // the main worktree's branch, not the highlighted/clicked worktree's branch
+  const mainWorktreeBranch = worktrees.find((w) => w.isMain)?.branch || 'main';
+
   // Calculate unarchived card counts per branch
   const branchCardCounts = useMemo(() => {
     // Use primary worktree branch as default for features without branchName
@@ -729,15 +738,18 @@ export function BoardView() {
     [handleAddFeature, handleStartImplementation, defaultSkipTests]
   );
 
-  // Handler for resolving conflicts - creates a feature to pull from the remote branch and resolve conflicts
+  // Handler for resolving conflicts - creates a feature to pull from a branch and resolve conflicts
+  // source: 'worktree' = pull from the worktree's own remote branch (origin/{worktree.branch})
+  // source: 'selected' = pull from the main worktree's branch (the far-left "Branch" dropdown)
   const handleResolveConflicts = useCallback(
-    async (worktree: WorktreeInfo) => {
-      const remoteBranch = `origin/${worktree.branch}`;
+    async (worktree: WorktreeInfo, source: ConflictResolutionSource) => {
+      const sourceBranch = source === 'worktree' ? worktree.branch : mainWorktreeBranch;
+      const remoteBranch = `origin/${sourceBranch}`;
       const description = `Pull latest from ${remoteBranch} and resolve conflicts. Merge ${remoteBranch} into the current branch (${worktree.branch}), resolving any merge conflicts that arise. After resolving conflicts, ensure the code compiles and tests pass.`;
 
       // Create the feature
       const featureData = {
-        title: `Resolve Merge Conflicts`,
+        title: `Resolve Merge Conflicts from ${sourceBranch}`,
         category: 'Maintenance',
         description,
         images: [],
@@ -769,7 +781,7 @@ export function BoardView() {
         });
       }
     },
-    [handleAddFeature, handleStartImplementation, defaultSkipTests]
+    [handleAddFeature, handleStartImplementation, defaultSkipTests, mainWorktreeBranch]
   );
 
   // Handler for "Make" button - creates a feature and immediately starts it
@@ -1367,6 +1379,7 @@ export function BoardView() {
             id: f.id,
             branchName: f.branchName,
           }))}
+          targetBranch={mainWorktreeBranch}
         />
       )}
 
@@ -1560,6 +1573,7 @@ export function BoardView() {
         featureId={outputFeature?.id || ''}
         featureStatus={outputFeature?.status}
         onNumberKeyPress={handleOutputModalNumberKeyPress}
+        branchName={outputFeature?.branchName}
       />
 
       {/* Archive All Verified Dialog */}
@@ -1710,6 +1724,7 @@ export function BoardView() {
         onOpenChange={setShowMergeWorktreeDialog}
         projectPath={currentProject.path}
         worktree={selectedWorktreeForAction}
+        targetBranch={mainWorktreeBranch}
         affectedFeatureCount={
           selectedWorktreeForAction
             ? hookFeatures.filter((f) => f.branchName === selectedWorktreeForAction.branch).length
@@ -1750,7 +1765,7 @@ export function BoardView() {
         onOpenChange={setShowCreatePRDialog}
         worktree={selectedWorktreeForAction}
         projectPath={currentProject?.path || null}
-        defaultBaseBranch={selectedWorktreeBranch}
+        defaultBaseBranch={mainWorktreeBranch}
         onCreated={(prUrl) => {
           // If a PR was created and we have the worktree branch, update all features on that branch with the PR URL
           if (prUrl && selectedWorktreeForAction?.branch) {

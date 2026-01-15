@@ -28,12 +28,12 @@ import {
   performSettingsMigration,
 } from '@/hooks/use-settings-migration';
 import { Toaster } from 'sonner';
-import { Menu } from 'lucide-react';
 import { ThemeOption, themeOptions } from '@/config/theme-options';
 import { SandboxRiskDialog } from '@/components/dialogs/sandbox-risk-dialog';
 import { SandboxRejectionScreen } from '@/components/dialogs/sandbox-rejection-screen';
 import { LoadingState } from '@/components/ui/loading-state';
 import { useProjectSettingsLoader } from '@/hooks/use-project-settings-loader';
+import { useIsTablet } from '@/hooks/use-media-query';
 import type { Project } from '@/lib/electron';
 
 const logger = createLogger('RootLayout');
@@ -168,6 +168,7 @@ function RootLayoutContent() {
   const navigate = useNavigate();
   const [isMounted, setIsMounted] = useState(false);
   const [streamerPanelOpen, setStreamerPanelOpen] = useState(false);
+  const isTablet = useIsTablet();
   const authChecked = useAuthStore((s) => s.authChecked);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const settingsLoaded = useAuthStore((s) => s.settingsLoaded);
@@ -820,26 +821,16 @@ function RootLayoutContent() {
         )}
         {showProjectSwitcher && <ProjectSwitcher />}
         <Sidebar />
-        {/* Mobile menu toggle button - only shows when sidebar is closed on mobile */}
-        {!sidebarOpen && (
-          <button
-            onClick={toggleSidebar}
-            className="fixed top-3 left-3 z-50 p-2 rounded-lg bg-card/90 backdrop-blur-sm border border-border shadow-lg lg:hidden"
-            aria-label="Open menu"
-          >
-            <Menu className="w-5 h-5 text-foreground" />
-          </button>
-        )}
         <div
           className="flex-1 flex flex-col overflow-hidden transition-all duration-300"
-          style={{ marginRight: streamerPanelOpen ? '250px' : '0' }}
+          style={{ marginRight: !isTablet && streamerPanelOpen ? '250px' : '0' }}
         >
           <Outlet />
         </div>
 
-        {/* Hidden streamer panel - opens with "\" key, pushes content */}
+        {/* Hidden streamer panel - opens with "\" key, pushes content - desktop only */}
         <div
-          className={`fixed top-0 right-0 h-full w-[250px] bg-background border-l border-border transition-transform duration-300 ${
+          className={`fixed top-0 right-0 h-full w-[250px] bg-background border-l border-border transition-transform duration-300 hidden lg:block ${
             streamerPanelOpen ? 'translate-x-0' : 'translate-x-full'
           }`}
         />

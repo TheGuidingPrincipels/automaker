@@ -46,7 +46,7 @@ export function useMediaQuery(query: string): boolean {
  * @returns boolean indicating if the device is mobile
  */
 export function useIsMobile(): boolean {
-  return useMediaQuery('(max-width: 768px)');
+  return useMediaQuery('(max-width: 900px)');
 }
 
 /**
@@ -55,4 +55,40 @@ export function useIsMobile(): boolean {
  */
 export function useIsTablet(): boolean {
   return useMediaQuery('(max-width: 1024px)');
+}
+
+/**
+ * Hook to detect if the toolbar is narrow enough that worktree panel should collapse
+ * Used for first-stage responsive collapse of Plan button to overflow menu
+ * @returns boolean indicating if Plan should collapse
+ */
+export function useIsNarrowToolbarForWorktree(): boolean {
+  return useMediaQuery('(max-width: 900px)');
+}
+
+/**
+ * Hook to detect if the toolbar is narrow enough that Plan button should collapse
+ * Used for first-stage responsive collapse of Plan button to overflow menu
+ * @returns boolean indicating if Plan should collapse
+ */
+export function useIsNarrowToolbarForPlan(): boolean {
+  return useMediaQuery('(max-width: 1378px)');
+}
+
+/**
+ * Hook to detect if the toolbar is narrow enough that Auto Mode should collapse
+ * Used for second-stage responsive collapse of Auto Mode to overflow menu
+ * @returns boolean indicating if Auto Mode should collapse
+ */
+export function useIsNarrowToolbarForAutoMode(): boolean {
+  return useMediaQuery('(max-width: 1300px)');
+}
+
+/**
+ * Hook to detect if the toolbar is narrow enough that Agents control should collapse
+ * Used for third-stage responsive collapse of Agents control to overflow menu
+ * @returns boolean indicating if Agents should collapse
+ */
+export function useIsNarrowToolbarForAgents(): boolean {
+  return useMediaQuery('(max-width: 1110px)');
 }

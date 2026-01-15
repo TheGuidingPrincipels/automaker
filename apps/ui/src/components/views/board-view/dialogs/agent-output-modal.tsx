@@ -27,6 +27,8 @@ interface AgentOutputModalProps {
   onNumberKeyPress?: (key: string) => void;
   /** Project path - if not provided, falls back to window.__currentProject for backward compatibility */
   projectPath?: string;
+  /** Branch name for the feature worktree - used when viewing changes */
+  branchName?: string;
 }
 
 type ViewMode = 'summary' | 'parsed' | 'raw' | 'changes';
@@ -39,6 +41,7 @@ export function AgentOutputModal({
   featureStatus,
   onNumberKeyPress,
   projectPath: projectPathProp,
+  branchName,
 }: AgentOutputModalProps) {
   const [output, setOutput] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
@@ -315,11 +318,11 @@ export function AgentOutputModal({
               )}
               Agent Output
             </DialogTitle>
-            <div className="flex items-center gap-1 bg-muted rounded-lg p-1 overflow-x-auto">
+            <div className="flex items-center gap-1 bg-muted rounded-lg p-1 w-full sm:w-auto overflow-x-auto">
               {summary && (
                 <button
                   onClick={() => setViewMode('summary')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap ${
+                  className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap flex-1 sm:flex-initial ${
                     effectiveViewMode === 'summary'
                       ? 'bg-primary/20 text-primary shadow-sm'
                       : 'text-muted-foreground hover:text-foreground hover:bg-accent'
@@ -332,7 +335,7 @@ export function AgentOutputModal({
               )}
               <button
                 onClick={() => setViewMode('parsed')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap ${
+                className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap flex-1 sm:flex-initial ${
                   effectiveViewMode === 'parsed'
                     ? 'bg-primary/20 text-primary shadow-sm'
                     : 'text-muted-foreground hover:text-foreground hover:bg-accent'
@@ -344,7 +347,7 @@ export function AgentOutputModal({
               </button>
               <button
                 onClick={() => setViewMode('changes')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap ${
+                className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap flex-1 sm:flex-initial ${
                   effectiveViewMode === 'changes'
                     ? 'bg-primary/20 text-primary shadow-sm'
                     : 'text-muted-foreground hover:text-foreground hover:bg-accent'
@@ -356,7 +359,7 @@ export function AgentOutputModal({
               </button>
               <button
                 onClick={() => setViewMode('raw')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap ${
+                className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap flex-1 sm:flex-initial ${
                   effectiveViewMode === 'raw'
                     ? 'bg-primary/20 text-primary shadow-sm'
                     : 'text-muted-foreground hover:text-foreground hover:bg-accent'
@@ -388,7 +391,7 @@ export function AgentOutputModal({
             {projectPath ? (
               <GitDiffPanel
                 projectPath={projectPath}
-                featureId={featureId}
+                featureId={branchName || featureId}
                 compact={false}
                 useWorktrees={useWorktrees}
                 className="border-0 rounded-lg"

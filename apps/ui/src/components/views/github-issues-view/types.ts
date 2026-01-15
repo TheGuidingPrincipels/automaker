@@ -41,4 +41,6 @@ export interface IssueDetailPanelProps {
     isOverridden: boolean;
     setOverride: (entry: PhaseModelEntry | null) => void;
   };
+  /** Whether the device is mobile */
+  isMobile?: boolean;
 }

@@ -38,7 +38,7 @@ export function BoardSearchBar({
   }, []);
 
   return (
-    <div className="relative max-w-md flex-1 flex items-center gap-2">
+    <div className="relative max-w-xs flex-1 flex items-center gap-2">
       <div className="relative flex-1">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
         <Input
@@ -47,7 +47,7 @@ export function BoardSearchBar({
           placeholder="Search features by keyword..."
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="pl-9 pr-12 border-border"
+          className="pl-9 pr-12 border-border h-11"
           data-testid="kanban-search-input"
         />
         {searchQuery ? (

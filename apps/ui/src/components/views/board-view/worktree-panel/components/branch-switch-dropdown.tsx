@@ -72,7 +72,7 @@ export function BranchSwitchDropdown({
               onKeyDown={(e) => e.stopPropagation()}
               onKeyUp={(e) => e.stopPropagation()}
               onKeyPress={(e) => e.stopPropagation()}
-              className="h-7 pl-7 text-xs"
+              className="h-7 pl-7 text-base"
               autoFocus
             />
           </div>

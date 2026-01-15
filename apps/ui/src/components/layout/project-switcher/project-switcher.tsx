@@ -37,6 +37,7 @@ export function ProjectSwitcher() {
     setCurrentProject,
     trashedProjects,
     upsertAndSetCurrentProject,
+    sidebarOpen,
     specCreatingForProject,
     setSpecCreatingForProject,
   } = useAppStore();
@@ -267,11 +268,15 @@ export function ProjectSwitcher() {
     <>
       <aside
         className={cn(
-          'flex-shrink-0 flex flex-col w-16 z-50 relative',
+          'flex-shrink-0 flex flex-col w-16 z-50',
           // Glass morphism background with gradient
           'bg-gradient-to-b from-sidebar/95 via-sidebar/85 to-sidebar/90 backdrop-blur-2xl',
           // Premium border with subtle glow
-          'border-r border-border/60 shadow-[1px_0_20px_-5px_rgba(0,0,0,0.1)]'
+          'border-r border-border/60 shadow-[1px_0_20px_-5px_rgba(0,0,0,0.1)]',
+          // Mobile: fixed overlay when open, hidden when closed; Desktop: always relative
+          sidebarOpen
+            ? 'fixed inset-y-0 left-0 lg:relative lg:inset-auto'
+            : 'hidden lg:flex lg:relative'
         )}
         data-testid="project-switcher"
       >

@@ -220,6 +220,7 @@ export interface RunningAgent {
   isAutoMode: boolean;
   title?: string;
   description?: string;
+  branchName?: string;
 }
 
 export interface RunningAgentsResult {
@@ -1444,12 +1445,14 @@ function createMockWorktreeAPI(): WorktreeAPI {
       projectPath: string,
       branchName: string,
       worktreePath: string,
+      targetBranch?: string,
       options?: object
     ) => {
       console.log('[Mock] Merging feature:', {
         projectPath,
         branchName,
         worktreePath,
+        targetBranch,
         options,
       });
       return { success: true, mergedBranch: branchName };
@@ -1650,6 +1653,7 @@ function createMockWorktreeAPI(): WorktreeAPI {
           ],
           aheadCount: 2,
           behindCount: 0,
+          hasRemoteTracking: true,
         },
       };
     },
@@ -1694,6 +1698,17 @@ function createMockWorktreeAPI(): WorktreeAPI {
         result: {
           message: `Opened ${worktreePath} in ${editorName}`,
           editorName,
+        },
+      };
+    },
+
+    openInTerminal: async (worktreePath: string) => {
+      console.log('[Mock] Opening in terminal:', worktreePath);
+      return {
+        success: true,
+        result: {
+          message: `Opened terminal in ${worktreePath}`,
+          terminalName: 'Terminal',
         },
       };
     },
@@ -1845,6 +1860,20 @@ function createMockWorktreeAPI(): WorktreeAPI {
       // Return unsubscribe function
       return () => {
         console.log('[Mock] Unsubscribing from init script events');
+      };
+    },
+
+    discardChanges: async (worktreePath: string) => {
+      console.log('[Mock] Discarding changes:', { worktreePath });
+      return {
+        success: true,
+        result: {
+          discarded: true,
+          filesDiscarded: 0,
+          filesRemaining: 0,
+          branch: 'main',
+          message: 'Mock: Changes discarded successfully',
+        },
       };
     },
   };

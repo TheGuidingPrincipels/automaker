@@ -660,11 +660,12 @@ export interface FileDiffResult {
 }
 
 export interface WorktreeAPI {
-  // Merge worktree branch into main and clean up
+  // Merge worktree branch into target branch and clean up
   mergeFeature: (
     projectPath: string,
     branchName: string,
     worktreePath: string,
+    targetBranch?: string,
     options?: {
       squash?: boolean;
       message?: string;
@@ -873,6 +874,7 @@ export interface WorktreeAPI {
       }>;
       aheadCount: number;
       behindCount: number;
+      hasRemoteTracking: boolean;
     };
     error?: string;
     code?: 'NOT_GIT_REPO' | 'NO_COMMITS'; // Error codes for git status issues
@@ -902,6 +904,16 @@ export interface WorktreeAPI {
     result?: {
       message: string;
       editorName?: string;
+    };
+    error?: string;
+  }>;
+
+  // Open a terminal in the worktree directory
+  openInTerminal: (worktreePath: string) => Promise<{
+    success: boolean;
+    result?: {
+      message: string;
+      terminalName?: string;
     };
     error?: string;
   }>;
@@ -1106,6 +1118,19 @@ export interface WorktreeAPI {
       payload: unknown;
     }) => void
   ) => () => void;
+
+  // Discard all uncommitted changes in a worktree
+  discardChanges: (worktreePath: string) => Promise<{
+    success: boolean;
+    result?: {
+      discarded: boolean;
+      filesDiscarded?: number;
+      filesRemaining?: number;
+      branch?: string;
+      message: string;
+    };
+    error?: string;
+  }>;
 }
 
 export interface GitAPI {

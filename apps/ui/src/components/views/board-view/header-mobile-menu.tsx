@@ -51,7 +51,7 @@ export function HeaderMobileMenu({
         <Button
           variant="outline"
           size="sm"
-          className="h-8 w-8 p-0"
+          className="h-11 w-11 p-0 shrink-0"
           data-testid="header-mobile-menu-trigger"
         >
           <Menu className="w-4 h-4" />

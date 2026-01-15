@@ -263,7 +263,7 @@ export function AddFeatureDialog({
       ? modelEntry.reasoningEffort || 'none'
       : 'none';
 
-    // For 'current' mode, use empty string (work on current branch)
+    // For 'current' mode, use empty string (branch will be set in use-board-actions based on current worktree)
     // For 'auto' mode, use empty string (will be auto-generated in use-board-actions)
     // For 'custom' mode, use the specified branch name
     const finalBranchName = workMode === 'custom' ? branchName || '' : '';

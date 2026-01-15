@@ -5,4 +5,5 @@ export type {
   DevServerInfo,
   FeatureInfo,
   WorktreePanelProps,
+  ConflictResolutionSource,
 } from './types';

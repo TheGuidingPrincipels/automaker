@@ -15,6 +15,7 @@ import { ValidationDialog } from './github-issues-view/dialogs';
 import { formatDate, getFeaturePriority } from './github-issues-view/utils';
 import { useModelOverride } from '@/components/shared';
 import type { ValidateIssueOptions } from './github-issues-view/types';
+import { useIsMobile } from '@/hooks/use-media-query';
 
 const logger = createLogger('GitHubIssuesView');
 
@@ -35,6 +36,7 @@ export function GitHubIssuesView() {
   const validationModelString = validationModelOverride.effectiveModel;
 
   const { openIssues, closedIssues, loading, refreshing, error, refresh } = useGithubIssues();
+  const isMobile = useIsMobile();
 
   const { validatingIssues, cachedValidations, handleValidateIssue, handleViewCachedValidation } =
     useIssueValidation({
@@ -132,76 +134,83 @@ export function GitHubIssuesView() {
 
   const totalIssues = openIssues.length + closedIssues.length;
 
+  // On mobile, hide list when an issue is selected
+  const showList = !isMobile || !selectedIssue;
+  const showDetail = selectedIssue !== null;
+
   return (
     <div className="flex-1 flex overflow-hidden">
-      {/* Issues List */}
-      <div
-        className={cn(
-          'flex flex-col overflow-hidden border-r border-border',
-          selectedIssue ? 'w-80' : 'flex-1'
-        )}
-      >
-        {/* Header */}
-        <IssuesListHeader
-          openCount={openIssues.length}
-          closedCount={closedIssues.length}
-          refreshing={refreshing}
-          onRefresh={refresh}
-        />
-
-        {/* Issues List */}
-        <div className="flex-1 overflow-auto">
-          {totalIssues === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center p-6">
-              <div className="p-4 rounded-full bg-muted/50 mb-4">
-                <CircleDot className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <h2 className="text-base font-medium mb-2">No Issues</h2>
-              <p className="text-sm text-muted-foreground">This repository has no issues yet.</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-border">
-              {/* Open Issues */}
-              {openIssues.map((issue) => (
-                <IssueRow
-                  key={issue.number}
-                  issue={issue}
-                  isSelected={selectedIssue?.number === issue.number}
-                  onClick={() => setSelectedIssue(issue)}
-                  onOpenExternal={() => handleOpenInGitHub(issue.url)}
-                  formatDate={formatDate}
-                  cachedValidation={cachedValidations.get(issue.number)}
-                  isValidating={validatingIssues.has(issue.number)}
-                />
-              ))}
-
-              {/* Closed Issues Section */}
-              {closedIssues.length > 0 && (
-                <>
-                  <div className="px-4 py-2 bg-muted/30 text-xs font-medium text-muted-foreground">
-                    Closed Issues ({closedIssues.length})
-                  </div>
-                  {closedIssues.map((issue) => (
-                    <IssueRow
-                      key={issue.number}
-                      issue={issue}
-                      isSelected={selectedIssue?.number === issue.number}
-                      onClick={() => setSelectedIssue(issue)}
-                      onOpenExternal={() => handleOpenInGitHub(issue.url)}
-                      formatDate={formatDate}
-                      cachedValidation={cachedValidations.get(issue.number)}
-                      isValidating={validatingIssues.has(issue.number)}
-                    />
-                  ))}
-                </>
-              )}
-            </div>
+      {/* Issues List - hidden on mobile when detail is shown */}
+      {showList && (
+        <div
+          className={cn(
+            'flex flex-col overflow-hidden border-r border-border',
+            // On mobile, always full width; on desktop, narrow when detail is shown
+            isMobile ? 'flex-1' : selectedIssue ? 'w-80' : 'flex-1'
           )}
+        >
+          {/* Header */}
+          <IssuesListHeader
+            openCount={openIssues.length}
+            closedCount={closedIssues.length}
+            refreshing={refreshing}
+            onRefresh={refresh}
+          />
+
+          {/* Issues List */}
+          <div className="flex-1 overflow-auto">
+            {totalIssues === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center p-6">
+                <div className="p-4 rounded-full bg-muted/50 mb-4">
+                  <CircleDot className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h2 className="text-base font-medium mb-2">No Issues</h2>
+                <p className="text-sm text-muted-foreground">This repository has no issues yet.</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {/* Open Issues */}
+                {openIssues.map((issue) => (
+                  <IssueRow
+                    key={issue.number}
+                    issue={issue}
+                    isSelected={selectedIssue?.number === issue.number}
+                    onClick={() => setSelectedIssue(issue)}
+                    onOpenExternal={() => handleOpenInGitHub(issue.url)}
+                    formatDate={formatDate}
+                    cachedValidation={cachedValidations.get(issue.number)}
+                    isValidating={validatingIssues.has(issue.number)}
+                  />
+                ))}
+
+                {/* Closed Issues Section */}
+                {closedIssues.length > 0 && (
+                  <>
+                    <div className="px-4 py-2 bg-muted/30 text-xs font-medium text-muted-foreground">
+                      Closed Issues ({closedIssues.length})
+                    </div>
+                    {closedIssues.map((issue) => (
+                      <IssueRow
+                        key={issue.number}
+                        issue={issue}
+                        isSelected={selectedIssue?.number === issue.number}
+                        onClick={() => setSelectedIssue(issue)}
+                        onOpenExternal={() => handleOpenInGitHub(issue.url)}
+                        formatDate={formatDate}
+                        cachedValidation={cachedValidations.get(issue.number)}
+                        isValidating={validatingIssues.has(issue.number)}
+                      />
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Issue Detail Panel */}
-      {selectedIssue && (
+      {showDetail && selectedIssue && (
         <IssueDetailPanel
           issue={selectedIssue}
           validatingIssues={validatingIssues}
@@ -216,6 +225,7 @@ export function GitHubIssuesView() {
           }}
           formatDate={formatDate}
           modelOverride={validationModelOverride}
+          isMobile={isMobile}
         />
       )}
 

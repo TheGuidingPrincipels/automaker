@@ -13,6 +13,7 @@ import {
   MessageSquare,
   ChevronDown,
   ChevronUp,
+  ArrowLeft,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -36,6 +37,7 @@ export function IssueDetailPanel({
   onShowRevalidateConfirm,
   formatDate,
   modelOverride,
+  isMobile = false,
 }: IssueDetailPanelProps) {
   const isValidating = validatingIssues.has(issue.number);
   const cached = cachedValidations.get(issue.number);
@@ -73,13 +75,19 @@ export function IssueDetailPanel({
       {/* Detail Header */}
       <div className="flex items-center justify-between p-3 border-b border-border bg-muted/30">
         <div className="flex items-center gap-2 min-w-0">
+          {/* Back button on mobile */}
+          {isMobile && (
+            <Button variant="ghost" size="sm" onClick={onClose} className="mr-1 -ml-1">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          )}
           {issue.state === 'OPEN' ? (
             <Circle className="h-4 w-4 text-green-500 shrink-0" />
           ) : (
             <CheckCircle2 className="h-4 w-4 text-purple-500 shrink-0" />
           )}
           <span className="text-sm font-medium truncate">
-            #{issue.number} {issue.title}
+            #{issue.number} {isMobile ? '' : issue.title}
           </span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -87,8 +95,8 @@ export function IssueDetailPanel({
             if (isValidating) {
               return (
                 <Button variant="default" size="sm" disabled>
-                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                  Validating...
+                  <Loader2 className={cn('h-4 w-4 animate-spin', !isMobile && 'mr-1')} />
+                  {!isMobile && 'Validating...'}
                 </Button>
               );
             }
@@ -97,8 +105,8 @@ export function IssueDetailPanel({
               return (
                 <>
                   <Button variant="outline" size="sm" onClick={() => onViewCachedValidation(issue)}>
-                    <CheckCircle className="h-4 w-4 mr-1 text-green-500" />
-                    View Result
+                    <CheckCircle className={cn('h-4 w-4 text-green-500', !isMobile && 'mr-1')} />
+                    {!isMobile && 'View Result'}
                   </Button>
                   <Button
                     variant="ghost"
@@ -116,25 +124,27 @@ export function IssueDetailPanel({
               return (
                 <>
                   <Button variant="outline" size="sm" onClick={() => onViewCachedValidation(issue)}>
-                    <Clock className="h-4 w-4 mr-1 text-yellow-500" />
-                    View (stale)
+                    <Clock className={cn('h-4 w-4 text-yellow-500', !isMobile && 'mr-1')} />
+                    {!isMobile && 'View (stale)'}
                   </Button>
-                  <ModelOverrideTrigger
-                    currentModelEntry={modelOverride.effectiveModelEntry}
-                    onModelChange={modelOverride.setOverride}
-                    phase="validationModel"
-                    isOverridden={modelOverride.isOverridden}
-                    size="sm"
-                    variant="icon"
-                    className="mx-1"
-                  />
+                  {!isMobile && (
+                    <ModelOverrideTrigger
+                      currentModelEntry={modelOverride.effectiveModelEntry}
+                      onModelChange={modelOverride.setOverride}
+                      phase="validationModel"
+                      isOverridden={modelOverride.isOverridden}
+                      size="sm"
+                      variant="icon"
+                      className="mx-1"
+                    />
+                  )}
                   <Button
                     variant="default"
                     size="sm"
                     onClick={() => onValidateIssue(issue, getValidationOptions(true))}
                   >
-                    <Wand2 className="h-4 w-4 mr-1" />
-                    Re-validate
+                    <Wand2 className={cn('h-4 w-4', !isMobile && 'mr-1')} />
+                    {!isMobile && 'Re-validate'}
                   </Button>
                 </>
               );
@@ -142,33 +152,38 @@ export function IssueDetailPanel({
 
             return (
               <>
-                <ModelOverrideTrigger
-                  currentModelEntry={modelOverride.effectiveModelEntry}
-                  onModelChange={modelOverride.setOverride}
-                  phase="validationModel"
-                  isOverridden={modelOverride.isOverridden}
-                  size="sm"
-                  variant="icon"
-                  className="mr-1"
-                />
+                {!isMobile && (
+                  <ModelOverrideTrigger
+                    currentModelEntry={modelOverride.effectiveModelEntry}
+                    onModelChange={modelOverride.setOverride}
+                    phase="validationModel"
+                    isOverridden={modelOverride.isOverridden}
+                    size="sm"
+                    variant="icon"
+                    className="mr-1"
+                  />
+                )}
                 <Button
                   variant="default"
                   size="sm"
                   onClick={() => onValidateIssue(issue, getValidationOptions())}
                 >
-                  <Wand2 className="h-4 w-4 mr-1" />
-                  Validate with AI
+                  <Wand2 className={cn('h-4 w-4', !isMobile && 'mr-1')} />
+                  {!isMobile && 'Validate with AI'}
                 </Button>
               </>
             );
           })()}
           <Button variant="outline" size="sm" onClick={() => onOpenInGitHub(issue.url)}>
             <ExternalLink className="h-4 w-4 mr-1" />
-            Open in GitHub
+            {!isMobile && 'Open in GitHub'}
           </Button>
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
+          {/* Close button hidden on mobile (back button serves this purpose) */}
+          {!isMobile && (
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
 
