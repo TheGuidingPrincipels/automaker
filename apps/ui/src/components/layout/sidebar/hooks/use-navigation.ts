@@ -168,14 +168,6 @@ export function useNavigation({
       });
     }
 
-    // Add Project Settings to Project section
-    projectItems.push({
-      id: 'project-settings',
-      label: 'Settings',
-      icon: Settings,
-      shortcut: shortcuts.projectSettings,
-    });
-
     const sections: NavSection[] = [
       {
         label: 'Project',
@@ -208,6 +200,19 @@ export function useNavigation({
         ],
       });
     }
+
+    // Add Project Settings as a standalone section (no label for visual separation)
+    sections.push({
+      label: '',
+      items: [
+        {
+          id: 'project-settings',
+          label: 'Project Settings',
+          icon: Settings,
+          shortcut: shortcuts.projectSettings,
+        },
+      ],
+    });
 
     return sections;
   }, [
