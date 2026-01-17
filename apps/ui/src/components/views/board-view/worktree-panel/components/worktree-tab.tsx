@@ -3,7 +3,14 @@ import { Button } from '@/components/ui/button';
 import { RefreshCw, Globe, Loader2, CircleDot, GitPullRequest } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import type { WorktreeInfo, BranchInfo, DevServerInfo, PRInfo, GitRepoStatus } from '../types';
+import type {
+  WorktreeInfo,
+  BranchInfo,
+  DevServerInfo,
+  PRInfo,
+  GitRepoStatus,
+  ConflictResolutionSource,
+} from '../types';
 import { BranchSwitchDropdown } from './branch-switch-dropdown';
 import { WorktreeActionsDropdown } from './worktree-actions-dropdown';
 
@@ -27,7 +34,10 @@ interface WorktreeTabProps {
   isStartingDevServer: boolean;
   aheadCount: number;
   behindCount: number;
+  hasRemoteTracking: boolean;
   gitRepoStatus: GitRepoStatus;
+  /** Target branch for merge operations */
+  targetBranch?: string;
   onSelectWorktree: (worktree: WorktreeInfo) => void;
   onBranchDropdownOpenChange: (open: boolean) => void;
   onActionsDropdownOpenChange: (open: boolean) => void;
@@ -37,10 +47,13 @@ interface WorktreeTabProps {
   onPull: (worktree: WorktreeInfo) => void;
   onPush: (worktree: WorktreeInfo) => void;
   onOpenInEditor: (worktree: WorktreeInfo, editorCommand?: string) => void;
+  onOpenInTerminal: (worktree: WorktreeInfo) => void;
+  onViewChanges: (worktree: WorktreeInfo) => void;
+  onDiscardChanges: (worktree: WorktreeInfo) => void;
   onCommit: (worktree: WorktreeInfo) => void;
   onCreatePR: (worktree: WorktreeInfo) => void;
   onAddressPRComments: (worktree: WorktreeInfo, prInfo: PRInfo) => void;
-  onResolveConflicts: (worktree: WorktreeInfo) => void;
+  onResolveConflicts: (worktree: WorktreeInfo, source: ConflictResolutionSource) => void;
   onMerge: (worktree: WorktreeInfo) => void;
   onDeleteWorktree: (worktree: WorktreeInfo) => void;
   onStartDevServer: (worktree: WorktreeInfo) => void;
@@ -71,7 +84,9 @@ export function WorktreeTab({
   isStartingDevServer,
   aheadCount,
   behindCount,
+  hasRemoteTracking,
   gitRepoStatus,
+  targetBranch = 'main',
   onSelectWorktree,
   onBranchDropdownOpenChange,
   onActionsDropdownOpenChange,
@@ -81,6 +96,9 @@ export function WorktreeTab({
   onPull,
   onPush,
   onOpenInEditor,
+  onOpenInTerminal,
+  onViewChanges,
+  onDiscardChanges,
   onCommit,
   onCreatePR,
   onAddressPRComments,
@@ -332,16 +350,21 @@ export function WorktreeTab({
         isSelected={isSelected}
         aheadCount={aheadCount}
         behindCount={behindCount}
+        hasRemoteTracking={hasRemoteTracking}
         isPulling={isPulling}
         isPushing={isPushing}
         isStartingDevServer={isStartingDevServer}
         isDevServerRunning={isDevServerRunning}
         devServerInfo={devServerInfo}
         gitRepoStatus={gitRepoStatus}
+        targetBranch={targetBranch}
         onOpenChange={onActionsDropdownOpenChange}
         onPull={onPull}
         onPush={onPush}
         onOpenInEditor={onOpenInEditor}
+        onOpenInTerminal={onOpenInTerminal}
+        onViewChanges={onViewChanges}
+        onDiscardChanges={onDiscardChanges}
         onCommit={onCommit}
         onCreatePR={onCreatePR}
         onAddressPRComments={onAddressPRComments}

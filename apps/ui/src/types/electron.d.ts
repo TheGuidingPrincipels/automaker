@@ -912,6 +912,16 @@ export interface WorktreeAPI {
     error?: string;
   }>;
 
+  // Open a worktree directory in the terminal
+  openInTerminal: (worktreePath: string) => Promise<{
+    success: boolean;
+    result?: {
+      message: string;
+      terminalName?: string;
+    };
+    error?: string;
+  }>;
+
   // Get the default code editor name
   getDefaultEditor: () => Promise<{
     success: boolean;
@@ -1113,6 +1123,19 @@ export interface WorktreeAPI {
       payload: unknown;
     }) => void
   ) => () => void;
+
+  // Discard all uncommitted changes in a worktree
+  discardChanges: (worktreePath: string) => Promise<{
+    success: boolean;
+    result?: {
+      discarded: boolean;
+      filesDiscarded: number;
+      filesRemaining: number;
+      branch: string;
+      message: string;
+    };
+    error?: string;
+  }>;
 }
 
 export interface GitAPI {

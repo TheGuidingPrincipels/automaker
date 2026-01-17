@@ -25,11 +25,20 @@ import {
   AlertCircle,
   RefreshCw,
   Copy,
+  Eye,
+  Terminal,
   ScrollText,
+  Undo2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import type { WorktreeInfo, DevServerInfo, PRInfo, GitRepoStatus } from '../types';
+import type {
+  WorktreeInfo,
+  DevServerInfo,
+  PRInfo,
+  GitRepoStatus,
+  ConflictResolutionSource,
+} from '../types';
 import { TooltipWrapper } from './tooltip-wrapper';
 import { useAvailableEditors, useEffectiveDefaultEditor } from '../hooks/use-available-editors';
 import { getEditorIcon } from '@/components/icons/editor-icons';
@@ -39,6 +48,7 @@ interface WorktreeActionsDropdownProps {
   isSelected: boolean;
   aheadCount: number;
   behindCount: number;
+  hasRemoteTracking: boolean;
   isPulling: boolean;
   isPushing: boolean;
   isStartingDevServer: boolean;
@@ -47,14 +57,19 @@ interface WorktreeActionsDropdownProps {
   gitRepoStatus: GitRepoStatus;
   /** When true, renders as a standalone button (not attached to another element) */
   standalone?: boolean;
+  /** Target branch for merge operations (defaults to 'main') */
+  targetBranch?: string;
   onOpenChange: (open: boolean) => void;
   onPull: (worktree: WorktreeInfo) => void;
   onPush: (worktree: WorktreeInfo) => void;
   onOpenInEditor: (worktree: WorktreeInfo, editorCommand?: string) => void;
+  onOpenInTerminal: (worktree: WorktreeInfo) => void;
+  onViewChanges: (worktree: WorktreeInfo) => void;
+  onDiscardChanges: (worktree: WorktreeInfo) => void;
   onCommit: (worktree: WorktreeInfo) => void;
   onCreatePR: (worktree: WorktreeInfo) => void;
   onAddressPRComments: (worktree: WorktreeInfo, prInfo: PRInfo) => void;
-  onResolveConflicts: (worktree: WorktreeInfo) => void;
+  onResolveConflicts: (worktree: WorktreeInfo, source: ConflictResolutionSource) => void;
   onMerge: (worktree: WorktreeInfo) => void;
   onDeleteWorktree: (worktree: WorktreeInfo) => void;
   onStartDevServer: (worktree: WorktreeInfo) => void;
@@ -70,6 +85,7 @@ export function WorktreeActionsDropdown({
   isSelected,
   aheadCount,
   behindCount,
+  hasRemoteTracking,
   isPulling,
   isPushing,
   isStartingDevServer,
@@ -77,10 +93,14 @@ export function WorktreeActionsDropdown({
   devServerInfo,
   gitRepoStatus,
   standalone = false,
+  targetBranch = 'main',
   onOpenChange,
   onPull,
   onPush,
   onOpenInEditor,
+  onOpenInTerminal,
+  onViewChanges,
+  onDiscardChanges,
   onCommit,
   onCreatePR,
   onAddressPRComments,
@@ -206,7 +226,7 @@ export function WorktreeActionsDropdown({
         <TooltipWrapper showTooltip={!!gitOpsDisabledReason} tooltipContent={gitOpsDisabledReason}>
           <DropdownMenuItem
             onClick={() => canPerformGitOps && onPush(worktree)}
-            disabled={isPushing || aheadCount === 0 || !canPerformGitOps}
+            disabled={isPushing || (hasRemoteTracking && aheadCount === 0) || !canPerformGitOps}
             className={cn('text-xs', !canPerformGitOps && 'opacity-50 cursor-not-allowed')}
           >
             <Upload className={cn('w-3.5 h-3.5 mr-2', isPushing && 'animate-pulse')} />
@@ -217,22 +237,73 @@ export function WorktreeActionsDropdown({
                 {aheadCount} ahead
               </span>
             )}
-          </DropdownMenuItem>
-        </TooltipWrapper>
-        <TooltipWrapper showTooltip={!!gitOpsDisabledReason} tooltipContent={gitOpsDisabledReason}>
-          <DropdownMenuItem
-            onClick={() => canPerformGitOps && onResolveConflicts(worktree)}
-            disabled={!canPerformGitOps}
-            className={cn(
-              'text-xs text-purple-500 focus:text-purple-600',
-              !canPerformGitOps && 'opacity-50 cursor-not-allowed'
+            {canPerformGitOps && !hasRemoteTracking && (
+              <span className="ml-auto text-[10px] bg-amber-500/20 text-amber-600 px-1.5 py-0.5 rounded">
+                new
+              </span>
             )}
-          >
-            <GitMerge className="w-3.5 h-3.5 mr-2" />
-            Pull & Resolve Conflicts
-            {!canPerformGitOps && <AlertCircle className="w-3 h-3 ml-auto text-muted-foreground" />}
           </DropdownMenuItem>
         </TooltipWrapper>
+        {/* For main branch (non-worktree), show direct pull & resolve - uses the main worktree's current branch */}
+        {worktree.isMain ? (
+          <TooltipWrapper
+            showTooltip={!!gitOpsDisabledReason}
+            tooltipContent={gitOpsDisabledReason}
+          >
+            <DropdownMenuItem
+              onClick={() => canPerformGitOps && onResolveConflicts(worktree, 'selected')}
+              disabled={!canPerformGitOps}
+              className={cn(
+                'text-xs text-purple-500 focus:text-purple-600',
+                !canPerformGitOps && 'opacity-50 cursor-not-allowed'
+              )}
+            >
+              <GitMerge className="w-3.5 h-3.5 mr-2" />
+              Pull & Resolve Conflicts
+              {!canPerformGitOps && <AlertCircle className="w-3 h-3 ml-2 text-muted-foreground" />}
+            </DropdownMenuItem>
+          </TooltipWrapper>
+        ) : (
+          /* For worktrees (non-main), show submenu with options */
+          <TooltipWrapper
+            showTooltip={!!gitOpsDisabledReason}
+            tooltipContent={gitOpsDisabledReason}
+          >
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger
+                disabled={!canPerformGitOps}
+                className={cn(
+                  'text-xs text-purple-500 focus:text-purple-600',
+                  !canPerformGitOps && 'opacity-50 cursor-not-allowed'
+                )}
+              >
+                <GitMerge className="w-3.5 h-3.5 mr-2" />
+                Pull & Resolve Conflicts
+                {!canPerformGitOps && (
+                  <AlertCircle className="w-3 h-3 ml-auto text-muted-foreground" />
+                )}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuItem
+                  onClick={() => canPerformGitOps && onResolveConflicts(worktree, 'worktree')}
+                  disabled={!canPerformGitOps}
+                  className="text-xs"
+                >
+                  Worktree Branch
+                  <span className="ml-1 text-[10px] text-muted-foreground">{worktree.branch}</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => canPerformGitOps && onResolveConflicts(worktree, 'selected')}
+                  disabled={!canPerformGitOps}
+                  className="text-xs"
+                >
+                  Main Branch
+                  <span className="ml-1 text-[10px] text-muted-foreground">{targetBranch}</span>
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          </TooltipWrapper>
+        )}
         {!worktree.isMain && (
           <TooltipWrapper
             showTooltip={!!gitOpsDisabledReason}
@@ -247,7 +318,7 @@ export function WorktreeActionsDropdown({
               )}
             >
               <GitMerge className="w-3.5 h-3.5 mr-2" />
-              Merge to Main
+              Merge to {targetBranch}
               {!canPerformGitOps && (
                 <AlertCircle className="w-3 h-3 ml-auto text-muted-foreground" />
               )}
@@ -303,12 +374,21 @@ export function WorktreeActionsDropdown({
             </DropdownMenuSubContent>
           </DropdownMenuSub>
         )}
+        <DropdownMenuItem onClick={() => onOpenInTerminal(worktree)} className="text-xs">
+          <Terminal className="w-3.5 h-3.5 mr-2" />
+          Open in Terminal
+        </DropdownMenuItem>
         {!worktree.isMain && hasInitScript && (
           <DropdownMenuItem onClick={() => onRunInitScript(worktree)} className="text-xs">
             <RefreshCw className="w-3.5 h-3.5 mr-2" />
             Re-run Init Script
           </DropdownMenuItem>
         )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => onViewChanges(worktree)} className="text-xs">
+          <Eye className="w-3.5 h-3.5 mr-2" />
+          View Changes
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         {worktree.hasChanges && (
           <TooltipWrapper
@@ -385,9 +465,30 @@ export function WorktreeActionsDropdown({
             </DropdownMenuItem>
           </>
         )}
+        <DropdownMenuSeparator />
+        {worktree.hasChanges && (
+          <TooltipWrapper
+            showTooltip={!gitRepoStatus.isGitRepo}
+            tooltipContent="Not a git repository"
+          >
+            <DropdownMenuItem
+              onClick={() => gitRepoStatus.isGitRepo && onDiscardChanges(worktree)}
+              disabled={!gitRepoStatus.isGitRepo}
+              className={cn(
+                'text-xs text-destructive focus:text-destructive',
+                !gitRepoStatus.isGitRepo && 'opacity-50 cursor-not-allowed'
+              )}
+            >
+              <Undo2 className="w-3.5 h-3.5 mr-2" />
+              Discard Changes
+              {!gitRepoStatus.isGitRepo && (
+                <AlertCircle className="w-3 h-3 ml-auto text-muted-foreground" />
+              )}
+            </DropdownMenuItem>
+          </TooltipWrapper>
+        )}
         {!worktree.isMain && (
           <>
-            <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => onDeleteWorktree(worktree)}
               className="text-xs text-destructive focus:text-destructive"

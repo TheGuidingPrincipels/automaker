@@ -20,6 +20,9 @@ import {
   WorktreeActionsDropdown,
   BranchSwitchDropdown,
 } from './components';
+import { ViewWorktreeChangesDialog } from '../dialogs';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Undo2 } from 'lucide-react';
 
 export function WorktreePanel({
   projectPath,
@@ -36,6 +39,7 @@ export function WorktreePanel({
   features = [],
   branchCardCounts,
   refreshTrigger = 0,
+  targetBranch = 'main',
 }: WorktreePanelProps) {
   const {
     isLoading,
@@ -62,6 +66,7 @@ export function WorktreePanel({
     filteredBranches,
     aheadCount,
     behindCount,
+    hasRemoteTracking,
     isLoadingBranches,
     branchFilter,
     setBranchFilter,
@@ -79,6 +84,7 @@ export function WorktreePanel({
     handlePull,
     handlePush,
     handleOpenInEditor,
+    handleOpenInTerminal,
   } = useWorktreeActions({
     fetchWorktrees,
     fetchBranches,
@@ -91,6 +97,14 @@ export function WorktreePanel({
 
   // Track whether init script exists for the project
   const [hasInitScript, setHasInitScript] = useState(false);
+
+  // View changes dialog state
+  const [viewChangesDialogOpen, setViewChangesDialogOpen] = useState(false);
+  const [viewChangesWorktree, setViewChangesWorktree] = useState<WorktreeInfo | null>(null);
+
+  // Discard changes confirmation dialog state
+  const [discardChangesDialogOpen, setDiscardChangesDialogOpen] = useState(false);
+  const [discardChangesWorktree, setDiscardChangesWorktree] = useState<WorktreeInfo | null>(null);
 
   // Log panel state management
   const [logPanelOpen, setLogPanelOpen] = useState(false);
@@ -178,6 +192,41 @@ export function WorktreePanel({
     [projectPath]
   );
 
+  const handleViewChanges = useCallback((worktree: WorktreeInfo) => {
+    setViewChangesWorktree(worktree);
+    setViewChangesDialogOpen(true);
+  }, []);
+
+  const handleDiscardChanges = useCallback((worktree: WorktreeInfo) => {
+    setDiscardChangesWorktree(worktree);
+    setDiscardChangesDialogOpen(true);
+  }, []);
+
+  const handleConfirmDiscardChanges = useCallback(async () => {
+    if (!discardChangesWorktree) return;
+
+    try {
+      const api = getHttpApiClient();
+      const result = await api.worktree.discardChanges(discardChangesWorktree.path);
+
+      if (result.success) {
+        toast.success('Changes discarded', {
+          description: `Discarded changes in ${discardChangesWorktree.branch}`,
+        });
+        // Refresh worktrees to update the changes status
+        fetchWorktrees({ silent: true });
+      } else {
+        toast.error('Failed to discard changes', {
+          description: result.error || 'Unknown error',
+        });
+      }
+    } catch (error) {
+      toast.error('Failed to discard changes', {
+        description: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }, [discardChangesWorktree, fetchWorktrees]);
+
   // Handle opening the log panel for a specific worktree
   const handleViewDevServerLogs = useCallback((worktree: WorktreeInfo) => {
     setLogPanelWorktree(worktree);
@@ -235,16 +284,21 @@ export function WorktreePanel({
             standalone={true}
             aheadCount={aheadCount}
             behindCount={behindCount}
+            hasRemoteTracking={hasRemoteTracking}
             isPulling={isPulling}
             isPushing={isPushing}
             isStartingDevServer={isStartingDevServer}
             isDevServerRunning={isDevServerRunning(selectedWorktree)}
             devServerInfo={getDevServerInfo(selectedWorktree)}
             gitRepoStatus={gitRepoStatus}
+            targetBranch={targetBranch}
             onOpenChange={handleActionsDropdownOpenChange(selectedWorktree)}
             onPull={handlePull}
             onPush={handlePush}
             onOpenInEditor={handleOpenInEditor}
+            onOpenInTerminal={handleOpenInTerminal}
+            onViewChanges={handleViewChanges}
+            onDiscardChanges={handleDiscardChanges}
             onCommit={onCommit}
             onCreatePR={onCreatePR}
             onAddressPRComments={onAddressPRComments}
@@ -289,6 +343,36 @@ export function WorktreePanel({
             </Button>
           </>
         )}
+
+        {/* View Changes Dialog */}
+        <ViewWorktreeChangesDialog
+          open={viewChangesDialogOpen}
+          onOpenChange={setViewChangesDialogOpen}
+          worktree={viewChangesWorktree}
+          projectPath={projectPath}
+        />
+
+        {/* Discard Changes Confirmation Dialog */}
+        <ConfirmDialog
+          open={discardChangesDialogOpen}
+          onOpenChange={setDiscardChangesDialogOpen}
+          onConfirm={handleConfirmDiscardChanges}
+          title="Discard Changes"
+          description={`Are you sure you want to discard all changes in "${discardChangesWorktree?.branch}"? This will reset staged changes, discard modifications to tracked files, and remove untracked files. This action cannot be undone.`}
+          icon={Undo2}
+          iconClassName="text-destructive"
+          confirmText="Discard Changes"
+          confirmVariant="destructive"
+        />
+
+        {/* Dev Server Logs Panel */}
+        <DevServerLogsPanel
+          open={logPanelOpen}
+          onClose={handleCloseLogPanel}
+          worktree={logPanelWorktree}
+          onStopDevServer={handleStopDevServer}
+          onOpenDevServerUrl={handleOpenDevServerUrl}
+        />
       </div>
     );
   }
@@ -322,7 +406,9 @@ export function WorktreePanel({
             isStartingDevServer={isStartingDevServer}
             aheadCount={aheadCount}
             behindCount={behindCount}
+            hasRemoteTracking={hasRemoteTracking}
             gitRepoStatus={gitRepoStatus}
+            targetBranch={targetBranch}
             onSelectWorktree={handleSelectWorktree}
             onBranchDropdownOpenChange={handleBranchDropdownOpenChange(mainWorktree)}
             onActionsDropdownOpenChange={handleActionsDropdownOpenChange(mainWorktree)}
@@ -332,6 +418,9 @@ export function WorktreePanel({
             onPull={handlePull}
             onPush={handlePush}
             onOpenInEditor={handleOpenInEditor}
+            onOpenInTerminal={handleOpenInTerminal}
+            onViewChanges={handleViewChanges}
+            onDiscardChanges={handleDiscardChanges}
             onCommit={onCommit}
             onCreatePR={onCreatePR}
             onAddressPRComments={onAddressPRComments}
@@ -380,7 +469,9 @@ export function WorktreePanel({
                   isStartingDevServer={isStartingDevServer}
                   aheadCount={aheadCount}
                   behindCount={behindCount}
+                  hasRemoteTracking={hasRemoteTracking}
                   gitRepoStatus={gitRepoStatus}
+                  targetBranch={targetBranch}
                   onSelectWorktree={handleSelectWorktree}
                   onBranchDropdownOpenChange={handleBranchDropdownOpenChange(worktree)}
                   onActionsDropdownOpenChange={handleActionsDropdownOpenChange(worktree)}
@@ -390,6 +481,9 @@ export function WorktreePanel({
                   onPull={handlePull}
                   onPush={handlePush}
                   onOpenInEditor={handleOpenInEditor}
+                  onOpenInTerminal={handleOpenInTerminal}
+                  onViewChanges={handleViewChanges}
+                  onDiscardChanges={handleDiscardChanges}
                   onCommit={onCommit}
                   onCreatePR={onCreatePR}
                   onAddressPRComments={onAddressPRComments}
@@ -434,6 +528,27 @@ export function WorktreePanel({
           </div>
         </>
       )}
+
+      {/* View Changes Dialog */}
+      <ViewWorktreeChangesDialog
+        open={viewChangesDialogOpen}
+        onOpenChange={setViewChangesDialogOpen}
+        worktree={viewChangesWorktree}
+        projectPath={projectPath}
+      />
+
+      {/* Discard Changes Confirmation Dialog */}
+      <ConfirmDialog
+        open={discardChangesDialogOpen}
+        onOpenChange={setDiscardChangesDialogOpen}
+        onConfirm={handleConfirmDiscardChanges}
+        title="Discard Changes"
+        description={`Are you sure you want to discard all changes in "${discardChangesWorktree?.branch}"? This will reset staged changes, discard modifications to tracked files, and remove untracked files. This action cannot be undone.`}
+        icon={Undo2}
+        iconClassName="text-destructive"
+        confirmText="Discard Changes"
+        confirmVariant="destructive"
+      />
 
       {/* Dev Server Logs Panel */}
       <DevServerLogsPanel

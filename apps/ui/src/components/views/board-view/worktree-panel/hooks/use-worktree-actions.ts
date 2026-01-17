@@ -1,7 +1,9 @@
 import { useState, useCallback } from 'react';
+import { useNavigate } from '@tanstack/react-router';
 import { createLogger } from '@automaker/utils/logger';
 import { getElectronAPI } from '@/lib/electron';
 import { toast } from 'sonner';
+import { useAppStore } from '@/store/app-store';
 import type { WorktreeInfo } from '../types';
 
 const logger = createLogger('WorktreeActions');
@@ -39,6 +41,8 @@ export function useWorktreeActions({ fetchWorktrees, fetchBranches }: UseWorktre
   const [isPushing, setIsPushing] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
   const [isActivating, setIsActivating] = useState(false);
+  const navigate = useNavigate();
+  const setPendingTerminalCwd = useAppStore((state) => state.setPendingTerminalCwd);
 
   const handleSwitchBranch = useCallback(
     async (worktree: WorktreeInfo, branchName: string) => {
@@ -143,6 +147,17 @@ export function useWorktreeActions({ fetchWorktrees, fetchBranches }: UseWorktre
     }
   }, []);
 
+  const handleOpenInTerminal = useCallback(
+    (worktree: WorktreeInfo) => {
+      // Set the pending terminal cwd to the worktree path
+      setPendingTerminalCwd(worktree.path);
+      // Navigate to the terminal page
+      navigate({ to: '/terminal' });
+      logger.info('Opening terminal for worktree:', worktree.path);
+    },
+    [navigate, setPendingTerminalCwd]
+  );
+
   return {
     isPulling,
     isPushing,
@@ -153,5 +168,6 @@ export function useWorktreeActions({ fetchWorktrees, fetchBranches }: UseWorktre
     handlePull,
     handlePush,
     handleOpenInEditor,
+    handleOpenInTerminal,
   };
 }

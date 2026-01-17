@@ -220,6 +220,7 @@ export interface RunningAgent {
   isAutoMode: boolean;
   title?: string;
   description?: string;
+  branchName?: string;
 }
 
 export interface RunningAgentsResult {
@@ -1815,6 +1816,17 @@ function createMockWorktreeAPI(): WorktreeAPI {
       };
     },
 
+    openInTerminal: async (worktreePath: string) => {
+      console.log('[Mock] Opening in terminal:', worktreePath);
+      return {
+        success: true,
+        result: {
+          message: `Opened terminal in ${worktreePath}`,
+          terminalName: 'Terminal',
+        },
+      };
+    },
+
     getDefaultEditor: async () => {
       console.log('[Mock] Getting default editor');
       return {
@@ -1962,6 +1974,20 @@ function createMockWorktreeAPI(): WorktreeAPI {
       // Return unsubscribe function
       return () => {
         console.log('[Mock] Unsubscribing from init script events');
+      };
+    },
+
+    discardChanges: async (worktreePath: string) => {
+      console.log('[Mock] Discarding changes:', { worktreePath });
+      return {
+        success: true,
+        result: {
+          discarded: true,
+          filesDiscarded: 0,
+          filesRemaining: 0,
+          branch: 'main',
+          message: 'Mock: Changes discarded successfully',
+        },
       };
     },
   };
