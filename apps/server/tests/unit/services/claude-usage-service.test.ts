@@ -124,6 +124,55 @@ describe('claude-usage-service.ts', () => {
 
       expect(result).toBe('Plain text');
     });
+
+    it('should strip OSC sequences (window title changes)', () => {
+      const service = new ClaudeUsageService();
+      // OSC sequences like ]0;Title\x07 are used to set window titles
+      const input = '\x1B]0;Claude Code\x07Current session 35% used';
+      // @ts-expect-error - accessing private method for testing
+      const result = service.stripAnsiCodes(input);
+
+      expect(result).toBe('Current session 35% used');
+    });
+
+    it('should strip private mode sequences', () => {
+      const service = new ClaudeUsageService();
+      // Private mode sequences like [?2026h and [?2026l
+      const input = '\x1B[?2026hCurrent session\x1B[?2026l 35% used';
+      // @ts-expect-error - accessing private method for testing
+      const result = service.stripAnsiCodes(input);
+
+      expect(result).toBe('Current session 35% used');
+    });
+
+    it('should handle complex real-world output with multiple sequence types', () => {
+      const service = new ClaudeUsageService();
+      // Real example from the bug report
+      const input =
+        '\x1B[?2026l\x1B]0;\x1B]0;⚡ Claude Code\x07\x1B[?2026hCurrent session 35%used Resets6pm';
+      // @ts-expect-error - accessing private method for testing
+      const result = service.stripAnsiCodes(input);
+
+      expect(result).toBe('Current session 35%used Resets6pm');
+    });
+
+    it('should remove carriage returns but keep newlines', () => {
+      const service = new ClaudeUsageService();
+      const input = 'Line 1\r\nLine 2\rLine 3\n';
+      // @ts-expect-error - accessing private method for testing
+      const result = service.stripAnsiCodes(input);
+
+      expect(result).toBe('Line 1\nLine 2Line 3\n');
+    });
+
+    it('should remove backspace characters', () => {
+      const service = new ClaudeUsageService();
+      const input = 'Hello\x08\x08World';
+      // @ts-expect-error - accessing private method for testing
+      const result = service.stripAnsiCodes(input);
+
+      expect(result).toBe('HelloWorld');
+    });
   });
 
   describe('parseResetTime', () => {
