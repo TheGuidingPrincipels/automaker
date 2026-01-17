@@ -483,6 +483,7 @@ export const verifySession = async (): Promise<boolean> => {
  */
 export const checkSandboxEnvironment = async (): Promise<{
   isContainerized: boolean;
+  skipSandboxWarning?: boolean;
   error?: string;
 }> => {
   try {
@@ -498,7 +499,10 @@ export const checkSandboxEnvironment = async (): Promise<{
     }
 
     const data = await response.json();
-    return { isContainerized: data.isContainerized ?? false };
+    return {
+      isContainerized: data.isContainerized ?? false,
+      skipSandboxWarning: data.skipSandboxWarning ?? false,
+    };
   } catch (error) {
     logger.error('Sandbox environment check failed:', error);
     return { isContainerized: false, error: 'Network error' };

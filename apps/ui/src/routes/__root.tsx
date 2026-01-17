@@ -269,15 +269,16 @@ function RootLayoutContent() {
     setIsMounted(true);
   }, []);
 
-  // Check sandbox environment only after user is authenticated and setup is complete
+  // Check sandbox environment only after user is authenticated, setup is complete, and settings are loaded
   useEffect(() => {
     // Skip if already decided
     if (sandboxStatus !== 'pending') {
       return;
     }
 
-    // Don't check sandbox until user is authenticated and has completed setup
-    if (!authChecked || !isAuthenticated || !setupComplete) {
+    // Don't check sandbox until user is authenticated, has completed setup, and settings are loaded
+    // CRITICAL: settingsLoaded must be true to ensure skipSandboxWarning has been hydrated from server
+    if (!authChecked || !isAuthenticated || !setupComplete || !settingsLoaded) {
       return;
     }
 
@@ -288,8 +289,8 @@ function RootLayoutContent() {
         if (result.isContainerized) {
           // Running in a container, no warning needed
           setSandboxStatus('containerized');
-        } else if (skipSandboxWarning) {
-          // User opted to skip the warning, auto-confirm
+        } else if (result.skipSandboxWarning || skipSandboxWarning) {
+          // Skip if env var is set OR if user preference is set
           setSandboxStatus('confirmed');
         } else {
           // Not containerized, show warning dialog
@@ -307,7 +308,14 @@ function RootLayoutContent() {
     };
 
     checkSandbox();
-  }, [sandboxStatus, skipSandboxWarning, authChecked, isAuthenticated, setupComplete]);
+  }, [
+    sandboxStatus,
+    skipSandboxWarning,
+    authChecked,
+    isAuthenticated,
+    setupComplete,
+    settingsLoaded,
+  ]);
 
   // Handle sandbox risk confirmation
   const handleSandboxConfirm = useCallback(
