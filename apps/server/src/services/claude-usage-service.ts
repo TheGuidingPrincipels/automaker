@@ -183,17 +183,27 @@ export class ClaudeUsageService {
 
       let ptyProcess: any = null;
 
+      // Build PTY spawn options
+      // On Windows, ConPTY requires AttachConsole which fails in Electron/service mode
+      // Always use winpty on Windows to avoid this issue
+      const ptyOptions: pty.IPtyForkOptions = {
+        name: 'xterm-256color',
+        cols: 120,
+        rows: 30,
+        cwd: workingDirectory,
+        env: {
+          ...process.env,
+          TERM: 'xterm-256color',
+        } as Record<string, string>,
+      };
+
+      if (this.isWindows) {
+        (ptyOptions as pty.IWindowsPtyForkOptions).useConpty = false;
+        logger.debug('[executeClaudeUsageCommandPty] Using winpty on Windows (ConPTY disabled)');
+      }
+
       try {
-        ptyProcess = pty.spawn(shell, args, {
-          name: 'xterm-256color',
-          cols: 120,
-          rows: 30,
-          cwd: workingDirectory,
-          env: {
-            ...process.env,
-            TERM: 'xterm-256color',
-          } as Record<string, string>,
-        });
+        ptyProcess = pty.spawn(shell, args, ptyOptions);
       } catch (spawnError) {
         const errorMessage = spawnError instanceof Error ? spawnError.message : String(spawnError);
         logger.error('[executeClaudeUsageCommandPty] Failed to spawn PTY:', errorMessage);
