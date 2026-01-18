@@ -173,3 +173,116 @@ Use `resolveModelString()` from `@automaker/model-resolver` to convert model ali
 - `ALLOWED_ROOT_DIRECTORY` - Restrict file operations to specific directory
 - `AUTOMAKER_MOCK_AGENT=true` - Enable mock agent mode for CI testing
 - `VITE_HOSTNAME` - Hostname for frontend API URLs (default: localhost)
+
+---
+
+## Fork Workflow (CRITICAL)
+
+This is a **heavily modified fork** of the original AutoMaker repository. Follow these rules strictly.
+
+### Repository Context
+
+```
+Remotes:
+├── origin   → github.com/TheGuidingPrincipels/automaker (YOUR fork - push here)
+└── upstream → github.com/AutoMaker-Org/automaker (original - READ ONLY)
+
+Branches:
+├── main     → Your modified version (default)
+└── upstream → Clean mirror of original (never modify)
+```
+
+### Safety Rules
+
+1. **NEVER push to upstream** - Push is disabled as safety measure
+2. **NEVER create PRs to upstream** - Always use `--repo` flag
+3. **NEVER commit directly to main** - Use feature branches
+4. **ALWAYS use worktrees** - Never work in the main repo directory
+
+### Before Starting Any Work
+
+```bash
+# 1. Navigate to the repo
+cd /Users/ruben/Documents/GitHub/Coding-Dream-System/automaker
+
+# 2. Check existing worktrees
+git worktree list
+
+# 3. Create a new worktree for your task
+git worktree add ../automaker-worktrees/claude-task-name -b claude/task-name
+
+# 4. Work in the worktree
+cd ../automaker-worktrees/claude-task-name
+```
+
+### Branch Naming for Claude
+
+Use the `claude/` prefix for all Claude-initiated work:
+
+| Task Type | Branch Name |
+|-----------|-------------|
+| Feature | `claude/feature-description` |
+| Bug fix | `claude/fix-description` |
+| Refactor | `claude/refactor-description` |
+
+### Creating Pull Requests (CRITICAL)
+
+**ALWAYS use the full command with `--repo` flag:**
+
+```bash
+gh pr create \
+  --repo TheGuidingPrincipels/automaker \
+  --base main \
+  --title "type: description" \
+  --body "$(cat <<'EOF'
+## Summary
+- What this PR does
+
+## Changes
+- List of changes
+
+---
+Co-Authored-By: Claude <noreply@anthropic.com>
+EOF
+)"
+```
+
+**NEVER use:**
+- `gh pr create` without `--repo` flag
+- Any command that might target `AutoMaker-Org/automaker`
+
+### After Work is Complete
+
+```bash
+# 1. Push your branch
+git push -u origin claude/task-name
+
+# 2. Create PR (with correct flags)
+gh pr create --repo TheGuidingPrincipels/automaker --base main
+
+# 3. Return to main repo
+cd /Users/ruben/Documents/GitHub/Coding-Dream-System/automaker
+
+# 4. Clean up worktree
+git worktree remove ../automaker-worktrees/claude-task-name
+```
+
+### Upstream Tracking
+
+This fork tracks upstream changes via `.automaker-fork/`:
+
+```
+.automaker-fork/
+├── config.json      # Tracking configuration
+├── reports/         # Upstream analysis reports
+└── adopted/         # Record of adopted features
+```
+
+To check for upstream updates, run the `/upstream-check` skill or ask:
+"Run an upstream check on the automaker fork"
+
+### Related Documentation
+
+- `WORKFLOW-GUIDE.md` - Full multi-developer workflow documentation
+- `FORK-USAGE-GUIDE.md` - Simple fork management guide
+- `.automaker-fork/README.md` - Tracking infrastructure details

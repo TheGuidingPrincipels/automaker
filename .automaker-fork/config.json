@@ -1,0 +1,39 @@
+{
+  "fork": {
+    "name": "automaker",
+    "originalRepo": "AutoMaker-Org/automaker",
+    "forkRepo": "TheGuidingPrincipels/automaker",
+    "createdAt": "2026-01-18T00:00:00Z"
+  },
+  "tracking": {
+    "lastCheckedCommit": "518c81815ef27e2ab2765356492e30ceb483c56c",
+    "lastCheckedAt": "2026-01-18T00:00:00Z",
+    "checkFrequencyDays": 3
+  },
+  "analysis": {
+    "skipPatterns": [
+      "^docs:",
+      "^chore\\(deps\\):",
+      "^style:",
+      "^test:",
+      "^ci:"
+    ],
+    "priorityPatterns": [
+      "^feat:",
+      "^fix:",
+      "BREAKING CHANGE",
+      "^refactor:"
+    ],
+    "watchPaths": [
+      "apps/server/",
+      "apps/ui/",
+      "libs/types/",
+      "libs/prompts/"
+    ]
+  },
+  "reports": {
+    "outputDir": ".automaker-fork/reports",
+    "format": "markdown",
+    "includeCommitLinks": true
+  }
+}
