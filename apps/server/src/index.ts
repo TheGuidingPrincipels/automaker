@@ -87,6 +87,10 @@ import { getEventHistoryService } from './services/event-history-service.js';
 // Load environment variables
 dotenv.config();
 
+// Automaker runs Claude CLI in subprocesses (via SDK + usage endpoint).
+// Disable hook TTS by default so Automaker doesn't trigger voice announcements.
+process.env.AUTOMAKER_DISABLE_HOOK_TTS = process.env.AUTOMAKER_DISABLE_HOOK_TTS ?? 'true';
+
 const PORT = parseInt(process.env.PORT || '3008', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 const HOSTNAME = process.env.HOSTNAME || 'localhost';

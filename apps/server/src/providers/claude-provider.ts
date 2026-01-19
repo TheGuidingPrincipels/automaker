@@ -24,6 +24,7 @@ const ALLOWED_ENV_VARS = [
   'ANTHROPIC_API_KEY',
   'ANTHROPIC_BASE_URL',
   'ANTHROPIC_AUTH_TOKEN',
+  'AUTOMAKER_DISABLE_HOOK_TTS',
   'PATH',
   'HOME',
   'SHELL',
@@ -43,6 +44,7 @@ function buildEnv(): Record<string, string | undefined> {
       env[key] = process.env[key];
     }
   }
+  env.AUTOMAKER_DISABLE_HOOK_TTS = process.env.AUTOMAKER_DISABLE_HOOK_TTS ?? 'true';
   return env;
 }
 

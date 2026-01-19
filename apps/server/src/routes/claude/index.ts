@@ -41,7 +41,7 @@ export function createClaudeRoutes(service: ClaudeUsageService): Router {
           message:
             'Claude CLI needs folder permission. Please run "claude" in your terminal and approve access.',
         });
-      } else if (message.includes('timed out')) {
+      } else if (message.includes('timed out') || message.includes('took too long to respond')) {
         res.status(200).json({
           error: 'Command timed out',
           message: 'The Claude CLI took too long to respond',

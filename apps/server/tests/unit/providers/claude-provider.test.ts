@@ -14,6 +14,7 @@ describe('claude-provider.ts', () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.ANTHROPIC_BASE_URL;
     delete process.env.ANTHROPIC_AUTH_TOKEN;
+    delete process.env.AUTOMAKER_DISABLE_HOOK_TTS;
   });
 
   describe('getName', () => {
@@ -273,6 +274,32 @@ describe('claude-provider.ts', () => {
     afterEach(() => {
       delete process.env.ANTHROPIC_BASE_URL;
       delete process.env.ANTHROPIC_AUTH_TOKEN;
+      delete process.env.AUTOMAKER_DISABLE_HOOK_TTS;
+    });
+
+    it('should disable hook TTS by default in SDK env', async () => {
+      vi.mocked(sdk.query).mockReturnValue(
+        (async function* () {
+          yield { type: 'text', text: 'test' };
+        })()
+      );
+
+      const generator = provider.executeQuery({
+        prompt: 'Test',
+        model: 'claude-opus-4-5-20251101',
+        cwd: '/test',
+      });
+
+      await collectAsyncGenerator(generator);
+
+      expect(sdk.query).toHaveBeenCalledWith({
+        prompt: 'Test',
+        options: expect.objectContaining({
+          env: expect.objectContaining({
+            AUTOMAKER_DISABLE_HOOK_TTS: 'true',
+          }),
+        }),
+      });
     });
 
     it('should pass ANTHROPIC_BASE_URL to SDK env', async () => {

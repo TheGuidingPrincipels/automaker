@@ -128,6 +128,7 @@ export class ClaudeUsageService {
         env: {
           ...process.env,
           TERM: 'xterm-256color',
+          AUTOMAKER_DISABLE_HOOK_TTS: process.env.AUTOMAKER_DISABLE_HOOK_TTS ?? 'true',
         },
       });
 
@@ -217,6 +218,7 @@ export class ClaudeUsageService {
         env: {
           ...process.env,
           TERM: 'xterm-256color',
+          AUTOMAKER_DISABLE_HOOK_TTS: process.env.AUTOMAKER_DISABLE_HOOK_TTS ?? 'true',
         } as Record<string, string>,
       };
 

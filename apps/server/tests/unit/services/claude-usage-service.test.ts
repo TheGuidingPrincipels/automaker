@@ -417,6 +417,48 @@ Resets Jan 15, 3pm
       vi.mocked(os.platform).mockReturnValue('win32');
     });
 
+    it('should disable hook TTS by default in PTY env', async () => {
+      delete process.env.AUTOMAKER_DISABLE_HOOK_TTS;
+
+      const ptyService = new ClaudeUsageService();
+      const mockOutput = `
+Current session
+65% left
+Resets in 2h
+`;
+
+      let dataCallback: Function | undefined;
+      let exitCallback: Function | undefined;
+
+      const mockPty = {
+        onData: vi.fn((callback: Function) => {
+          dataCallback = callback;
+        }),
+        onExit: vi.fn((callback: Function) => {
+          exitCallback = callback;
+        }),
+        write: vi.fn(),
+        kill: vi.fn(),
+      };
+      vi.mocked(pty.spawn).mockReturnValue(mockPty as any);
+
+      const promise = ptyService.fetchUsageData();
+
+      expect(pty.spawn).toHaveBeenCalledWith(
+        'cmd.exe',
+        ['/c', 'claude', '--add-dir', process.cwd()],
+        expect.objectContaining({
+          env: expect.objectContaining({
+            AUTOMAKER_DISABLE_HOOK_TTS: 'true',
+          }),
+        })
+      );
+
+      dataCallback!(mockOutput);
+      exitCallback!({ exitCode: 0 });
+      await promise;
+    });
+
     it('should use node-pty and return output', async () => {
       const ptyService = new ClaudeUsageService();
       const mockOutput = `
