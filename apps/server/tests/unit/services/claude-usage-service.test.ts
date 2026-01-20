@@ -276,7 +276,7 @@ describe('claude-usage-service.ts', () => {
       const result = service.parseSection(lines, 'Current session', 'session');
 
       expect(result.percentage).toBe(35); // 100 - 65 = 35% used
-      expect(result.resetText).toBe('Resets in 2h 15m');
+      expect(result.resetText).toBe('in 2h 15m'); // "Resets" prefix stripped
     });
 
     it('should parse section with percentage used', () => {
@@ -301,14 +301,16 @@ describe('claude-usage-service.ts', () => {
       expect(result.percentage).toBe(0);
     });
 
-    it('should strip timezone from reset text', () => {
+    it('should strip timezone and format reset text with day of week', () => {
       const service = new ClaudeUsageService();
       const lines = ['Current session', '65% left', 'Resets 3pm (America/Los_Angeles)'];
       // @ts-expect-error - accessing private method for testing
       const result = service.parseSection(lines, 'Current session', 'session');
 
-      expect(result.resetText).toBe('Resets 3pm');
+      // Should strip "Resets" prefix, add day of week, and remove timezone
+      expect(result.resetText).not.toContain('Resets');
       expect(result.resetText).not.toContain('America/Los_Angeles');
+      expect(result.resetText).toMatch(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat), 3pm$/);
     });
 
     it('should handle case-insensitive section matching', () => {
@@ -345,8 +347,9 @@ Resets Jan 15, 3:30pm (America/Los_Angeles)
       expect(result.sessionPercentage).toBe(35); // 100 - 65
       expect(result.weeklyPercentage).toBe(65); // 100 - 35
       expect(result.sonnetWeeklyPercentage).toBe(20); // 100 - 80
-      expect(result.sessionResetText).toContain('Resets in 2h 15m');
-      expect(result.weeklyResetText).toContain('Resets Jan 15, 3:30pm');
+      // Reset text should have "Resets" stripped and day of week added for dates
+      expect(result.sessionResetText).toBe('in 2h 15m'); // relative times keep "in"
+      expect(result.weeklyResetText).toMatch(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat), Jan 15, 3:30pm$/);
       expect(result.userTimezone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
     });
 

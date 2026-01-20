@@ -515,11 +515,62 @@ export class ClaudeUsageService {
   }
 
   /**
-   * Strip ANSI escape codes from text
+   * Strip ANSI escape codes and terminal control characters from text
    */
   private stripAnsiCodes(text: string): string {
     // eslint-disable-next-line no-control-regex
-    return text.replace(/\x1B\[[0-9;]*[A-Za-z]/g, '');
+    return (
+      text
+        // Standard CSI sequences: ESC [ ... letter
+        .replace(/\x1B\[[0-9;]*[A-Za-z]/g, '')
+        // DEC private mode sequences: ESC [ ? ... letter (e.g., [?2026l, [?2026h)
+        .replace(/\x1B\[\?[0-9;]*[A-Za-z]/g, '')
+        // Also handle sequences that may appear without proper ESC byte (corrupted)
+        .replace(/\[\?[0-9]+[lh]/g, '')
+        // Carriage returns → newlines (for animated TUI output like progress bars)
+        .replace(/\r/g, '\n')
+        // Unicode block characters from progress bar visualization (█░▓▒)
+        .replace(/[█░▓▒]/g, '')
+    );
+  }
+
+  /**
+   * Format reset text for display:
+   * - Remove "Resets" prefix (clock icon indicates reset)
+   * - Add day of week abbreviation
+   * - Strip timezone
+   *
+   * Input: "Resets Jan 24, 10am (America/Los_Angeles)"
+   * Output: "Mon, Jan 24, 10am"
+   *
+   * Input: "Resets in 2h 15m"
+   * Output: "in 2h 15m"
+   */
+  private formatResetText(rawText: string, resetTimeISO: string): string {
+    // Strip timezone like "(Asia/Dubai)" or "(America/Los_Angeles)"
+    let text = rawText.replace(/\s*\([A-Za-z_\/]+\)\s*$/, '').trim();
+
+    // Remove "Resets" prefix (case insensitive)
+    text = text.replace(/^resets\s*/i, '').trim();
+
+    // If it's a relative time like "in 2h 15m", return as-is
+    if (text.toLowerCase().startsWith('in ')) {
+      return text;
+    }
+
+    // Try to add day of week from the parsed ISO time
+    try {
+      const resetDate = new Date(resetTimeISO);
+      if (!isNaN(resetDate.getTime())) {
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const dayOfWeek = dayNames[resetDate.getDay()];
+        return `${dayOfWeek}, ${text}`;
+      }
+    } catch {
+      // Fall through to return text without day of week
+    }
+
+    return text;
   }
 
   /**
@@ -630,17 +681,27 @@ export class ClaudeUsageService {
         }
       }
 
-      // Extract reset time - only take the first match
-      if (!resetText && line.toLowerCase().includes('reset')) {
-        resetText = line;
+      // Extract reset time - use regex to extract ONLY the reset portion
+      // This avoids capturing progress bar chars when TUI output concatenates on one line
+      if (!resetText) {
+        // Match "Resets" followed by time info:
+        // - "Resets in 2h 15m" (relative time)
+        // - "Resets 11:59am" (time only)
+        // - "Resets Jan 24, 3pm (timezone)" (date with time)
+        const resetMatch = line.match(
+          /resets?\s*(in\s+\d+[hm].*?(?=\s*$|\s*\()|[\d]{1,2}(?::\d{2})?\s*[ap]m.*?(?=\s*$|\s*\()|\w{3}\s+\d{1,2}.*?(?=\s*$|\s*\())/i
+        );
+        if (resetMatch) {
+          resetText = 'Resets ' + resetMatch[1].trim();
+        }
       }
     }
 
     // Parse the reset time if we found one
     if (resetText) {
       resetTime = this.parseResetTime(resetText, type);
-      // Strip timezone like "(Asia/Dubai)" from the display text
-      resetText = resetText.replace(/\s*\([A-Za-z_\/]+\)\s*$/, '').trim();
+      // Format display text: remove "Resets" prefix and add day of week
+      resetText = this.formatResetText(resetText, resetTime);
     }
 
     return { percentage, resetTime, resetText };
