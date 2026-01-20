@@ -123,10 +123,20 @@ export class ClaudeUsageService {
         expect eof
       `;
 
+      // Exclude auth env vars to force CLI to use stored credentials from ~/.claude/.credentials.json
+      // These vars would override the properly-scoped OAuth token from 'claude login'
+      const authEnvVarsToExclude = ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'];
+      const cliEnv: Record<string, string> = {};
+      for (const [key, value] of Object.entries(process.env)) {
+        if (value !== undefined && !authEnvVarsToExclude.includes(key)) {
+          cliEnv[key] = value;
+        }
+      }
+
       const proc = spawn('expect', ['-c', expectScript], {
         cwd: workingDirectory,
         env: {
-          ...process.env,
+          ...cliEnv, // Use filtered environment (no ANTHROPIC_API_KEY)
           TERM: 'xterm-256color',
           AUTOMAKER_DISABLE_HOOK_TTS: process.env.AUTOMAKER_DISABLE_HOOK_TTS ?? 'true',
         },
@@ -210,16 +220,28 @@ export class ClaudeUsageService {
       let ptyProcess: any = null;
 
       // Build PTY spawn options
+      // Exclude auth env vars to force CLI to use stored credentials from ~/.claude/.credentials.json
+      // These vars would override the properly-scoped OAuth token from 'claude login':
+      // - ANTHROPIC_API_KEY: Forces API key auth which lacks user:profile scope
+      // - CLAUDE_CODE_OAUTH_TOKEN: May be an older token without required scopes
+      const authEnvVarsToExclude = ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'];
+      const cliEnv: Record<string, string> = {};
+      for (const [key, value] of Object.entries(process.env)) {
+        if (value !== undefined && !authEnvVarsToExclude.includes(key)) {
+          cliEnv[key] = value;
+        }
+      }
+
       const ptyOptions: pty.IPtyForkOptions = {
         name: 'xterm-256color',
         cols: 120,
         rows: 30,
         cwd: workingDirectory,
         env: {
-          ...process.env,
+          ...cliEnv, // Use filtered environment (no ANTHROPIC_API_KEY)
           TERM: 'xterm-256color',
           AUTOMAKER_DISABLE_HOOK_TTS: process.env.AUTOMAKER_DISABLE_HOOK_TTS ?? 'true',
-        } as Record<string, string>,
+        },
       };
 
       // On Windows, always use winpty instead of ConPTY
@@ -295,6 +317,11 @@ export class ClaudeUsageService {
           if (ptyProcess && !ptyProcess.killed) {
             this.killPtyProcess(ptyProcess);
           }
+
+          // Strip ANSI codes for cleaner error checking
+          // eslint-disable-next-line no-control-regex
+          const cleanOutput = output.replace(/\x1B\[[0-9;]*[A-Za-z]/g, '');
+
           // Don't fail if we have data - return it instead
           if (output.includes('Current session')) {
             resolve(output);
@@ -303,6 +330,18 @@ export class ClaudeUsageService {
             reject(
               new Error(
                 'TRUST_PROMPT_PENDING: Claude CLI is waiting for folder permission. Please run "claude" in your terminal and approve access to continue.'
+              )
+            );
+          } else if (
+            cleanOutput.includes('"type":"permission_error"') ||
+            cleanOutput.includes('"type": "permission_error"') ||
+            cleanOutput.includes('OAuth token does not meet scope requirement')
+          ) {
+            // Permission error detected - provide specific guidance
+            reject(
+              new Error(
+                'Claude CLI permission error. Your OAuth token may be missing required scopes. ' +
+                  'Please run "claude logout" then "claude login" to refresh your authentication.'
               )
             );
           } else {
@@ -327,7 +366,6 @@ export class ClaudeUsageService {
 
         // Check for specific authentication/permission errors
         // Must be very specific to avoid false positives from garbled terminal encoding
-        // Removed permission_error check as it was causing false positives with winpty encoding
         const authChecks = {
           oauth: cleanOutput.includes('OAuth token does not meet scope requirement'),
           tokenExpired: cleanOutput.includes('token_expired'),
@@ -335,8 +373,16 @@ export class ClaudeUsageService {
           authError:
             cleanOutput.includes('"type":"authentication_error"') ||
             cleanOutput.includes('"type": "authentication_error"'),
+          // Detect permission errors (e.g., missing user:profile scope for /usage)
+          permissionError:
+            cleanOutput.includes('"type":"permission_error"') ||
+            cleanOutput.includes('"type": "permission_error"'),
         };
-        const hasAuthError = authChecks.oauth || authChecks.tokenExpired || authChecks.authError;
+        const hasAuthError =
+          authChecks.oauth ||
+          authChecks.tokenExpired ||
+          authChecks.authError ||
+          authChecks.permissionError;
 
         if (hasAuthError) {
           if (!settled) {
