@@ -6,30 +6,20 @@
     "createdAt": "2026-01-18T00:00:00Z"
   },
   "tracking": {
-    "lastCheckedCommit": "518c81815ef27e2ab2765356492e30ceb483c56c",
-    "lastCheckedAt": "2026-01-18T00:00:00Z",
-    "checkFrequencyDays": 3
+    "lastCheckedCommit": "cf3ee6aec6589785116b2ec3329e1a2a0377dcfe",
+    "lastCheckedAt": "2026-01-20T16:19:32Z",
+    "checkFrequencyDays": 1
   },
   "analysis": {
-    "skipPatterns": [
-      "^docs:",
-      "^chore\\(deps\\):",
-      "^style:",
-      "^test:",
-      "^ci:"
-    ],
-    "priorityPatterns": [
-      "^feat:",
-      "^fix:",
-      "BREAKING CHANGE",
-      "^refactor:"
-    ],
-    "watchPaths": [
-      "apps/server/",
-      "apps/ui/",
-      "libs/types/",
-      "libs/prompts/"
-    ]
+    "skipPatterns": ["^docs:", "^chore\\(deps\\):", "^style:", "^test:", "^ci:"],
+    "priorityPatterns": ["^feat:", "^fix:", "BREAKING CHANGE", "^refactor:"],
+    "watchPaths": ["apps/server/", "apps/ui/", "libs/types/", "libs/prompts/"]
+  },
+  "investigation": {
+    "autoInvestigate": true,
+    "severityThreshold": "MEDIUM",
+    "useSubAgents": true,
+    "verificationChecks": ["build", "test", "types"]
   },
   "reports": {
     "outputDir": ".automaker-fork/reports",
