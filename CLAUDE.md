@@ -214,6 +214,43 @@ Use `resolveModelString()` from `@automaker/model-resolver` to convert model ali
 - `sonnet` → `claude-sonnet-4-20250514`
 - `opus` → `claude-opus-4-5-20251101`
 
+## Adding New Features (IMPORTANT)
+
+When adding **new major features**, follow the Feature-First Architecture. See `FEATURE-STRATEGY.md` for complete implementation guide.
+
+### Quick Rules
+
+1. **Create dedicated directories** for each new feature:
+
+   ```
+   apps/ui/src/features/{feature-name}/
+   apps/server/src/features/{feature-name}/
+   ```
+
+2. **Feature structure** (both frontend and backend):
+
+   ```
+   features/{feature-name}/
+   ├── components/ or routes.ts   # UI components / Express routes
+   ├── hooks/ or service.ts       # React hooks / Business logic
+   ├── api.ts or storage.ts       # API client / Data access
+   └── index.ts                   # Public API exports
+   ```
+
+3. **Types go in shared package**: `libs/types/src/{feature}.ts`
+
+4. **DO NOT** add feature state to global `app-store.ts` - create feature-specific stores
+
+5. **Export through `index.ts`** - internal files are private to the feature
+
+### Template
+
+Use the **SYSTEMS feature** as the canonical reference:
+
+- Types: `libs/types/src/custom-agent.ts`, `system.ts`, `knowledge.ts`
+- Services: `apps/server/src/services/custom-agents-service.ts`
+- Routes: `apps/server/src/routes/custom-agents/index.ts`
+
 ## Environment Variables
 
 - `ANTHROPIC_API_KEY` - Anthropic API key (or use Claude Code CLI auth)
