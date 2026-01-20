@@ -329,6 +329,12 @@ export interface KeyboardShortcuts {
   splitTerminalDown: string;
   /** Close current terminal */
   closeTerminal: string;
+  /** Open custom agents page */
+  agents: string;
+  /** Open systems page */
+  systems: string;
+  /** Open knowledge hub page */
+  knowledgeHub: string;
 }
 
 /**
@@ -839,6 +845,9 @@ export const DEFAULT_KEYBOARD_SHORTCUTS: KeyboardShortcuts = {
   splitTerminalRight: 'Alt+D',
   splitTerminalDown: 'Alt+S',
   closeTerminal: 'Alt+W',
+  agents: 'Shift+A',
+  systems: 'Shift+Y',
+  knowledgeHub: 'Shift+K',
 };
 
 /** Default global settings used when no settings file exists */

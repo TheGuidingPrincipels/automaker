@@ -320,6 +320,9 @@ export interface KeyboardShortcuts {
   board: string;
   graph: string;
   agent: string;
+  agents: string;
+  systems: string;
+  knowledgeHub: string;
   spec: string;
   context: string;
   memory: string;
@@ -357,6 +360,9 @@ export const DEFAULT_KEYBOARD_SHORTCUTS: KeyboardShortcuts = {
   board: 'K',
   graph: 'H',
   agent: 'A',
+  agents: 'Shift+A',
+  systems: 'Shift+Y',
+  knowledgeHub: 'Shift+K',
   spec: 'D',
   context: 'C',
   memory: 'Y',

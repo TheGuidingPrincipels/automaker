@@ -292,3 +292,55 @@ export type {
   EventReplayHookResult,
 } from './event-history.js';
 export { EVENT_HISTORY_VERSION, DEFAULT_EVENT_HISTORY_INDEX } from './event-history.js';
+
+// Custom Agent types
+export type {
+  CustomAgentStatus,
+  CustomAgentTool,
+  CustomAgentMCPServer,
+  CustomAgentModelConfig,
+  CustomAgent,
+  CustomAgentExecution,
+  CreateCustomAgentInput,
+  UpdateCustomAgentInput,
+} from './custom-agent.js';
+
+// System types (multi-agent orchestration)
+export type {
+  SystemStatus,
+  SystemExecutionStatus,
+  SystemAgentRole,
+  SystemAgent,
+  WorkflowStepType,
+  WorkflowStepCondition,
+  SystemWorkflowStep,
+  System,
+  SystemStepExecution,
+  SystemExecution,
+  CreateSystemInput,
+  UpdateSystemInput,
+  RunSystemInput,
+  BuiltInSystemId,
+} from './system.js';
+
+// Knowledge Hub types
+export type {
+  KnowledgeSection,
+  BlueprintCategory,
+  BlueprintStatus,
+  Blueprint,
+  KnowledgeEntryType,
+  KnowledgeEntry,
+  LearningType,
+  LearningConfidence,
+  Learning,
+  CreateBlueprintInput,
+  UpdateBlueprintInput,
+  CreateKnowledgeEntryInput,
+  UpdateKnowledgeEntryInput,
+  CreateLearningInput,
+  UpdateLearningInput,
+  ExtractLearningsInput,
+  KnowledgeSearchQuery,
+  KnowledgeSearchResult,
+} from './knowledge.js';

@@ -2819,7 +2819,7 @@ This mock response was generated because AUTOMAKER_MOCK_AGENT=true was set.
                         });
 
                         // Build revision prompt
-                        let revisionPrompt = `The user has requested revisions to the plan/specification.
+                        const revisionPrompt = `The user has requested revisions to the plan/specification.
 
 ## Previous Plan (v${planVersion - 1})
 ${hasEdits ? approvalResult.editedPlan : currentPlanContent}
@@ -3643,7 +3643,7 @@ After generating the revised spec, output:
         const learningsIndex = responseText.indexOf('"learnings"');
         if (learningsIndex !== -1) {
           // Find the opening brace before "learnings"
-          let braceStart = responseText.lastIndexOf('{', learningsIndex);
+          const braceStart = responseText.lastIndexOf('{', learningsIndex);
           if (braceStart !== -1) {
             // Find matching closing brace
             let braceCount = 0;

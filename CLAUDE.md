@@ -95,6 +95,57 @@ The UI (`apps/ui/src/`) uses:
 - `hooks/` - Custom React hooks
 - `lib/` - Utilities and API client
 
+### SYSTEMS Feature (Agents, Systems, Knowledge Hub)
+
+**Types** (`libs/types/src/`):
+
+- `custom-agent.ts` - CustomAgent, tools, MCP servers, model config, execution
+- `system.ts` - System, workflow steps, agents, execution, built-in system IDs
+- `knowledge.ts` - Blueprint, KnowledgeEntry, Learning, search queries
+
+**Team Storage** (`apps/server/src/lib/team-storage.ts`):
+
+- File-based shared storage for multi-user deployment
+- Collections: agents, systems, blueprints, knowledge-entries, learnings
+- Uses `TEAM_DATA_DIR` env var (defaults to `DATA_DIR/team`)
+
+**Routes** (`apps/ui/src/routes/`):
+| File | URL | Purpose |
+|------|-----|---------|
+| `agents.tsx` | `/agents` | Custom agent management |
+| `systems.tsx` | `/systems` | Layout with nested routes |
+| `systems.index.tsx` | `/systems` | Gallery of multi-agent systems |
+| `systems.$systemId.tsx` | `/systems/:id` | System detail (tabs: Overview, Agents, Workflow, Run) |
+| `knowledge-hub.tsx` | `/knowledge-hub` | Layout with nested routes |
+| `knowledge-hub.index.tsx` | `/knowledge-hub` | Gallery of knowledge sections |
+| `knowledge-hub.$section.tsx` | `/knowledge-hub/:section` | Section detail (blueprints/knowledge-server/learning) |
+
+**Views** (`apps/ui/src/components/views/`):
+
+- `agents-page/` - Agent gallery, CRUD, create dialog
+- `systems-page/` - System gallery with 4 built-in systems
+- `system-detail-page/` - Tabbed detail view
+- `knowledge-hub-page/` - Section cards (Blueprints, Knowledge Server, Learning)
+- `knowledge-section-page/` - Dynamic section content
+
+**Backend Services** (`apps/server/src/services/`):
+
+- `custom-agents-service.ts` - CRUD + duplicate, archive, activate
+- `systems-service.ts` - CRUD + run execution, 4 built-in systems
+- `knowledge-service.ts` - Blueprints, entries, learnings + search
+
+**Backend Routes** (`apps/server/src/routes/`):
+
+- `custom-agents/index.ts` - REST API for agents
+- `systems/index.ts` - REST API + `/run` endpoint
+- `knowledge/index.ts` - REST API for all knowledge types + search
+
+**Keyboard Shortcuts** (in `libs/types/src/settings.ts`):
+
+- `Shift+A` - Open Agents page
+- `Shift+Y` - Open Systems page
+- `Shift+K` - Open Knowledge Hub
+
 ## Data Storage
 
 ### Per-Project Data (`.automaker/`)
@@ -170,6 +221,7 @@ Use `resolveModelString()` from `@automaker/model-resolver` to convert model ali
 - `HOSTNAME` - Hostname for user-facing URLs (default: localhost)
 - `PORT` - Server port (default: 3008)
 - `DATA_DIR` - Data storage directory (default: ./data)
+- `TEAM_DATA_DIR` - Shared team data for SYSTEMS feature (default: DATA_DIR/team)
 - `ALLOWED_ROOT_DIRECTORY` - Restrict file operations to specific directory
 - `AUTOMAKER_MOCK_AGENT=true` - Enable mock agent mode for CI testing
 - `VITE_HOSTNAME` - Hostname for frontend API URLs (default: localhost)
@@ -219,11 +271,11 @@ cd ../automaker-worktrees/claude-task-name
 
 Use the `claude/` prefix for all Claude-initiated work:
 
-| Task Type | Branch Name |
-|-----------|-------------|
-| Feature | `claude/feature-description` |
-| Bug fix | `claude/fix-description` |
-| Refactor | `claude/refactor-description` |
+| Task Type | Branch Name                   |
+| --------- | ----------------------------- |
+| Feature   | `claude/feature-description`  |
+| Bug fix   | `claude/fix-description`      |
+| Refactor  | `claude/refactor-description` |
 
 ### Creating Pull Requests (CRITICAL)
 
@@ -248,6 +300,7 @@ EOF
 ```
 
 **NEVER use:**
+
 - `gh pr create` without `--repo` flag
 - Any command that might target `AutoMaker-Org/automaker`
 

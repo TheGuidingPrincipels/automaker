@@ -787,6 +787,7 @@ export class OpencodeProvider extends CliProvider {
 
     for (const line of lines) {
       // Remove ANSI escape codes if any
+      // eslint-disable-next-line no-control-regex
       const cleanLine = line.replace(/\x1b\[[0-9;]*m/g, '').trim();
 
       // Skip empty lines
@@ -1045,6 +1046,7 @@ export class OpencodeProvider extends CliProvider {
       if (line.includes('●')) {
         // Remove ANSI escape codes and the ● symbol
         const cleanLine = line
+          // eslint-disable-next-line no-control-regex
           .replace(/\x1b\[[0-9;]*m/g, '') // Remove ANSI codes
           .replace(/●/g, '') // Remove ● symbol
           .trim();

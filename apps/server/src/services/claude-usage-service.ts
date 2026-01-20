@@ -518,12 +518,13 @@ export class ClaudeUsageService {
    * Strip ANSI escape codes and terminal control characters from text
    */
   private stripAnsiCodes(text: string): string {
-    // eslint-disable-next-line no-control-regex
     return (
       text
         // Standard CSI sequences: ESC [ ... letter
+        // eslint-disable-next-line no-control-regex
         .replace(/\x1B\[[0-9;]*[A-Za-z]/g, '')
         // DEC private mode sequences: ESC [ ? ... letter (e.g., [?2026l, [?2026h)
+        // eslint-disable-next-line no-control-regex
         .replace(/\x1B\[\?[0-9;]*[A-Za-z]/g, '')
         // Also handle sequences that may appear without proper ESC byte (corrupted)
         .replace(/\[\?[0-9]+[lh]/g, '')
@@ -548,7 +549,7 @@ export class ClaudeUsageService {
    */
   private formatResetText(rawText: string, resetTimeISO: string): string {
     // Strip timezone like "(Asia/Dubai)" or "(America/Los_Angeles)"
-    let text = rawText.replace(/\s*\([A-Za-z_\/]+\)\s*$/, '').trim();
+    let text = rawText.replace(/\s*\([A-Za-z_/]+\)\s*$/, '').trim();
 
     // Remove "Resets" prefix (case insensitive)
     text = text.replace(/^resets\s*/i, '').trim();
@@ -793,7 +794,7 @@ export class ClaudeUsageService {
       const month = months[monthName.toLowerCase().substring(0, 3)];
 
       if (month !== undefined) {
-        let year = now.getFullYear();
+        const year = now.getFullYear();
         // If the date appears to be in the past, assume next year
         const resetDate = new Date(year, month, day, hours, minutes);
         if (resetDate < now) {

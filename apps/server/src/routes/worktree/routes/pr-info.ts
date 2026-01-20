@@ -89,7 +89,7 @@ export function createPRInfoHandler() {
 
         const lines = remotes.split(/\r?\n/);
         for (const line of lines) {
-          let match =
+          const match =
             line.match(/^(\w+)\s+.*[:/]([^/]+)\/([^/\s]+?)(?:\.git)?\s+\(fetch\)/) ||
             line.match(/^(\w+)\s+git@[^:]+:([^/]+)\/([^\s]+?)(?:\.git)?\s+\(fetch\)/) ||
             line.match(/^(\w+)\s+https?:\/\/[^/]+\/([^/]+)\/([^\s]+?)(?:\.git)?\s+\(fetch\)/);

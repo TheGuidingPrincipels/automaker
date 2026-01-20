@@ -209,7 +209,7 @@ export function createCreatePRHandler() {
 
           // Parse URL to extract owner/repo
           // Handle both SSH (git@github.com:owner/repo.git) and HTTPS (https://github.com/owner/repo.git)
-          let match = url.match(/[:/]([^/]+)\/([^/\s]+?)(?:\.git)?$/);
+          const match = url.match(/[:/]([^/]+)\/([^/\s]+?)(?:\.git)?$/);
           if (match) {
             const [, owner, repo] = match;
             originOwner = owner;

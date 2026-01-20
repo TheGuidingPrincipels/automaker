@@ -13,6 +13,9 @@ import {
   Network,
   Bell,
   Settings,
+  Cpu,
+  Workflow,
+  BookOpenCheck,
 } from 'lucide-react';
 import type { NavSection, NavItem } from '../types';
 import type { KeyboardShortcut } from '@/hooks/use-keyboard-shortcuts';
@@ -39,6 +42,9 @@ interface UseNavigationProps {
     githubIssues: string;
     githubPrs: string;
     notifications: string;
+    agents: string;
+    systems: string;
+    knowledgeHub: string;
   };
   hideSpecEditor: boolean;
   hideContext: boolean;
@@ -181,6 +187,29 @@ export function useNavigation({
       {
         label: 'Tools',
         items: visibleToolsItems,
+      },
+      {
+        label: 'Systems',
+        items: [
+          {
+            id: 'agents',
+            label: 'Agents',
+            icon: Cpu,
+            shortcut: shortcuts.agents,
+          },
+          {
+            id: 'systems',
+            label: 'Systems',
+            icon: Workflow,
+            shortcut: shortcuts.systems,
+          },
+          {
+            id: 'knowledge-hub',
+            label: 'Knowledge Hub',
+            icon: BookOpenCheck,
+            shortcut: shortcuts.knowledgeHub,
+          },
+        ],
       },
     ];
 

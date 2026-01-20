@@ -83,6 +83,10 @@ import { createNotificationsRoutes } from './routes/notifications/index.js';
 import { getNotificationService } from './services/notification-service.js';
 import { createEventHistoryRoutes } from './routes/event-history/index.js';
 import { getEventHistoryService } from './services/event-history-service.js';
+import { createTeamStorage } from './lib/team-storage.js';
+import { createCustomAgentsRoutes } from './routes/custom-agents/index.js';
+import { createSystemsRoutes } from './routes/systems/index.js';
+import { createKnowledgeRoutes } from './routes/knowledge/index.js';
 
 // Load environment variables
 dotenv.config();
@@ -214,6 +218,9 @@ const codexUsageService = new CodexUsageService(codexAppServerService);
 const mcpTestService = new MCPTestService(settingsService);
 const ideationService = new IdeationService(events, settingsService, featureLoader);
 
+// Create team storage for shared data (custom agents, systems, knowledge)
+const teamStorage = createTeamStorage(DATA_DIR);
+
 // Initialize DevServerService with event emitter for real-time log streaming
 const devServerService = getDevServerService();
 devServerService.setEventEmitter(events);
@@ -247,6 +254,14 @@ eventHookService.initialize(events, settingsService, eventHistoryService);
 
   await agentService.initialize();
   logger.info('Agent service initialized');
+
+  // Initialize team storage for shared data
+  try {
+    await teamStorage.initialize();
+    logger.info('Team storage initialized');
+  } catch (error) {
+    logger.warn('Failed to initialize team storage:', error);
+  }
 
   // Bootstrap Codex model cache in background (don't block server startup)
   void codexModelCacheService.getModels().catch((err) => {
@@ -304,6 +319,11 @@ app.use('/api/pipeline', createPipelineRoutes(pipelineService));
 app.use('/api/ideation', createIdeationRoutes(events, ideationService, featureLoader));
 app.use('/api/notifications', createNotificationsRoutes(notificationService));
 app.use('/api/event-history', createEventHistoryRoutes(eventHistoryService, settingsService));
+
+// SYSTEMS section routes - Custom Agents, Systems, and Knowledge Hub
+app.use('/api/custom-agents', createCustomAgentsRoutes(teamStorage));
+app.use('/api/systems', createSystemsRoutes(teamStorage));
+app.use('/api/knowledge', createKnowledgeRoutes(teamStorage));
 
 // Create HTTP server
 const server = createServer(app);

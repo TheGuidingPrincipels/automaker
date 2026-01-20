@@ -125,7 +125,7 @@ export class SettingsService {
     const migratedPhaseModels = this.migratePhaseModels(settings);
 
     // Apply any missing defaults (for backwards compatibility)
-    let result: GlobalSettings = {
+    const result: GlobalSettings = {
       ...DEFAULT_GLOBAL_SETTINGS,
       ...settings,
       keyboardShortcuts: {
