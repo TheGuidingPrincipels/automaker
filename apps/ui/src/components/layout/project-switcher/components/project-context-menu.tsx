@@ -456,7 +456,7 @@ export function ProjectContextMenu({
                     <div
                       className="flex gap-2 overflow-y-auto scrollbar-styled"
                       style={{
-                        maxHeight: `${submenuPosition.maxHeight - THEME_SUBMENU_CONSTANTS.SUBMENU_HEADER_HEIGHT}px`,
+                        maxHeight: `${Math.max(0, submenuPosition.maxHeight - THEME_SUBMENU_CONSTANTS.SUBMENU_HEADER_HEIGHT)}px`,
                       }}
                     >
                       <ThemeColumn

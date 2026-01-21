@@ -261,6 +261,7 @@ Use the **SYSTEMS feature** as the canonical reference:
 - `TEAM_DATA_DIR` - Shared team data for SYSTEMS feature (default: DATA_DIR/team)
 - `ALLOWED_ROOT_DIRECTORY` - Restrict file operations to specific directory
 - `AUTOMAKER_MOCK_AGENT=true` - Enable mock agent mode for CI testing
+- `AUTOMAKER_AUTO_LOGIN=true` - Skip login prompt in development (disabled when NODE_ENV=production)
 - `VITE_HOSTNAME` - Hostname for frontend API URLs (default: localhost)
 
 ---

@@ -515,24 +515,45 @@ export class ClaudeUsageService {
   }
 
   /**
-   * Strip ANSI escape codes and terminal control characters from text
+   * Strip ANSI escape codes from text
+   * Handles CSI, OSC, and other common ANSI sequences
    */
   private stripAnsiCodes(text: string): string {
-    return (
-      text
-        // Standard CSI sequences: ESC [ ... letter
-        // eslint-disable-next-line no-control-regex
-        .replace(/\x1B\[[0-9;]*[A-Za-z]/g, '')
-        // DEC private mode sequences: ESC [ ? ... letter (e.g., [?2026l, [?2026h)
-        // eslint-disable-next-line no-control-regex
-        .replace(/\x1B\[\?[0-9;]*[A-Za-z]/g, '')
-        // Also handle sequences that may appear without proper ESC byte (corrupted)
-        .replace(/\[\?[0-9]+[lh]/g, '')
-        // Carriage returns → newlines (for animated TUI output like progress bars)
-        .replace(/\r/g, '\n')
-        // Unicode block characters from progress bar visualization (█░▓▒)
-        .replace(/[█░▓▒]/g, '')
-    );
+    // First strip ANSI sequences (colors, etc) and handle CR
+    // eslint-disable-next-line no-control-regex
+    let clean = text
+      // CSI sequences: ESC [ ... (letter or @)
+      .replace(/\x1B\[[0-9;?]*[A-Za-z@]/g, '')
+      // OSC sequences: ESC ] ... terminated by BEL, ST, or another ESC
+      .replace(/\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)?/g, '')
+      // Other ESC sequences: ESC (letter)
+      .replace(/\x1B[A-Za-z]/g, '')
+      // Carriage returns: replace with newline to avoid concatenation
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n');
+
+    // Handle backspaces (\x08) by applying them
+    // If we encounter a backspace, remove the character before it
+    while (clean.includes('\x08')) {
+      clean = clean.replace(/[^\x08]\x08/, '');
+      clean = clean.replace(/^\x08+/, '');
+    }
+
+    // Explicitly strip known "Synchronized Output" and "Window Title" garbage
+    // even if ESC is missing (seen in some environments)
+    clean = clean
+      .replace(/\[\?2026[hl]/g, '') // CSI ? 2026 h/l
+      .replace(/\]0;[^\x07]*\x07/g, '') // OSC 0; Title BEL
+      .replace(/\]0;.*?(\[\?|$)/g, ''); // OSC 0; Title ... (unterminated or hit next sequence)
+
+    // Strip remaining non-printable control characters (except newline \n)
+    // ASCII 0-8, 11-31, 127
+    clean = clean.replace(/[\x00-\x08\x0B-\x1F\x7F]/g, '');
+
+    // Unicode block characters from progress bar visualization (█░▓▒)
+    clean = clean.replace(/[█░▓▒]/g, '');
+
+    return clean;
   }
 
   /**
@@ -650,7 +671,7 @@ export class ClaudeUsageService {
     sectionLabel: string,
     type: string
   ): { percentage: number; resetTime: string; resetText: string } {
-    let percentage = 0;
+    let percentage: number | null = null;
     let resetTime = this.getDefaultResetTime(type);
     let resetText = '';
 
@@ -664,7 +685,7 @@ export class ClaudeUsageService {
     }
 
     if (sectionIndex === -1) {
-      return { percentage, resetTime, resetText };
+      return { percentage: 0, resetTime, resetText };
     }
 
     // Look at the lines following the section header (within a window of 5 lines)
@@ -672,7 +693,8 @@ export class ClaudeUsageService {
 
     for (const line of searchWindow) {
       // Extract percentage - only take the first match (avoid picking up next section's data)
-      if (percentage === 0) {
+      // Use null to track "not found" since 0% is a valid percentage (100% left = 0% used)
+      if (percentage === null) {
         const percentMatch = line.match(/(\d{1,3})\s*%\s*(left|used|remaining)/i);
         if (percentMatch) {
           const value = parseInt(percentMatch[1], 10);
@@ -682,30 +704,33 @@ export class ClaudeUsageService {
         }
       }
 
-      // Extract reset time - use regex to extract ONLY the reset portion
-      // This avoids capturing progress bar chars when TUI output concatenates on one line
-      if (!resetText) {
-        // Match "Resets" followed by time info:
-        // - "Resets in 2h 15m" (relative time)
-        // - "Resets 11:59am" (time only)
-        // - "Resets Jan 24, 3pm (timezone)" (date with time)
-        const resetMatch = line.match(
-          /resets?\s*(in\s+\d+[hm].*?(?=\s*$|\s*\()|[\d]{1,2}(?::\d{2})?\s*[ap]m.*?(?=\s*$|\s*\()|\w{3}\s+\d{1,2}.*?(?=\s*$|\s*\())/i
-        );
-        if (resetMatch) {
-          resetText = 'Resets ' + resetMatch[1].trim();
+      // Extract reset time - only take the first match
+      if (!resetText && line.toLowerCase().includes('reset')) {
+        // Only extract the part starting from "Resets" (or "Reset") to avoid garbage prefixes
+        const match = line.match(/(Resets?.*)$/i);
+        // If regex fails despite 'includes', likely a complex string issues - verify match before using line
+        // Only fallback to line if it's reasonably short/clean, otherwise skip it to avoid showing garbage
+        if (match) {
+          resetText = match[1];
         }
       }
     }
 
     // Parse the reset time if we found one
     if (resetText) {
+      // Clean up resetText: remove percentage info if it was matched on the same line
+      // e.g. "46%used Resets5:59pm" -> " Resets5:59pm"
+      resetText = resetText.replace(/(\d{1,3})\s*%\s*(left|used|remaining)/i, '').trim();
+
+      // Ensure space after "Resets" if missing (e.g. "Resets5:59pm" -> "Resets 5:59pm")
+      resetText = resetText.replace(/(resets?)(\d)/i, '$1 $2');
+
       resetTime = this.parseResetTime(resetText, type);
       // Format display text: remove "Resets" prefix and add day of week
       resetText = this.formatResetText(resetText, resetTime);
     }
 
-    return { percentage, resetTime, resetText };
+    return { percentage: percentage ?? 0, resetTime, resetText };
   }
 
   /**
@@ -734,7 +759,7 @@ export class ClaudeUsageService {
     }
 
     // Try to parse simple time-only format: "Resets 11am" or "Resets 3pm"
-    const simpleTimeMatch = text.match(/resets\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
+    const simpleTimeMatch = text.match(/resets\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
     if (simpleTimeMatch) {
       let hours = parseInt(simpleTimeMatch[1], 10);
       const minutes = simpleTimeMatch[2] ? parseInt(simpleTimeMatch[2], 10) : 0;
@@ -759,8 +784,11 @@ export class ClaudeUsageService {
     }
 
     // Try to parse date format: "Resets Dec 22 at 8pm" or "Resets Jan 15, 3:30pm"
+    // The regex explicitly matches only valid 3-letter month abbreviations to avoid
+    // matching words like "Resets" when there's no space separator.
+    // Optional "resets\s*" prefix handles cases with or without space after "Resets"
     const dateMatch = text.match(
-      /([A-Za-z]{3,})\s+(\d{1,2})(?:\s+at\s+|\s*,?\s*)(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i
+      /(?:resets\s*)?(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})(?:\s+at\s+|\s*,?\s*)(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i
     );
     if (dateMatch) {
       const monthName = dateMatch[1];
