@@ -25,5 +25,17 @@
     "outputDir": ".automaker-fork/reports",
     "format": "markdown",
     "includeCommitLinks": true
+  },
+  "testing": {
+    "enableWorktreeTesting": true,
+    "worktreePath": "../automaker-upstream-test",
+    "testPorts": {
+      "ui": 4007,
+      "server": 4008
+    },
+    "automatedChecks": ["build:packages", "build:server", "test:server"],
+    "fullAppTest": true,
+    "manualVerificationPages": ["/", "/agents", "/systems", "/knowledge-hub"],
+    "skipTestingForSeverity": ["NONE"]
   }
 }
