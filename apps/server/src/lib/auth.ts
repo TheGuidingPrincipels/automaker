@@ -140,26 +140,40 @@ const API_KEY = ensureApiKey();
 // Width for log box content (excluding borders)
 const BOX_CONTENT_WIDTH = 67;
 
-// Print API key to console for web mode users (unless suppressed for production logging)
-if (!isEnvTrue(process.env.AUTOMAKER_HIDE_API_KEY)) {
-  const autoLoginEnabled = isEnvTrue(process.env.AUTOMAKER_AUTO_LOGIN);
-  const autoLoginStatus = autoLoginEnabled ? 'enabled (auto-login active)' : 'disabled';
+// Track if auth info has been logged (to prevent double logging)
+let authInfoLogged = false;
 
-  // Build box lines with exact padding
-  const header = '🔐 API Key for Web Mode Authentication'.padEnd(BOX_CONTENT_WIDTH);
-  const line1 = "When accessing via browser, you'll be prompted to enter this key:".padEnd(
-    BOX_CONTENT_WIDTH
-  );
-  const line2 = API_KEY.padEnd(BOX_CONTENT_WIDTH);
-  const line3 = 'In Electron mode, authentication is handled automatically.'.padEnd(
-    BOX_CONTENT_WIDTH
-  );
-  const line4 = `Auto-login (AUTOMAKER_AUTO_LOGIN): ${autoLoginStatus}`.padEnd(BOX_CONTENT_WIDTH);
-  const tipHeader = '💡 Tips'.padEnd(BOX_CONTENT_WIDTH);
-  const line5 = 'Set AUTOMAKER_API_KEY env var to use a fixed key'.padEnd(BOX_CONTENT_WIDTH);
-  const line6 = 'Set AUTOMAKER_AUTO_LOGIN=true to skip the login prompt'.padEnd(BOX_CONTENT_WIDTH);
+/**
+ * Log authentication info to console.
+ * This is called AFTER dotenv.config() to ensure env vars are available.
+ * Exported so index.ts can call it at the right time.
+ */
+export function logAuthInfo(): void {
+  if (authInfoLogged) return;
+  authInfoLogged = true;
 
-  logger.info(`
+  // Print API key to console for web mode users (unless suppressed for production logging)
+  if (!isEnvTrue(process.env.AUTOMAKER_HIDE_API_KEY)) {
+    const autoLoginEnabled = isEnvTrue(process.env.AUTOMAKER_AUTO_LOGIN);
+    const autoLoginStatus = autoLoginEnabled ? 'enabled (auto-login active)' : 'disabled';
+
+    // Build box lines with exact padding
+    const header = '🔐 API Key for Web Mode Authentication'.padEnd(BOX_CONTENT_WIDTH);
+    const line1 = "When accessing via browser, you'll be prompted to enter this key:".padEnd(
+      BOX_CONTENT_WIDTH
+    );
+    const line2 = API_KEY.padEnd(BOX_CONTENT_WIDTH);
+    const line3 = 'In Electron mode, authentication is handled automatically.'.padEnd(
+      BOX_CONTENT_WIDTH
+    );
+    const line4 = `Auto-login (AUTOMAKER_AUTO_LOGIN): ${autoLoginStatus}`.padEnd(BOX_CONTENT_WIDTH);
+    const tipHeader = '💡 Tips'.padEnd(BOX_CONTENT_WIDTH);
+    const line5 = 'Set AUTOMAKER_API_KEY env var to use a fixed key'.padEnd(BOX_CONTENT_WIDTH);
+    const line6 = 'Set AUTOMAKER_AUTO_LOGIN=true to skip the login prompt'.padEnd(
+      BOX_CONTENT_WIDTH
+    );
+
+    logger.info(`
 ╔═════════════════════════════════════════════════════════════════════╗
 ║  ${header}║
 ╠═════════════════════════════════════════════════════════════════════╣
@@ -179,8 +193,9 @@ if (!isEnvTrue(process.env.AUTOMAKER_HIDE_API_KEY)) {
 ║  ${line6}║
 ╚═════════════════════════════════════════════════════════════════════╝
 `);
-} else {
-  logger.info('API key banner hidden (AUTOMAKER_HIDE_API_KEY=true)');
+  } else {
+    logger.info('API key banner hidden (AUTOMAKER_HIDE_API_KEY=true)');
+  }
 }
 
 /**

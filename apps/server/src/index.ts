@@ -6,6 +6,10 @@
  * In web mode, this server runs on a remote host.
  */
 
+// IMPORTANT: Load environment variables FIRST using dotenv/config
+// This runs synchronously before ESM module resolution
+import 'dotenv/config';
+
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
@@ -13,7 +17,6 @@ import cookieParser from 'cookie-parser';
 import cookie from 'cookie';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
-import dotenv from 'dotenv';
 
 import { createEventEmitter, type EventEmitter } from './lib/events.js';
 import { initAllowedPaths } from '@automaker/platform';
@@ -30,7 +33,12 @@ const LOG_LEVEL_MAP: Record<string, LogLevel> = {
   info: LogLevel.INFO,
   debug: LogLevel.DEBUG,
 };
-import { authMiddleware, validateWsConnectionToken, checkRawAuthentication } from './lib/auth.js';
+import {
+  authMiddleware,
+  validateWsConnectionToken,
+  checkRawAuthentication,
+  logAuthInfo,
+} from './lib/auth.js';
 import { requireJsonContentType } from './middleware/require-json-content-type.js';
 import { createAuthRoutes } from './routes/auth/index.js';
 import { createFsRoutes } from './routes/fs/index.js';
@@ -88,8 +96,8 @@ import { createCustomAgentsRoutes } from './routes/custom-agents/index.js';
 import { createSystemsRoutes } from './routes/systems/index.js';
 import { createKnowledgeRoutes } from './routes/knowledge/index.js';
 
-// Load environment variables
-dotenv.config();
+// Log auth info now that dotenv has loaded env vars
+logAuthInfo();
 
 // Automaker runs Claude CLI in subprocesses (via SDK + usage endpoint).
 // Disable hook TTS by default so Automaker doesn't trigger voice announcements.

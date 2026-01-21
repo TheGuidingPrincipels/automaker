@@ -264,6 +264,20 @@ Use the **SYSTEMS feature** as the canonical reference:
 - `AUTOMAKER_AUTO_LOGIN=true` - Skip login prompt in development (disabled when NODE_ENV=production)
 - `VITE_HOSTNAME` - Hostname for frontend API URLs (default: localhost)
 
+## Documentation
+
+### Possible Improvements
+
+Technical debt, refactoring opportunities, and potential enhancements are tracked in:
+
+```
+docs/possible-improvements/
+├── README.md                      # Index of all items
+└── 001-rollup-circular-deps.md    # Rollup warning analysis
+```
+
+Add new items here when you discover something that could be improved but isn't urgent. This helps track decisions and provides context for future work.
+
 ---
 
 ## Fork Workflow (CRITICAL)
