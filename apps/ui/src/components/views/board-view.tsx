@@ -55,8 +55,6 @@ import {
   FollowUpDialog,
   PlanApprovalDialog,
   PullResolveConflictsDialog,
-  ExportFeaturesDialog,
-  ImportFeaturesDialog,
 } from './board-view/dialogs';
 import type { DependencyLinkType } from './board-view/dialogs';
 import { PipelineSettingsDialog } from './board-view/dialogs/pipeline-settings-dialog';
@@ -235,11 +233,6 @@ export function BoardView() {
     exitSelectionMode,
   } = useSelectionMode();
   const [showMassEditDialog, setShowMassEditDialog] = useState(false);
-
-  // Export/Import dialog states
-  const [showExportDialog, setShowExportDialog] = useState(false);
-  const [showImportDialog, setShowImportDialog] = useState(false);
-  const [exportFeatureIds, setExportFeatureIds] = useState<string[] | undefined>(undefined);
 
   // View mode state (kanban vs list)
   const { viewMode, setViewMode, isListView, sortConfig, setSortColumn } = useListViewState();
@@ -1316,11 +1309,6 @@ export function BoardView() {
         isCreatingSpec={isCreatingSpec}
         creatingSpecProjectPath={creatingSpecProjectPath}
         onShowBoardBackground={() => setShowBoardBackgroundModal(true)}
-        onExportFeatures={() => {
-          setExportFeatureIds(undefined); // Export all features
-          setShowExportDialog(true);
-        }}
-        onImportFeatures={() => setShowImportDialog(true)}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
       />
@@ -1795,26 +1783,6 @@ export function BoardView() {
         onCreated={() => {
           setWorktreeRefreshKey((k) => k + 1);
           setSelectedWorktreeForAction(null);
-        }}
-      />
-
-      {/* Export Features Dialog */}
-      <ExportFeaturesDialog
-        open={showExportDialog}
-        onOpenChange={setShowExportDialog}
-        projectPath={currentProject.path}
-        features={hookFeatures}
-        selectedFeatureIds={exportFeatureIds}
-      />
-
-      {/* Import Features Dialog */}
-      <ImportFeaturesDialog
-        open={showImportDialog}
-        onOpenChange={setShowImportDialog}
-        projectPath={currentProject.path}
-        categorySuggestions={persistedCategories}
-        onImportComplete={() => {
-          loadFeatures();
         }}
       />
 

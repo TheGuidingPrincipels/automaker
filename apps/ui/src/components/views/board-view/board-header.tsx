@@ -35,8 +35,6 @@ interface BoardHeaderProps {
   creatingSpecProjectPath?: string;
   // Board controls props
   onShowBoardBackground: () => void;
-  onExportFeatures?: () => void;
-  onImportFeatures?: () => void;
   // View toggle props
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
@@ -62,8 +60,6 @@ export function BoardHeader({
   isCreatingSpec,
   creatingSpecProjectPath,
   onShowBoardBackground,
-  onExportFeatures,
-  onImportFeatures,
   viewMode,
   onViewModeChange,
 }: BoardHeaderProps) {
@@ -128,12 +124,7 @@ export function BoardHeader({
           currentProjectPath={projectPath}
         />
         {isMounted && <ViewToggle viewMode={viewMode} onViewModeChange={onViewModeChange} />}
-        <BoardControls
-          isMounted={isMounted}
-          onShowBoardBackground={onShowBoardBackground}
-          onExportFeatures={onExportFeatures}
-          onImportFeatures={onImportFeatures}
-        />
+        <BoardControls isMounted={isMounted} onShowBoardBackground={onShowBoardBackground} />
       </div>
       <div className="flex gap-4 items-center">
         {/* Usage Popover - show if either provider is authenticated, only on desktop */}
