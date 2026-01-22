@@ -46,6 +46,7 @@ export function createDeleteApiKeyHandler() {
       // Map provider to env key name
       const envKeyMap: Record<string, string> = {
         anthropic: 'ANTHROPIC_API_KEY',
+        anthropic_oauth_token: 'ANTHROPIC_AUTH_TOKEN',
         openai: 'OPENAI_API_KEY',
       };
 

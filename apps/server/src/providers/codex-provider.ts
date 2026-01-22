@@ -48,6 +48,7 @@ import {
 } from './codex-tool-mapping.js';
 import { SettingsService } from '../services/settings-service.js';
 import { createTempEnvOverride } from '../lib/auth-utils.js';
+import { isApiKeyAuthDisabledSync } from '../lib/auth-config.js';
 import { checkSandboxCompatibility } from '../lib/sdk-options.js';
 import { CODEX_MODELS } from './codex-models.js';
 
@@ -178,6 +179,11 @@ function buildEnv(): Record<string, string> {
 }
 
 async function resolveOpenAiApiKey(): Promise<string | null> {
+  // In OAuth-only mode, skip API key resolution entirely
+  if (isApiKeyAuthDisabledSync()) {
+    return null;
+  }
+
   const envKey = process.env[OPENAI_API_KEY_ENV];
   if (envKey) {
     return envKey;
@@ -210,9 +216,29 @@ async function resolveCodexExecutionPlan(options: ExecuteOptions): Promise<Codex
   const authIndicators = await getCodexAuthIndicators();
   const openAiApiKey = await resolveOpenAiApiKey();
   const hasApiKey = Boolean(openAiApiKey);
+  const apiKeyAuthDisabled = isApiKeyAuthDisabledSync();
   const cliAuthenticated = authIndicators.hasOAuthToken || authIndicators.hasApiKey || hasApiKey;
   const sdkEligible = isSdkEligible(options);
   const cliAvailable = Boolean(cliPath);
+
+  // In OAuth-only mode, require CLI authentication
+  if (apiKeyAuthDisabled) {
+    if (!cliAvailable) {
+      throw new Error(
+        "Codex CLI is required for OAuth-only mode. Please install Codex CLI and run 'codex login'."
+      );
+    }
+    if (!authIndicators.hasOAuthToken) {
+      throw new Error(
+        "Codex CLI authentication required in OAuth-only mode. Please run 'codex login'."
+      );
+    }
+    return {
+      mode: CODEX_EXECUTION_MODE_CLI,
+      cliPath,
+      openAiApiKey: null,
+    };
+  }
 
   if (hasApiKey) {
     return {

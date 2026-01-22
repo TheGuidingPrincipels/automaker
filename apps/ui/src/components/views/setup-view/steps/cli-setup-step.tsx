@@ -30,6 +30,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { toast } from 'sonner';
 import { StatusBadge, TerminalOutput } from '../components';
 import { useCliStatus, useCliInstallation, useTokenSave } from '../hooks';
+import { useAuthConfig } from '@/hooks';
 import type { ApiKeys } from '@/store/app-store';
 import type { ModelProvider } from '@/store/app-store';
 import type { ProviderKey } from '@/config/api-providers';
@@ -108,6 +109,7 @@ export function CliSetupStep({ config, state, onNext, onBack, onSkip }: CliSetup
   const { apiKeys, setApiKeys } = useAppStore();
   const { cliStatus, authStatus, setCliStatus, setAuthStatus, setInstallProgress, getStoreState } =
     state;
+  const { apiKeyAuthDisabled } = useAuthConfig();
 
   const [apiKey, setApiKey] = useState('');
 
@@ -624,163 +626,170 @@ export function CliSetupStep({ config, state, onNext, onBack, onSkip }: CliSetup
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="api-key" className="border-border">
-              <AccordionTrigger className="hover:no-underline">
-                <div className="flex items-center justify-between w-full pr-4">
-                  <div className="flex items-center gap-3">
-                    <Key
-                      className={`w-5 h-5 ${
-                        apiKeyVerificationStatus === 'verified'
-                          ? 'text-green-500'
-                          : 'text-muted-foreground'
-                      }`}
-                    />
-                    <div className="text-left">
-                      <p className="font-medium text-foreground">{config.apiKeyLabel}</p>
-                      <p className="text-sm text-muted-foreground">{config.apiKeyDescription}</p>
+            {/* API Key option - hidden in OAuth-only mode */}
+            {!apiKeyAuthDisabled && (
+              <AccordionItem value="api-key" className="border-border">
+                <AccordionTrigger className="hover:no-underline">
+                  <div className="flex items-center justify-between w-full pr-4">
+                    <div className="flex items-center gap-3">
+                      <Key
+                        className={`w-5 h-5 ${
+                          apiKeyVerificationStatus === 'verified'
+                            ? 'text-green-500'
+                            : 'text-muted-foreground'
+                        }`}
+                      />
+                      <div className="text-left">
+                        <p className="font-medium text-foreground">{config.apiKeyLabel}</p>
+                        <p className="text-sm text-muted-foreground">{config.apiKeyDescription}</p>
+                      </div>
                     </div>
+                    {getApiKeyStatusBadge()}
                   </div>
-                  {getApiKeyStatusBadge()}
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="pt-4 space-y-4">
-                <div className="space-y-4 p-4 rounded-lg bg-muted/30 border border-border">
-                  <div className="space-y-2">
-                    <Label htmlFor={config.testIds.apiKeyInput} className="text-foreground">
-                      {config.apiKeyLabel}
-                    </Label>
-                    <Input
-                      id={config.testIds.apiKeyInput}
-                      type="password"
-                      placeholder={config.apiKeyPlaceholder}
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      className="bg-input border-border text-foreground"
-                      data-testid={config.testIds.apiKeyInput}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      {config.apiKeyHelpText}{' '}
-                      <a
-                        href={config.apiKeyDocsUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-brand-500 hover:underline"
-                      >
-                        {config.apiKeyDocsLabel}
-                        <ExternalLink className="w-3 h-3 inline ml-1" />
-                      </a>
-                    </p>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={() => saveApiKeyToken(apiKey)}
-                      disabled={isSavingApiKey || !apiKey.trim()}
-                      className="flex-1 bg-brand-500 hover:bg-brand-600 text-white"
-                      data-testid={config.testIds.saveApiKeyButton}
-                    >
-                      {isSavingApiKey ? (
-                        <>
-                          <Spinner size="sm" className="mr-2" />
-                          Saving...
-                        </>
-                      ) : (
-                        'Save API Key'
-                      )}
-                    </Button>
-                    {hasApiKey && (
-                      <Button
-                        onClick={deleteApiKey}
-                        disabled={isDeletingApiKey}
-                        variant="outline"
-                        className="border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-400"
-                        data-testid={config.testIds.deleteApiKeyButton}
-                      >
-                        {isDeletingApiKey ? <Spinner size="sm" /> : <Trash2 className="w-4 h-4" />}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
-                {apiKeyVerificationStatus === 'verifying' && (
-                  <div className="flex items-center gap-3 p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
-                    <Spinner size="md" />
-                    <div>
-                      <p className="font-medium text-foreground">Verifying API key...</p>
-                      <p className="text-sm text-muted-foreground">Running a test query</p>
-                    </div>
-                  </div>
-                )}
-
-                {apiKeyVerificationStatus === 'verified' && (
-                  <div className="flex items-center gap-3 p-4 rounded-lg bg-green-500/10 border border-green-500/20">
-                    <CheckCircle2 className="w-5 h-5 text-green-500" />
-                    <div>
-                      <p className="font-medium text-foreground">API Key verified!</p>
-                      <p className="text-sm text-muted-foreground">
-                        Your API key is working correctly.
+                </AccordionTrigger>
+                <AccordionContent className="pt-4 space-y-4">
+                  <div className="space-y-4 p-4 rounded-lg bg-muted/30 border border-border">
+                    <div className="space-y-2">
+                      <Label htmlFor={config.testIds.apiKeyInput} className="text-foreground">
+                        {config.apiKeyLabel}
+                      </Label>
+                      <Input
+                        id={config.testIds.apiKeyInput}
+                        type="password"
+                        placeholder={config.apiKeyPlaceholder}
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        className="bg-input border-border text-foreground"
+                        data-testid={config.testIds.apiKeyInput}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {config.apiKeyHelpText}{' '}
+                        <a
+                          href={config.apiKeyDocsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-brand-500 hover:underline"
+                        >
+                          {config.apiKeyDocsLabel}
+                          <ExternalLink className="w-3 h-3 inline ml-1" />
+                        </a>
                       </p>
                     </div>
-                  </div>
-                )}
 
-                {apiKeyVerificationStatus === 'error' && apiKeyVerificationError && (
-                  <div className="flex items-start gap-3 p-4 rounded-lg bg-red-500/10 border border-red-500/20">
-                    <XCircle className="w-5 h-5 text-red-500 shrink-0" />
-                    <div className="flex-1 space-y-2">
-                      <p className="font-medium text-foreground">Verification failed</p>
-                      {(() => {
-                        const parts = apiKeyVerificationError.split('\n\nDetails: ');
-                        const mainError = parts[0];
-                        const details = parts[1];
-
-                        return (
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => saveApiKeyToken(apiKey)}
+                        disabled={isSavingApiKey || !apiKey.trim()}
+                        className="flex-1 bg-brand-500 hover:bg-brand-600 text-white"
+                        data-testid={config.testIds.saveApiKeyButton}
+                      >
+                        {isSavingApiKey ? (
                           <>
-                            <p className="text-sm text-red-400">{mainError}</p>
-                            {details && (
-                              <div className="mt-2 p-3 rounded bg-black/20 border border-red-500/20">
-                                <p className="text-xs font-medium text-muted-foreground mb-1">
-                                  Technical details:
-                                </p>
-                                <pre className="text-xs text-red-300 whitespace-pre-wrap font-mono">
-                                  {details}
-                                </pre>
-                              </div>
-                            )}
+                            <Spinner size="sm" className="mr-2" />
+                            Saving...
                           </>
-                        );
-                      })()}
+                        ) : (
+                          'Save API Key'
+                        )}
+                      </Button>
+                      {hasApiKey && (
+                        <Button
+                          onClick={deleteApiKey}
+                          disabled={isDeletingApiKey}
+                          variant="outline"
+                          className="border-red-500/50 text-red-500 hover:bg-red-500/10 hover:text-red-400"
+                          data-testid={config.testIds.deleteApiKeyButton}
+                        >
+                          {isDeletingApiKey ? (
+                            <Spinner size="sm" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                        </Button>
+                      )}
                     </div>
                   </div>
-                )}
 
-                {apiKeyVerificationStatus !== 'verified' && (
-                  <Button
-                    onClick={verifyApiKeyAuth}
-                    disabled={apiKeyVerificationStatus === 'verifying' || !hasApiKey}
-                    className="w-full bg-brand-500 hover:bg-brand-600 text-white"
-                    data-testid={config.testIds.verifyApiKeyButton}
-                  >
-                    {apiKeyVerificationStatus === 'verifying' ? (
-                      <>
-                        <Spinner size="sm" className="mr-2" />
-                        Verifying...
-                      </>
-                    ) : apiKeyVerificationStatus === 'error' ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 mr-2" />
-                        Retry Verification
-                      </>
-                    ) : (
-                      <>
-                        <ShieldCheck className="w-4 h-4 mr-2" />
-                        Verify API Key
-                      </>
-                    )}
-                  </Button>
-                )}
-              </AccordionContent>
-            </AccordionItem>
+                  {apiKeyVerificationStatus === 'verifying' && (
+                    <div className="flex items-center gap-3 p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                      <Spinner size="md" />
+                      <div>
+                        <p className="font-medium text-foreground">Verifying API key...</p>
+                        <p className="text-sm text-muted-foreground">Running a test query</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {apiKeyVerificationStatus === 'verified' && (
+                    <div className="flex items-center gap-3 p-4 rounded-lg bg-green-500/10 border border-green-500/20">
+                      <CheckCircle2 className="w-5 h-5 text-green-500" />
+                      <div>
+                        <p className="font-medium text-foreground">API Key verified!</p>
+                        <p className="text-sm text-muted-foreground">
+                          Your API key is working correctly.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {apiKeyVerificationStatus === 'error' && apiKeyVerificationError && (
+                    <div className="flex items-start gap-3 p-4 rounded-lg bg-red-500/10 border border-red-500/20">
+                      <XCircle className="w-5 h-5 text-red-500 shrink-0" />
+                      <div className="flex-1 space-y-2">
+                        <p className="font-medium text-foreground">Verification failed</p>
+                        {(() => {
+                          const parts = apiKeyVerificationError.split('\n\nDetails: ');
+                          const mainError = parts[0];
+                          const details = parts[1];
+
+                          return (
+                            <>
+                              <p className="text-sm text-red-400">{mainError}</p>
+                              {details && (
+                                <div className="mt-2 p-3 rounded bg-black/20 border border-red-500/20">
+                                  <p className="text-xs font-medium text-muted-foreground mb-1">
+                                    Technical details:
+                                  </p>
+                                  <pre className="text-xs text-red-300 whitespace-pre-wrap font-mono">
+                                    {details}
+                                  </pre>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  )}
+
+                  {apiKeyVerificationStatus !== 'verified' && (
+                    <Button
+                      onClick={verifyApiKeyAuth}
+                      disabled={apiKeyVerificationStatus === 'verifying' || !hasApiKey}
+                      className="w-full bg-brand-500 hover:bg-brand-600 text-white"
+                      data-testid={config.testIds.verifyApiKeyButton}
+                    >
+                      {apiKeyVerificationStatus === 'verifying' ? (
+                        <>
+                          <Spinner size="sm" className="mr-2" />
+                          Verifying...
+                        </>
+                      ) : apiKeyVerificationStatus === 'error' ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 mr-2" />
+                          Retry Verification
+                        </>
+                      ) : (
+                        <>
+                          <ShieldCheck className="w-4 h-4 mr-2" />
+                          Verify API Key
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </AccordionContent>
+              </AccordionItem>
+            )}
           </Accordion>
         </CardContent>
       </Card>

@@ -40,6 +40,7 @@ import {
   createDeleteProjectPermissionsHandler,
   createGetExampleConfigHandler,
 } from './routes/cursor-config.js';
+import { createGetAuthModeHandler, createSetAuthModeHandler } from './routes/auth-mode.js';
 
 export function createSetupRoutes(): Router {
   const router = Router();
@@ -51,6 +52,8 @@ export function createSetupRoutes(): Router {
   router.post('/store-api-key', createStoreApiKeyHandler());
   router.post('/delete-api-key', createDeleteApiKeyHandler());
   router.get('/api-keys', createApiKeysHandler());
+  router.get('/auth-mode', createGetAuthModeHandler());
+  router.post('/auth-mode', createSetAuthModeHandler());
   router.get('/platform', createPlatformHandler());
   router.post('/verify-claude-auth', createVerifyClaudeAuthHandler());
   router.post('/verify-codex-auth', createVerifyCodexAuthHandler());

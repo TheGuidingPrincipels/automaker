@@ -6,6 +6,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { getClaudeCliPaths, getClaudeAuthIndicators, systemPathAccess } from '@automaker/platform';
 import { getApiKey } from './common.js';
+import { isApiKeyAuthDisabledSync } from '../../lib/auth-config.js';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -99,22 +100,27 @@ export async function getClaudeStatus() {
     };
   }
 
+  // Check if API key auth is disabled (OAuth-only mode)
+  const apiKeyAuthDisabled = isApiKeyAuthDisabledSync();
+
   // Check authentication - detect all possible auth methods
   // Note: apiKeys.anthropic_oauth_token stores OAuth tokens from subscription auth
   //       apiKeys.anthropic stores direct API keys for pay-per-use
+  // In OAuth-only mode, ignore stored API keys
   const auth = {
     authenticated: false,
     method: 'none' as string,
     hasCredentialsFile: false,
     hasToken: false,
     hasStoredOAuthToken: !!getApiKey('anthropic_oauth_token'),
-    hasStoredApiKey: !!getApiKey('anthropic'),
-    hasEnvApiKey: !!process.env.ANTHROPIC_API_KEY,
+    hasStoredApiKey: apiKeyAuthDisabled ? false : !!getApiKey('anthropic'),
+    hasEnvApiKey: apiKeyAuthDisabled ? false : !!process.env.ANTHROPIC_API_KEY,
     // Additional fields for detailed status
     oauthTokenValid: false,
     apiKeyValid: false,
     hasCliAuth: false,
     hasRecentActivity: false,
+    apiKeyAuthDisabled,
   };
 
   // Use centralized system paths to check Claude authentication indicators
@@ -151,7 +157,8 @@ export async function getClaudeStatus() {
   }
 
   // Environment variables override stored credentials (higher priority)
-  if (auth.hasEnvApiKey) {
+  // In OAuth-only mode, skip API key checks
+  if (!apiKeyAuthDisabled && auth.hasEnvApiKey) {
     auth.authenticated = true;
     auth.apiKeyValid = true;
     auth.method = 'api_key_env';
@@ -165,7 +172,8 @@ export async function getClaudeStatus() {
   }
 
   // In-memory stored API key (from settings UI - pay-per-use)
-  if (!auth.authenticated && getApiKey('anthropic')) {
+  // In OAuth-only mode, skip API key checks
+  if (!apiKeyAuthDisabled && !auth.authenticated && getApiKey('anthropic')) {
     auth.authenticated = true;
     auth.apiKeyValid = true;
     auth.method = 'api_key';
@@ -178,5 +186,6 @@ export async function getClaudeStatus() {
     version,
     path: cliPath,
     auth,
+    apiKeyAuthDisabled,
   };
 }

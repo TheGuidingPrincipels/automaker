@@ -34,6 +34,7 @@ import { cn } from '@/lib/utils';
 import { AnthropicIcon, CursorIcon, OpenAIIcon, OpenCodeIcon } from '@/components/ui/provider-icon';
 import { TerminalOutput } from '../components';
 import { useCliInstallation, useTokenSave } from '../hooks';
+import { useAuthConfig } from '@/hooks';
 
 interface ProvidersSetupStepProps {
   onNext: () => void;
@@ -55,6 +56,7 @@ function ClaudeContent() {
     setClaudeIsVerifying,
   } = useSetupStore();
   const { setApiKeys, apiKeys } = useAppStore();
+  const { apiKeyAuthDisabled } = useAuthConfig();
 
   const [apiKey, setApiKey] = useState('');
   const [isChecking, setIsChecking] = useState(false);
@@ -376,67 +378,69 @@ function ClaudeContent() {
                 </div>
               </div>
 
-              {/* API Key alternative */}
-              <Accordion type="single" collapsible className="w-full">
-                <AccordionItem value="api-key" className="border-border">
-                  <AccordionTrigger className="hover:no-underline">
-                    <div className="flex items-center gap-3">
-                      <Key className="w-5 h-5 text-muted-foreground" />
-                      <span className="font-medium">Use Anthropic API Key instead</span>
-                    </div>
-                  </AccordionTrigger>
-                  <AccordionContent className="pt-4 space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="anthropic-key" className="text-foreground">
-                        Anthropic API Key
-                      </Label>
-                      <Input
-                        id="anthropic-key"
-                        type="password"
-                        placeholder="sk-ant-..."
-                        value={apiKey}
-                        onChange={(e) => setApiKey(e.target.value)}
-                        className="bg-input border-border text-foreground"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Don&apos;t have an API key?{' '}
-                        <a
-                          href="https://console.anthropic.com/settings/keys"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-brand-500 hover:underline"
-                        >
-                          Get one from Anthropic Console
-                          <ExternalLink className="w-3 h-3 inline ml-1" />
-                        </a>
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={() => saveApiKeyToken(apiKey)}
-                        disabled={isSavingApiKey || !apiKey.trim()}
-                        className="flex-1 bg-brand-500 hover:bg-brand-600 text-white"
-                      >
-                        {isSavingApiKey ? <Spinner size="sm" /> : 'Save API Key'}
-                      </Button>
-                      {hasApiKey && (
+              {/* API Key alternative - hidden in OAuth-only mode */}
+              {!apiKeyAuthDisabled && (
+                <Accordion type="single" collapsible className="w-full">
+                  <AccordionItem value="api-key" className="border-border">
+                    <AccordionTrigger className="hover:no-underline">
+                      <div className="flex items-center gap-3">
+                        <Key className="w-5 h-5 text-muted-foreground" />
+                        <span className="font-medium">Use Anthropic API Key instead</span>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="pt-4 space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="anthropic-key" className="text-foreground">
+                          Anthropic API Key
+                        </Label>
+                        <Input
+                          id="anthropic-key"
+                          type="password"
+                          placeholder="sk-ant-..."
+                          value={apiKey}
+                          onChange={(e) => setApiKey(e.target.value)}
+                          className="bg-input border-border text-foreground"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Don&apos;t have an API key?{' '}
+                          <a
+                            href="https://console.anthropic.com/settings/keys"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-brand-500 hover:underline"
+                          >
+                            Get one from Anthropic Console
+                            <ExternalLink className="w-3 h-3 inline ml-1" />
+                          </a>
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
                         <Button
-                          onClick={deleteApiKey}
-                          disabled={isDeletingApiKey}
-                          variant="outline"
-                          className="border-red-500/50 text-red-500 hover:bg-red-500/10"
+                          onClick={() => saveApiKeyToken(apiKey)}
+                          disabled={isSavingApiKey || !apiKey.trim()}
+                          className="flex-1 bg-brand-500 hover:bg-brand-600 text-white"
                         >
-                          {isDeletingApiKey ? (
-                            <Spinner size="sm" />
-                          ) : (
-                            <Trash2 className="w-4 h-4" />
-                          )}
+                          {isSavingApiKey ? <Spinner size="sm" /> : 'Save API Key'}
                         </Button>
-                      )}
-                    </div>
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
+                        {hasApiKey && (
+                          <Button
+                            onClick={deleteApiKey}
+                            disabled={isDeletingApiKey}
+                            variant="outline"
+                            className="border-red-500/50 text-red-500 hover:bg-red-500/10"
+                          >
+                            {isDeletingApiKey ? (
+                              <Spinner size="sm" />
+                            ) : (
+                              <Trash2 className="w-4 h-4" />
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+              )}
             </div>
           )}
       </CardContent>
@@ -683,6 +687,7 @@ function CodexContent() {
   const { codexCliStatus, codexAuthStatus, setCodexCliStatus, setCodexAuthStatus } =
     useSetupStore();
   const { setApiKeys, apiKeys } = useAppStore();
+  const { apiKeyAuthDisabled } = useAuthConfig();
   const [isChecking, setIsChecking] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -921,43 +926,46 @@ function CodexContent() {
                 </AccordionContent>
               </AccordionItem>
 
-              <AccordionItem value="api-key" className="border-border">
-                <AccordionTrigger className="hover:no-underline">
-                  <div className="flex items-center gap-3">
-                    <Key className="w-5 h-5 text-muted-foreground" />
-                    <span className="font-medium">OpenAI API Key</span>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent className="pt-4 space-y-4">
-                  <div className="space-y-2">
-                    <Input
-                      type="password"
-                      placeholder="sk-..."
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      className="bg-input border-border text-foreground"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      <a
-                        href="https://platform.openai.com/api-keys"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-brand-500 hover:underline"
-                      >
-                        Get an API key from OpenAI
-                        <ExternalLink className="w-3 h-3 inline ml-1" />
-                      </a>
-                    </p>
-                  </div>
-                  <Button
-                    onClick={handleSaveApiKey}
-                    disabled={isSaving || !apiKey.trim()}
-                    className="w-full bg-brand-500 hover:bg-brand-600 text-white"
-                  >
-                    {isSaving ? <Spinner size="sm" /> : 'Save API Key'}
-                  </Button>
-                </AccordionContent>
-              </AccordionItem>
+              {/* API Key option - hidden in OAuth-only mode */}
+              {!apiKeyAuthDisabled && (
+                <AccordionItem value="api-key" className="border-border">
+                  <AccordionTrigger className="hover:no-underline">
+                    <div className="flex items-center gap-3">
+                      <Key className="w-5 h-5 text-muted-foreground" />
+                      <span className="font-medium">OpenAI API Key</span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="pt-4 space-y-4">
+                    <div className="space-y-2">
+                      <Input
+                        type="password"
+                        placeholder="sk-..."
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        className="bg-input border-border text-foreground"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        <a
+                          href="https://platform.openai.com/api-keys"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-brand-500 hover:underline"
+                        >
+                          Get an API key from OpenAI
+                          <ExternalLink className="w-3 h-3 inline ml-1" />
+                        </a>
+                      </p>
+                    </div>
+                    <Button
+                      onClick={handleSaveApiKey}
+                      disabled={isSaving || !apiKey.trim()}
+                      className="w-full bg-brand-500 hover:bg-brand-600 text-white"
+                    >
+                      {isSaving ? <Spinner size="sm" /> : 'Save API Key'}
+                    </Button>
+                  </AccordionContent>
+                </AccordionItem>
+              )}
             </Accordion>
           </div>
         )}

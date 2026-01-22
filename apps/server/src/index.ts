@@ -10,6 +10,11 @@
 // This runs synchronously before ESM module resolution
 import 'dotenv/config';
 
+// CRITICAL: Initialize auth mode BEFORE any other imports that might use credentials
+// This clears ANTHROPIC_API_KEY from process.env if we're in auth_token mode
+import { initializeAuthMode } from './lib/auth-config.js';
+initializeAuthMode();
+
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
@@ -132,11 +137,43 @@ export function isRequestLoggingEnabled(): boolean {
 // Width for log box content (excluding borders)
 const BOX_CONTENT_WIDTH = 67;
 
-// Check for required environment variables
-const hasAnthropicKey = !!process.env.ANTHROPIC_API_KEY;
+// Check for Claude authentication
+// Note: In auth_token mode, ANTHROPIC_API_KEY is intentionally cleared by initializeAuthMode()
+import { getAuthModeSync } from './lib/auth-config.js';
 
-if (!hasAnthropicKey) {
-  const wHeader = '⚠️  WARNING: No Claude authentication configured'.padEnd(BOX_CONTENT_WIDTH);
+const authMode = getAuthModeSync();
+const hasAnthropicKey = !!process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== '';
+const hasAuthToken = !!process.env.ANTHROPIC_AUTH_TOKEN || !!process.env.CLAUDE_CODE_OAUTH_TOKEN;
+
+if (authMode === 'auth_token') {
+  // In auth_token mode, API key is intentionally disabled
+  if (hasAuthToken) {
+    logger.info('✓ Auth Token mode active - using CLI OAuth authentication');
+  } else {
+    const wHeader = 'ℹ️  Auth Token mode: CLI login required'.padEnd(BOX_CONTENT_WIDTH);
+    const w1 = 'Run "claude login" to authenticate with your Claude subscription.'.padEnd(
+      BOX_CONTENT_WIDTH
+    );
+    const w2 = 'Or switch to API Key mode by setting:'.padEnd(BOX_CONTENT_WIDTH);
+    const w3 = '  export AUTOMAKER_ANTHROPIC_AUTH_MODE=api_key'.padEnd(BOX_CONTENT_WIDTH);
+    const w4 = ''.padEnd(BOX_CONTENT_WIDTH);
+
+    logger.info(`
+╔═════════════════════════════════════════════════════════════════════╗
+║  ${wHeader}║
+╠═════════════════════════════════════════════════════════════════════╣
+║                                                                     ║
+║  ${w1}║
+║                                                                     ║
+║  ${w2}║
+║  ${w3}║
+║  ${w4}║
+╚═════════════════════════════════════════════════════════════════════╝
+`);
+  }
+} else if (!hasAnthropicKey) {
+  // In api_key mode without a key configured
+  const wHeader = '⚠️  WARNING: No Anthropic API key configured'.padEnd(BOX_CONTENT_WIDTH);
   const w1 = 'The Claude Agent SDK requires authentication to function.'.padEnd(BOX_CONTENT_WIDTH);
   const w2 = 'Set your Anthropic API key:'.padEnd(BOX_CONTENT_WIDTH);
   const w3 = '  export ANTHROPIC_API_KEY="sk-ant-..."'.padEnd(BOX_CONTENT_WIDTH);
@@ -159,7 +196,7 @@ if (!hasAnthropicKey) {
 ╚═════════════════════════════════════════════════════════════════════╝
 `);
 } else {
-  logger.info('✓ ANTHROPIC_API_KEY detected');
+  logger.info('✓ API Key mode active - using ANTHROPIC_API_KEY');
 }
 
 // Initialize security

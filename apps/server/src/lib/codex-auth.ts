@@ -8,6 +8,7 @@
 import { spawnProcess } from '@automaker/platform';
 import { findCodexCliPath } from '@automaker/platform';
 import { createLogger } from '@automaker/utils';
+import { isApiKeyAuthDisabledSync } from './auth-config.js';
 
 const logger = createLogger('CodexAuth');
 
@@ -29,7 +30,9 @@ export async function checkCodexAuthentication(
   cliPath?: string | null
 ): Promise<CodexAuthCheckResult> {
   const resolvedCliPath = cliPath || (await findCodexCliPath());
-  const hasApiKey = !!process.env[OPENAI_API_KEY_ENV];
+  // In OAuth-only mode, ignore API key in environment
+  const apiKeyAuthDisabled = isApiKeyAuthDisabledSync();
+  const hasApiKey = apiKeyAuthDisabled ? false : !!process.env[OPENAI_API_KEY_ENV];
 
   // If CLI is not installed, cannot be authenticated
   if (!resolvedCliPath) {

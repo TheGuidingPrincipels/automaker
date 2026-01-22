@@ -7,10 +7,12 @@ import { ApiKeyField } from './api-key-field';
 import { buildProviderConfigs } from '@/config/api-providers';
 import { SecurityNotice } from './security-notice';
 import { useApiKeyManagement } from './hooks/use-api-key-management';
+import { useAuthMode } from '@/hooks';
 import { cn } from '@/lib/utils';
 import { useState, useCallback } from 'react';
 import { getElectronAPI } from '@/lib/electron';
 import { toast } from 'sonner';
+import { AuthModeToggle } from './auth-mode-toggle';
 
 export function ApiKeysSection() {
   const { apiKeys, setApiKeys } = useAppStore();
@@ -18,6 +20,8 @@ export function ApiKeysSection() {
     useSetupStore();
   const [isDeletingAnthropicKey, setIsDeletingAnthropicKey] = useState(false);
   const [isDeletingOpenaiKey, setIsDeletingOpenaiKey] = useState(false);
+  const { authMode, isLoading: isLoadingAuthMode } = useAuthMode();
+  const isAuthTokenMode = authMode === 'auth_token';
 
   const { providerConfigParams, handleSave, saved } = useApiKeyManagement();
 
@@ -101,101 +105,110 @@ export function ApiKeysSection() {
         </p>
       </div>
       <div className="p-6 space-y-6">
-        {/* API Key Fields with contextual info */}
-        {providerConfigs.map((provider) => (
-          <div key={provider.key}>
-            <ApiKeyField config={provider} />
-            {/* Anthropic-specific provider info */}
-            {provider.key === 'anthropic' && (
-              <div className="mt-3 p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
-                <div className="flex gap-2">
-                  <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
-                  <div className="text-xs text-muted-foreground space-y-1">
-                    <p>
-                      <span className="font-medium text-foreground/80">
-                        Using Claude Compatible Providers?
-                      </span>{' '}
-                      Add a provider in <span className="text-blue-500">AI Providers → Claude</span>{' '}
-                      with{' '}
-                      <span className="font-mono text-[10px] bg-muted/50 px-1 rounded">
-                        credentials
-                      </span>{' '}
-                      as the API key source to use this key.
-                    </p>
-                    <p>
-                      For alternative providers (z.AI GLM, MiniMax, OpenRouter), add a provider with{' '}
-                      <span className="font-mono text-[10px] bg-muted/50 px-1 rounded">inline</span>{' '}
-                      key source and enter the provider's API key directly.
-                    </p>
+        {/* Auth Mode Toggle */}
+        <AuthModeToggle />
+
+        {/* API Key Fields with contextual info - hidden in Auth Token mode */}
+        {!isAuthTokenMode &&
+          providerConfigs.map((provider) => (
+            <div key={provider.key}>
+              <ApiKeyField config={provider} />
+              {/* Anthropic-specific provider info */}
+              {provider.key === 'anthropic' && (
+                <div className="mt-3 p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                  <div className="flex gap-2">
+                    <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      <p>
+                        <span className="font-medium text-foreground/80">
+                          Using Claude Compatible Providers?
+                        </span>{' '}
+                        Add a provider in{' '}
+                        <span className="text-blue-500">AI Providers → Claude</span> with{' '}
+                        <span className="font-mono text-[10px] bg-muted/50 px-1 rounded">
+                          credentials
+                        </span>{' '}
+                        as the API key source to use this key.
+                      </p>
+                      <p>
+                        For alternative providers (z.AI GLM, MiniMax, OpenRouter), add a provider
+                        with{' '}
+                        <span className="font-mono text-[10px] bg-muted/50 px-1 rounded">
+                          inline
+                        </span>{' '}
+                        key source and enter the provider's API key directly.
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
+            </div>
+          ))}
+
+        {/* Security Notice - only when API keys are enabled */}
+        {!isAuthTokenMode && <SecurityNotice />}
+
+        {/* Action Buttons - hidden in Auth Token mode */}
+        {!isAuthTokenMode && (
+          <div className="flex flex-wrap items-center gap-3 pt-2">
+            <Button
+              onClick={handleSave}
+              data-testid="save-settings"
+              className={cn(
+                'min-w-[140px] h-10',
+                'bg-gradient-to-r from-brand-500 to-brand-600',
+                'hover:from-brand-600 hover:to-brand-600',
+                'text-white font-medium border-0',
+                'shadow-md shadow-brand-500/20 hover:shadow-lg hover:shadow-brand-500/25',
+                'transition-all duration-200 ease-out',
+                'hover:scale-[1.02] active:scale-[0.98]'
+              )}
+            >
+              {saved ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4 mr-2" />
+                  Saved!
+                </>
+              ) : (
+                'Save API Keys'
+              )}
+            </Button>
+
+            {apiKeys.anthropic && (
+              <Button
+                onClick={deleteAnthropicKey}
+                disabled={isDeletingAnthropicKey}
+                variant="outline"
+                className="h-10 border-red-500/30 text-red-500 hover:bg-red-500/10 hover:border-red-500/50"
+                data-testid="delete-anthropic-key"
+              >
+                {isDeletingAnthropicKey ? (
+                  <Spinner size="sm" className="mr-2" />
+                ) : (
+                  <Trash2 className="w-4 h-4 mr-2" />
+                )}
+                Delete Anthropic Key
+              </Button>
+            )}
+
+            {apiKeys.openai && (
+              <Button
+                onClick={deleteOpenaiKey}
+                disabled={isDeletingOpenaiKey}
+                variant="outline"
+                className="h-10 border-red-500/30 text-red-500 hover:bg-red-500/10 hover:border-red-500/50"
+                data-testid="delete-openai-key"
+              >
+                {isDeletingOpenaiKey ? (
+                  <Spinner size="sm" className="mr-2" />
+                ) : (
+                  <Trash2 className="w-4 h-4 mr-2" />
+                )}
+                Delete OpenAI Key
+              </Button>
             )}
           </div>
-        ))}
-
-        {/* Security Notice */}
-        <SecurityNotice />
-
-        {/* Action Buttons */}
-        <div className="flex flex-wrap items-center gap-3 pt-2">
-          <Button
-            onClick={handleSave}
-            data-testid="save-settings"
-            className={cn(
-              'min-w-[140px] h-10',
-              'bg-gradient-to-r from-brand-500 to-brand-600',
-              'hover:from-brand-600 hover:to-brand-600',
-              'text-white font-medium border-0',
-              'shadow-md shadow-brand-500/20 hover:shadow-lg hover:shadow-brand-500/25',
-              'transition-all duration-200 ease-out',
-              'hover:scale-[1.02] active:scale-[0.98]'
-            )}
-          >
-            {saved ? (
-              <>
-                <CheckCircle2 className="w-4 h-4 mr-2" />
-                Saved!
-              </>
-            ) : (
-              'Save API Keys'
-            )}
-          </Button>
-
-          {apiKeys.anthropic && (
-            <Button
-              onClick={deleteAnthropicKey}
-              disabled={isDeletingAnthropicKey}
-              variant="outline"
-              className="h-10 border-red-500/30 text-red-500 hover:bg-red-500/10 hover:border-red-500/50"
-              data-testid="delete-anthropic-key"
-            >
-              {isDeletingAnthropicKey ? (
-                <Spinner size="sm" className="mr-2" />
-              ) : (
-                <Trash2 className="w-4 h-4 mr-2" />
-              )}
-              Delete Anthropic Key
-            </Button>
-          )}
-
-          {apiKeys.openai && (
-            <Button
-              onClick={deleteOpenaiKey}
-              disabled={isDeletingOpenaiKey}
-              variant="outline"
-              className="h-10 border-red-500/30 text-red-500 hover:bg-red-500/10 hover:border-red-500/50"
-              data-testid="delete-openai-key"
-            >
-              {isDeletingOpenaiKey ? (
-                <Spinner size="sm" className="mr-2" />
-              ) : (
-                <Trash2 className="w-4 h-4 mr-2" />
-              )}
-              Delete OpenAI Key
-            </Button>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );

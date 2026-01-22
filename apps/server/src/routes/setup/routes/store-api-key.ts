@@ -5,12 +5,23 @@
 import type { Request, Response } from 'express';
 import { setApiKey, persistApiKeyToEnv, getErrorMessage, logError } from '../common.js';
 import { createLogger } from '@automaker/utils';
+import { isApiKeyAuthDisabled } from '../../../lib/auth-config.js';
 
 const logger = createLogger('Setup');
 
 export function createStoreApiKeyHandler() {
   return async (req: Request, res: Response): Promise<void> => {
     try {
+      // Block API key storage in OAuth-only mode
+      if (await isApiKeyAuthDisabled()) {
+        res.status(403).json({
+          success: false,
+          error: 'API key storage is disabled in OAuth-only mode',
+          apiKeyAuthDisabled: true,
+        });
+        return;
+      }
+
       const { provider, apiKey } = req.body as {
         provider: string;
         apiKey: string;
@@ -23,7 +34,7 @@ export function createStoreApiKeyHandler() {
 
       const providerEnvMap: Record<string, string> = {
         anthropic: 'ANTHROPIC_API_KEY',
-        anthropic_oauth_token: 'ANTHROPIC_API_KEY',
+        anthropic_oauth_token: 'ANTHROPIC_AUTH_TOKEN',
         openai: 'OPENAI_API_KEY',
       };
       const envKey = providerEnvMap[provider];

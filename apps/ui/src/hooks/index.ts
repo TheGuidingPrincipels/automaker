@@ -1,3 +1,4 @@
+export { useAuthConfig, useAuthMode } from './use-auth-config';
 export { useAutoMode } from './use-auto-mode';
 export { useBoardBackgroundSettings } from './use-board-background-settings';
 export { useElectronAgent } from './use-electron-agent';

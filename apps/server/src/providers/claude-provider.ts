@@ -8,6 +8,8 @@
 import { query, type Options } from '@anthropic-ai/claude-agent-sdk';
 import { BaseProvider } from './base-provider.js';
 import { classifyError, getUserFriendlyErrorMessage, createLogger } from '@automaker/utils';
+import { getAuthModeSync } from '../lib/auth-config.js';
+import { getApiKey } from '../routes/setup/common.js';
 
 const logger = createLogger('ClaudeProvider');
 import {
@@ -38,6 +40,7 @@ const ALLOWED_ENV_VARS = [
   // Authentication
   'ANTHROPIC_API_KEY',
   'ANTHROPIC_AUTH_TOKEN',
+  'CLAUDE_CODE_OAUTH_TOKEN', // Legacy CLI OAuth token (mapped to ANTHROPIC_AUTH_TOKEN)
   // Endpoint configuration
   'ANTHROPIC_BASE_URL',
   'API_TIMEOUT_MS',
@@ -88,6 +91,12 @@ function buildEnv(
 ): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = {};
 
+  // Get auth mode (auth_token = subscription/OAuth, api_key = pay-per-use)
+  const authMode = getAuthModeSync();
+  const isAuthTokenMode = authMode === 'auth_token';
+
+  logger.debug('[buildEnv] Auth mode:', { authMode, isAuthTokenMode });
+
   if (providerConfig) {
     // Use provider configuration (clean switch - don't inherit non-system vars from process.env)
     logger.debug('[buildEnv] Using provider configuration:', {
@@ -95,34 +104,42 @@ function buildEnv(
       baseUrl: providerConfig.baseUrl,
       apiKeySource: providerConfig.apiKeySource ?? 'inline',
       isNewProvider: isClaudeCompatibleProvider(providerConfig),
+      authMode,
     });
 
-    // Resolve API key based on source strategy
-    let apiKey: string | undefined;
-    const source = providerConfig.apiKeySource ?? 'inline'; // Default to inline for backwards compat
-
-    switch (source) {
-      case 'inline':
-        apiKey = providerConfig.apiKey;
-        break;
-      case 'env':
-        apiKey = process.env.ANTHROPIC_API_KEY;
-        break;
-      case 'credentials':
-        apiKey = credentials?.apiKeys?.anthropic;
-        break;
-    }
-
-    // Warn if no API key found
-    if (!apiKey) {
-      logger.warn(`No API key found for provider "${providerConfig.name}" with source "${source}"`);
-    }
-
-    // Authentication
-    if (providerConfig.useAuthToken) {
-      env['ANTHROPIC_AUTH_TOKEN'] = apiKey;
+    // DEFENSE LAYER 2: In auth_token mode, explicitly clear API key
+    if (isAuthTokenMode) {
+      env['ANTHROPIC_API_KEY'] = '';
     } else {
-      env['ANTHROPIC_API_KEY'] = apiKey;
+      // Resolve API key based on source strategy (only in api_key mode)
+      let apiKey: string | undefined;
+      const source = providerConfig.apiKeySource ?? 'inline'; // Default to inline for backwards compat
+
+      switch (source) {
+        case 'inline':
+          apiKey = providerConfig.apiKey;
+          break;
+        case 'env':
+          apiKey = process.env.ANTHROPIC_API_KEY;
+          break;
+        case 'credentials':
+          apiKey = credentials?.apiKeys?.anthropic;
+          break;
+      }
+
+      // Warn if no API key found in api_key mode
+      if (!apiKey) {
+        logger.warn(
+          `No API key found for provider "${providerConfig.name}" with source "${source}"`
+        );
+      }
+
+      // Set authentication based on provider config
+      if (providerConfig.useAuthToken) {
+        env['ANTHROPIC_AUTH_TOKEN'] = apiKey;
+      } else {
+        env['ANTHROPIC_API_KEY'] = apiKey;
+      }
     }
 
     // Endpoint configuration
@@ -153,25 +170,62 @@ function buildEnv(
     }
   } else {
     // Use direct Anthropic API - pass through credentials or environment variables
-    // This supports:
-    // 1. API Key mode: ANTHROPIC_API_KEY from credentials (UI settings) or env
-    // 2. Claude Max plan: Uses CLI OAuth auth (SDK handles this automatically)
-    // 3. Custom endpoints via ANTHROPIC_BASE_URL env var (backward compatibility)
     //
-    // Priority: credentials file (UI settings) -> environment variable
-    // Note: Only auth and endpoint vars are passed. Model mappings and traffic
-    // control are NOT passed (those require a profile for explicit configuration).
-    if (credentials?.apiKeys?.anthropic) {
-      env['ANTHROPIC_API_KEY'] = credentials.apiKeys.anthropic;
-    } else if (process.env.ANTHROPIC_API_KEY) {
-      env['ANTHROPIC_API_KEY'] = process.env.ANTHROPIC_API_KEY;
-    }
-    // If using Claude Max plan via CLI auth, the SDK handles auth automatically
-    // when no API key is provided. We don't set ANTHROPIC_AUTH_TOKEN here
-    // unless it was explicitly set in process.env (rare edge case).
-    if (process.env.ANTHROPIC_AUTH_TOKEN) {
+    // AUTH TOKEN MODE (subscription):
+    // - Prioritize OAuth tokens
+    // - Throw error if no OAuth token available (don't fall back to API key)
+    //
+    // API KEY MODE (pay-per-use):
+    // - Use stored or env API key
+    //
+    // AUTHENTICATION METHODS (in priority order):
+    // 1. Stored OAuth token (from UI settings) → ANTHROPIC_AUTH_TOKEN
+    // 2. ANTHROPIC_AUTH_TOKEN env var → ANTHROPIC_AUTH_TOKEN (direct API auth)
+    // 3. CLAUDE_CODE_OAUTH_TOKEN env var → Pass through to SDK (CLI handles OAuth)
+    // 4. [api_key mode only] Stored API key (from credentials) → ANTHROPIC_API_KEY
+    // 5. [api_key mode only] ANTHROPIC_API_KEY env var → ANTHROPIC_API_KEY
+
+    // Check for OAuth/auth tokens first (both modes try OAuth first)
+    const storedAuthToken = getApiKey('anthropic_oauth_token');
+
+    if (storedAuthToken) {
+      // User explicitly stored an auth token via UI - use it for direct API auth
+      env['ANTHROPIC_AUTH_TOKEN'] = storedAuthToken;
+      env['ANTHROPIC_API_KEY'] = ''; // DEFENSE LAYER 2: Clear to prevent SDK from using wrong auth
+      logger.debug('[buildEnv] Using stored OAuth token as ANTHROPIC_AUTH_TOKEN');
+    } else if (process.env.ANTHROPIC_AUTH_TOKEN) {
+      // Direct API auth token from environment
       env['ANTHROPIC_AUTH_TOKEN'] = process.env.ANTHROPIC_AUTH_TOKEN;
+      env['ANTHROPIC_API_KEY'] = ''; // DEFENSE LAYER 2: Clear to prevent SDK from using wrong auth
+      logger.debug('[buildEnv] Using ANTHROPIC_AUTH_TOKEN from environment');
+    } else if (process.env.CLAUDE_CODE_OAUTH_TOKEN) {
+      // CLI OAuth token - pass through to SDK environment, CLI will handle OAuth flow
+      // DO NOT map to ANTHROPIC_AUTH_TOKEN - that's for direct API auth
+      env['CLAUDE_CODE_OAUTH_TOKEN'] = process.env.CLAUDE_CODE_OAUTH_TOKEN;
+      env['ANTHROPIC_API_KEY'] = ''; // DEFENSE LAYER 2: Clear to prevent SDK from using pay-per-use key
+      logger.debug('[buildEnv] Using CLAUDE_CODE_OAUTH_TOKEN (CLI will handle OAuth)');
+    } else if (isAuthTokenMode) {
+      // AUTH TOKEN MODE but no auth token found - throw error, don't fall back to API key
+      // CRITICAL: This prevents accidental API key usage in subscription mode
+      env['ANTHROPIC_API_KEY'] = ''; // DEFENSE LAYER 2: Explicitly clear
+      logger.warn('[buildEnv] Auth Token mode: No OAuth token found');
+
+      // Don't throw here - let the SDK handle the auth failure gracefully
+      // The SDK will provide a better error message about authentication
+      // Just make absolutely sure no API key is used
+    } else {
+      // API KEY MODE - use API key from credentials or environment
+      if (credentials?.apiKeys?.anthropic) {
+        env['ANTHROPIC_API_KEY'] = credentials.apiKeys.anthropic;
+        logger.debug('[buildEnv] API Key mode: Using API key from credentials');
+      } else if (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== '') {
+        env['ANTHROPIC_API_KEY'] = process.env.ANTHROPIC_API_KEY;
+        logger.debug('[buildEnv] API Key mode: Using API key from environment');
+      } else {
+        logger.warn('[buildEnv] API Key mode: No API key found');
+      }
     }
+
     // Pass through ANTHROPIC_BASE_URL if set in environment (backward compatibility)
     if (process.env.ANTHROPIC_BASE_URL) {
       env['ANTHROPIC_BASE_URL'] = process.env.ANTHROPIC_BASE_URL;
@@ -187,6 +241,16 @@ function buildEnv(
 
   // TTS hook control - disable by default to prevent audio during agent execution
   env.AUTOMAKER_DISABLE_HOOK_TTS = process.env.AUTOMAKER_DISABLE_HOOK_TTS ?? 'true';
+
+  // Final debug logging to show what auth will be used
+  logger.debug('[buildEnv] Final auth state:', {
+    authMode,
+    hasApiKey: !!env['ANTHROPIC_API_KEY'] && env['ANTHROPIC_API_KEY'] !== '',
+    hasAuthToken: !!env['ANTHROPIC_AUTH_TOKEN'],
+    hasCliOAuth: !!env['CLAUDE_CODE_OAUTH_TOKEN'],
+    apiKeyLength: env['ANTHROPIC_API_KEY']?.length ?? 0,
+    authTokenLength: env['ANTHROPIC_AUTH_TOKEN']?.length ?? 0,
+  });
 
   return env;
 }
