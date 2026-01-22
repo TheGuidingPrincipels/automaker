@@ -71,6 +71,30 @@ export type PlanningMode = 'skip' | 'lite' | 'spec' | 'full';
 /** ServerLogLevel - Log verbosity level for the API server */
 export type ServerLogLevel = 'error' | 'warn' | 'info' | 'debug';
 
+/**
+ * AnthropicAuthMode - Authentication mode for Anthropic/Claude provider
+ *
+ * Controls how the application authenticates with Anthropic services:
+ * - 'auth_token': Use Claude Code CLI OAuth (ANTHROPIC_AUTH_TOKEN). API keys are stored but inactive.
+ * - 'api_key': Use ANTHROPIC_API_KEY for pay-per-use access.
+ *
+ * When set to 'auth_token', any stored API key will not be used (strict mode).
+ * This prevents accidental API key usage when the user intends to use subscription billing.
+ */
+export type AnthropicAuthMode = 'auth_token' | 'api_key';
+
+/**
+ * OpenaiAuthMode - Authentication mode for OpenAI/Codex provider
+ *
+ * Controls how the application authenticates with OpenAI services:
+ * - 'auth_token': Use Codex CLI OAuth login (~/.codex/auth.json). API keys are stored but inactive.
+ * - 'api_key': Use OPENAI_API_KEY for pay-per-use access.
+ *
+ * When set to 'auth_token', any stored API key will not be used (strict mode).
+ * This prevents accidental API key usage when the user intends to use subscription billing.
+ */
+export type OpenaiAuthMode = 'auth_token' | 'api_key';
+
 /** ThinkingLevel - Extended thinking levels for Claude models (reasoning intensity) */
 export type ThinkingLevel = 'none' | 'low' | 'medium' | 'high' | 'ultrathink';
 
@@ -1023,6 +1047,33 @@ export interface GlobalSettings {
    */
   claudeCompatibleProviders?: ClaudeCompatibleProvider[];
 
+  // Provider Auth Modes
+  /**
+   * Anthropic/Claude authentication mode.
+   * - 'auth_token': Use Claude Code CLI OAuth (ANTHROPIC_AUTH_TOKEN)
+   * - 'api_key': Use ANTHROPIC_API_KEY (pay-per-use)
+   *
+   * When set to 'auth_token', any stored API key will be inactive (strict mode).
+   * @default 'auth_token'
+   */
+  anthropicAuthMode?: AnthropicAuthMode;
+
+  /**
+   * @deprecated Use anthropicAuthMode instead.
+   * Legacy field for backward compatibility. When true, maps to auth_token mode.
+   */
+  disableApiKeyAuth?: boolean;
+
+  /**
+   * OpenAI/Codex authentication mode.
+   * - 'auth_token': Use Codex CLI OAuth (subscription-style, ~/.codex/auth.json)
+   * - 'api_key': Use OPENAI_API_KEY (pay-per-use)
+   *
+   * When set to 'auth_token', any stored API key will be inactive (strict mode).
+   * @default 'auth_token'
+   */
+  openaiAuthMode?: OpenaiAuthMode;
+
   // Deprecated Claude API Profiles (kept for migration)
   /**
    * @deprecated Use claudeCompatibleProviders instead.
@@ -1326,6 +1377,9 @@ export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
   subagentsSources: ['user', 'project'],
   // New provider system
   claudeCompatibleProviders: [],
+  // Provider auth modes (default to auth_token for strict security)
+  anthropicAuthMode: 'auth_token',
+  openaiAuthMode: 'auth_token',
   // Deprecated - kept for migration
   claudeApiProfiles: [],
   activeClaudeApiProfileId: null,

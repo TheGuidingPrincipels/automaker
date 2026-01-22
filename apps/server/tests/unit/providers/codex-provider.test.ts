@@ -22,22 +22,54 @@ const originalOpenAIKey = process.env[OPENAI_API_KEY_ENV];
 
 const codexRunMock = vi.fn();
 
+// Mock the codex-sdk-client module to control SDK execution
+// Note: vi.hoisted ensures this runs before vi.mock is hoisted
+const { executeCodexSdkQueryMock } = vi.hoisted(() => ({
+  executeCodexSdkQueryMock: vi.fn(),
+}));
+vi.mock('../../../src/providers/codex-sdk-client.js', () => ({
+  executeCodexSdkQuery: executeCodexSdkQueryMock,
+}));
+
+// Mock the Codex SDK - Types are just re-exported as empty objects for mocking
 vi.mock('@openai/codex-sdk', () => ({
   Codex: class {
     constructor(_opts: { apiKey: string }) {}
-    startThread() {
+    startThread(_options?: {
+      model?: string;
+      workingDirectory?: string;
+      modelReasoningEffort?: string;
+      sandboxMode?: string;
+      webSearchEnabled?: boolean;
+      approvalPolicy?: string;
+      additionalDirectories?: string[];
+    }) {
       return {
         id: 'thread-123',
         run: codexRunMock,
       };
     }
-    resumeThread() {
+    resumeThread(
+      _id: string,
+      _options?: {
+        model?: string;
+        workingDirectory?: string;
+        modelReasoningEffort?: string;
+        sandboxMode?: string;
+        webSearchEnabled?: boolean;
+        approvalPolicy?: string;
+        additionalDirectories?: string[];
+      }
+    ) {
       return {
         id: 'thread-123',
         run: codexRunMock,
       };
     }
   },
+  // Export type placeholders - these are just type imports so empty objects work
+  ThreadOptions: {},
+  ModelReasoningEffort: {},
 }));
 
 const EXEC_SUBCOMMAND = 'exec';
@@ -92,6 +124,7 @@ describe('codex-provider.ts', () => {
       hasOAuthToken: true,
       hasApiKey: false,
     });
+    delete process.env.AUTOMAKER_OPENAI_AUTH_MODE;
     delete process.env[OPENAI_API_KEY_ENV];
     provider = new CodexProvider();
   });
@@ -246,8 +279,25 @@ describe('codex-provider.ts', () => {
     });
 
     it('uses the SDK when no tools are requested and an API key is present', async () => {
+      process.env.AUTOMAKER_OPENAI_AUTH_MODE = 'api_key';
       process.env[OPENAI_API_KEY_ENV] = 'sk-test';
-      codexRunMock.mockResolvedValue({ finalResponse: 'Hello from SDK' });
+      // Mock the SDK client to return a proper async generator
+      executeCodexSdkQueryMock.mockImplementation(async function* () {
+        yield {
+          type: 'assistant',
+          session_id: 'thread-123',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Hello from SDK' }],
+          },
+        };
+        yield {
+          type: 'result',
+          subtype: 'success',
+          session_id: 'thread-123',
+          result: 'Hello from SDK',
+        };
+      });
 
       const results = await collectAsyncGenerator<ProviderMessage>(
         provider.executeQuery({
@@ -258,12 +308,25 @@ describe('codex-provider.ts', () => {
         })
       );
 
+      expect(executeCodexSdkQueryMock).toHaveBeenCalled();
       expect(results[0].message?.content[0].text).toBe('Hello from SDK');
       expect(results[1].result).toBe('Hello from SDK');
     });
 
     it('uses the SDK when API key is present, even for tool requests (to avoid OAuth issues)', async () => {
+      process.env.AUTOMAKER_OPENAI_AUTH_MODE = 'api_key';
       process.env[OPENAI_API_KEY_ENV] = 'sk-test';
+      // Mock the SDK client to return a proper async generator
+      executeCodexSdkQueryMock.mockImplementation(async function* () {
+        yield {
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'SDK response' }],
+          },
+        };
+        yield { type: 'result', subtype: 'success', result: 'SDK response' };
+      });
       vi.mocked(spawnJSONLProcess).mockReturnValue((async function* () {})());
 
       await collectAsyncGenerator(
@@ -275,7 +338,7 @@ describe('codex-provider.ts', () => {
         })
       );
 
-      expect(codexRunMock).toHaveBeenCalled();
+      expect(executeCodexSdkQueryMock).toHaveBeenCalled();
       expect(spawnJSONLProcess).not.toHaveBeenCalled();
     });
 

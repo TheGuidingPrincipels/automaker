@@ -48,7 +48,7 @@ import {
 } from './codex-tool-mapping.js';
 import { SettingsService } from '../services/settings-service.js';
 import { createTempEnvOverride } from '../lib/auth-utils.js';
-import { isApiKeyAuthDisabledSync } from '../lib/auth-config.js';
+import { isOpenaiApiKeyDisabledSync } from '../lib/provider-auth-config.js';
 import { checkSandboxCompatibility } from '../lib/sdk-options.js';
 import { CODEX_MODELS } from './codex-models.js';
 
@@ -180,7 +180,7 @@ function buildEnv(): Record<string, string> {
 
 async function resolveOpenAiApiKey(): Promise<string | null> {
   // In OAuth-only mode, skip API key resolution entirely
-  if (isApiKeyAuthDisabledSync()) {
+  if (isOpenaiApiKeyDisabledSync()) {
     return null;
   }
 
@@ -216,7 +216,7 @@ async function resolveCodexExecutionPlan(options: ExecuteOptions): Promise<Codex
   const authIndicators = await getCodexAuthIndicators();
   const openAiApiKey = await resolveOpenAiApiKey();
   const hasApiKey = Boolean(openAiApiKey);
-  const apiKeyAuthDisabled = isApiKeyAuthDisabledSync();
+  const apiKeyAuthDisabled = isOpenaiApiKeyDisabledSync();
   const cliAuthenticated = authIndicators.hasOAuthToken || authIndicators.hasApiKey || hasApiKey;
   const sdkEligible = isSdkEligible(options);
   const cliAvailable = Boolean(cliPath);
@@ -762,7 +762,21 @@ export class CodexProvider extends BaseProvider {
           ? createTempEnvOverride({ [OPENAI_API_KEY_ENV]: executionPlan.openAiApiKey })
           : null;
         try {
-          yield* executeCodexSdkQuery(options, combinedSystemPrompt);
+          // Build SDK-specific options with resolved codex settings
+          // This ensures SDK mode uses the same settings as CLI mode
+          const sdkOptions: ExecuteOptions = {
+            ...options,
+            codexSettings: {
+              autoLoadAgents: codexSettings.autoLoadAgents,
+              sandboxMode: codexSettings.sandboxMode,
+              approvalPolicy: codexSettings.approvalPolicy,
+              enableWebSearch: codexSettings.enableWebSearch,
+              enableImages: codexSettings.enableImages,
+              additionalDirs: codexSettings.additionalDirs,
+              threadId: codexSettings.threadId ?? options.codexSettings?.threadId,
+            },
+          };
+          yield* executeCodexSdkQuery(sdkOptions, combinedSystemPrompt);
         } finally {
           cleanupEnv?.();
         }

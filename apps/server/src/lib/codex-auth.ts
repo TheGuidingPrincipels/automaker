@@ -3,12 +3,17 @@
  *
  * Uses 'codex login status' command to verify authentication.
  * Never assumes authenticated - only returns true if CLI confirms.
+ *
+ * Authentication mode is determined by the OpenAI-specific auth mode
+ * (via provider-auth-config). In 'auth_token' mode, API keys are ignored
+ * and only CLI OAuth is checked. In 'api_key' mode, both CLI auth and
+ * API keys are considered valid authentication methods.
  */
 
 import { spawnProcess } from '@automaker/platform';
 import { findCodexCliPath } from '@automaker/platform';
 import { createLogger } from '@automaker/utils';
-import { isApiKeyAuthDisabledSync } from './auth-config.js';
+import { isOpenaiApiKeyDisabledSync } from './provider-auth-config.js';
 
 const logger = createLogger('CodexAuth');
 
@@ -30,9 +35,9 @@ export async function checkCodexAuthentication(
   cliPath?: string | null
 ): Promise<CodexAuthCheckResult> {
   const resolvedCliPath = cliPath || (await findCodexCliPath());
-  // In OAuth-only mode, ignore API key in environment
-  const apiKeyAuthDisabled = isApiKeyAuthDisabledSync();
-  const hasApiKey = apiKeyAuthDisabled ? false : !!process.env[OPENAI_API_KEY_ENV];
+  // In auth_token (OAuth) mode, ignore API key in environment
+  const apiKeyDisabled = isOpenaiApiKeyDisabledSync();
+  const hasApiKey = apiKeyDisabled ? false : !!process.env[OPENAI_API_KEY_ENV];
 
   // If CLI is not installed, cannot be authenticated
   if (!resolvedCliPath) {

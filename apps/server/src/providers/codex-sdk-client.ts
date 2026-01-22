@@ -3,17 +3,40 @@
  *
  * Used for programmatic control of Codex from within the application.
  * Provides cleaner integration than spawning CLI processes.
+ *
+ * Uses OpenAI-specific ThreadOptions for proper model and reasoning configuration.
  */
 
-import { Codex } from '@openai/codex-sdk';
+import { Codex, type ThreadOptions, type ModelReasoningEffort } from '@openai/codex-sdk';
 import { formatHistoryAsText, classifyError, getUserFriendlyErrorMessage } from '@automaker/utils';
-import { supportsReasoningEffort } from '@automaker/types';
+import { supportsReasoningEffort, type ReasoningEffort } from '@automaker/types';
 import type { ExecuteOptions, ProviderMessage } from './types.js';
 
 const OPENAI_API_KEY_ENV = 'OPENAI_API_KEY';
 const SDK_HISTORY_HEADER = 'Current request:\n';
 const DEFAULT_RESPONSE_TEXT = '';
 const SDK_ERROR_DETAILS_LABEL = 'Details:';
+
+/**
+ * Map ReasoningEffort to SDK's ModelReasoningEffort type.
+ * The SDK doesn't support 'none' - we handle that by not setting the option.
+ */
+function mapReasoningEffort(effort: ReasoningEffort): ModelReasoningEffort | null {
+  if (effort === 'none') {
+    return null; // SDK doesn't support 'none', omit the option
+  }
+  // SDK accepts: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+  return effort as ModelReasoningEffort;
+}
+
+/**
+ * Map CodexSandboxMode to SDK's SandboxMode type.
+ */
+function mapSandboxMode(
+  mode?: 'read-only' | 'workspace-write' | 'danger-full-access'
+): 'read-only' | 'workspace-write' | 'danger-full-access' | undefined {
+  return mode;
+}
 
 type PromptBlock = {
   type: string;
@@ -83,13 +106,72 @@ function buildSdkErrorMessage(rawMessage: string, userMessage: string): string {
 }
 
 /**
- * Execute a query using the official Codex SDK
+ * Build OpenAI-specific ThreadOptions for the Codex SDK.
+ * This properly configures the model, reasoning effort, sandbox mode, and other settings.
+ *
+ * @param options - Execute options containing model and codex-specific settings
+ * @returns ThreadOptions configured for the Codex SDK
+ */
+function buildThreadOptions(options: ExecuteOptions): ThreadOptions {
+  const threadOptions: ThreadOptions = {
+    // Set the model - this is the key OpenAI-specific setting
+    model: options.model,
+    // Set working directory for file operations
+    workingDirectory: options.cwd,
+  };
+
+  // Configure reasoning effort if model supports it (OpenAI-specific feature)
+  // We validate both that the option is set AND the model supports it
+  if (options.reasoningEffort && supportsReasoningEffort(options.model)) {
+    const sdkReasoningEffort = mapReasoningEffort(options.reasoningEffort);
+    if (sdkReasoningEffort !== null) {
+      // Type assertion is safe here because mapReasoningEffort returns
+      // a valid ModelReasoningEffort when not returning null
+      threadOptions.modelReasoningEffort = sdkReasoningEffort;
+    }
+  }
+
+  // Apply codex-specific settings if provided
+  if (options.codexSettings) {
+    // Map sandbox mode (OpenAI Codex feature)
+    if (options.codexSettings.sandboxMode) {
+      threadOptions.sandboxMode = mapSandboxMode(options.codexSettings.sandboxMode);
+    }
+
+    // Enable web search if configured (OpenAI Codex feature)
+    if (options.codexSettings.enableWebSearch) {
+      threadOptions.webSearchEnabled = true;
+    }
+
+    // Map approval policy to SDK format
+    if (options.codexSettings.approvalPolicy) {
+      threadOptions.approvalPolicy = options.codexSettings.approvalPolicy;
+    }
+
+    // Add additional directories for file access
+    if (options.codexSettings.additionalDirs && options.codexSettings.additionalDirs.length > 0) {
+      threadOptions.additionalDirectories = options.codexSettings.additionalDirs;
+    }
+  }
+
+  return threadOptions;
+}
+
+/**
+ * Execute a query using the official Codex SDK with OpenAI-specific mode.
  *
  * The SDK provides a cleaner interface than spawning CLI processes:
  * - Handles authentication automatically
  * - Provides TypeScript types
  * - Supports thread management and resumption
  * - Better error handling
+ *
+ * OpenAI-specific features configured via ThreadOptions:
+ * - Model selection (gpt-5.1-codex-max, gpt-5.2-codex, etc.)
+ * - Reasoning effort (minimal, low, medium, high, xhigh)
+ * - Sandbox mode (read-only, workspace-write, danger-full-access)
+ * - Web search capability
+ * - Approval policies
  */
 export async function* executeCodexSdkQuery(
   options: ExecuteOptions,
@@ -99,37 +181,30 @@ export async function* executeCodexSdkQuery(
     const apiKey = resolveApiKey();
     const codex = new Codex({ apiKey });
 
-    // Resume existing thread or start new one
+    // Build OpenAI-specific thread options
+    const threadOptions = buildThreadOptions(options);
+
+    // Resume existing thread or start new one with OpenAI-specific options
     let thread;
     if (options.sdkSessionId) {
       try {
-        thread = codex.resumeThread(options.sdkSessionId);
+        thread = codex.resumeThread(options.sdkSessionId, threadOptions);
       } catch {
-        // If resume fails, start a new thread
-        thread = codex.startThread();
+        // If resume fails, start a new thread with options
+        thread = codex.startThread(threadOptions);
       }
     } else {
-      thread = codex.startThread();
+      thread = codex.startThread(threadOptions);
     }
 
     const promptText = buildPromptText(options, systemPrompt);
 
-    // Build run options with reasoning effort if supported
+    // Build run options (turn-level options, separate from thread options)
     const runOptions: {
       signal?: AbortSignal;
-      reasoning?: { effort: string };
     } = {
       signal: options.abortController?.signal,
     };
-
-    // Add reasoning effort if model supports it and reasoningEffort is specified
-    if (
-      options.reasoningEffort &&
-      supportsReasoningEffort(options.model) &&
-      options.reasoningEffort !== 'none'
-    ) {
-      runOptions.reasoning = { effort: options.reasoningEffort };
-    }
 
     // Run the query
     const result = await thread.run(promptText, runOptions);

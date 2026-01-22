@@ -168,6 +168,9 @@ export type {
   ProviderModel,
   ClaudeCompatibleProvider,
   ClaudeCompatibleProviderTemplate,
+  // Provider auth mode types
+  AnthropicAuthMode,
+  OpenaiAuthMode,
   // Claude API profile types (deprecated)
   ClaudeApiProfile,
   ClaudeApiProfileTemplate,

@@ -41,6 +41,10 @@ import {
   createGetExampleConfigHandler,
 } from './routes/cursor-config.js';
 import { createGetAuthModeHandler, createSetAuthModeHandler } from './routes/auth-mode.js';
+import {
+  createGetOpenaiAuthModeHandler,
+  createSetOpenaiAuthModeHandler,
+} from './routes/openai-auth-mode.js';
 
 export function createSetupRoutes(): Router {
   const router = Router();
@@ -54,6 +58,8 @@ export function createSetupRoutes(): Router {
   router.get('/api-keys', createApiKeysHandler());
   router.get('/auth-mode', createGetAuthModeHandler());
   router.post('/auth-mode', createSetAuthModeHandler());
+  router.get('/openai-auth-mode', createGetOpenaiAuthModeHandler());
+  router.post('/openai-auth-mode', createSetOpenaiAuthModeHandler());
   router.get('/platform', createPlatformHandler());
   router.post('/verify-claude-auth', createVerifyClaudeAuthHandler());
   router.post('/verify-codex-auth', createVerifyCodexAuthHandler());

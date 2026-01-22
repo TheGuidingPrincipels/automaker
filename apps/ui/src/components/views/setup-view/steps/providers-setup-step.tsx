@@ -34,7 +34,7 @@ import { cn } from '@/lib/utils';
 import { AnthropicIcon, CursorIcon, OpenAIIcon, OpenCodeIcon } from '@/components/ui/provider-icon';
 import { TerminalOutput } from '../components';
 import { useCliInstallation, useTokenSave } from '../hooks';
-import { useAuthConfig } from '@/hooks';
+import { useAuthConfig, useOpenAIAuthMode } from '@/hooks';
 
 interface ProvidersSetupStepProps {
   onNext: () => void;
@@ -687,7 +687,9 @@ function CodexContent() {
   const { codexCliStatus, codexAuthStatus, setCodexCliStatus, setCodexAuthStatus } =
     useSetupStore();
   const { setApiKeys, apiKeys } = useAppStore();
-  const { apiKeyAuthDisabled } = useAuthConfig();
+  // Use OpenAI-specific auth mode for Codex (not Anthropic auth mode)
+  const { authMode: openaiAuthMode } = useOpenAIAuthMode();
+  const openaiApiKeyAuthDisabled = openaiAuthMode === 'auth_token';
   const [isChecking, setIsChecking] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -926,8 +928,8 @@ function CodexContent() {
                 </AccordionContent>
               </AccordionItem>
 
-              {/* API Key option - hidden in OAuth-only mode */}
-              {!apiKeyAuthDisabled && (
+              {/* API Key option - hidden in OpenAI OAuth-only mode */}
+              {!openaiApiKeyAuthDisabled && (
                 <AccordionItem value="api-key" className="border-border">
                   <AccordionTrigger className="hover:no-underline">
                     <div className="flex items-center gap-3">

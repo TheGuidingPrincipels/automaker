@@ -1,3 +1,4 @@
+export { AuthModeConfirmDialog } from './auth-mode-confirm-dialog';
 export { BoardBackgroundModal } from './board-background-modal';
 export { DeleteAllArchivedSessionsDialog } from './delete-all-archived-sessions-dialog';
 export { DeleteSessionDialog } from './delete-session-dialog';

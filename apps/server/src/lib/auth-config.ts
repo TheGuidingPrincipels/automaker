@@ -1,5 +1,11 @@
 /**
- * Auth Config Utility - Centralized authentication mode management
+ * Auth Config Utility - Anthropic-specific authentication mode management
+ *
+ * This module provides Anthropic-specific authentication functions that delegate
+ * to the unified provider-auth-config module. It maintains backward compatibility
+ * with existing code while leveraging the centralized provider authentication system.
+ *
+ * For new code, prefer using provider-auth-config.ts directly with provider='anthropic'.
  *
  * Provides functions to manage authentication mode for Anthropic API:
  * - 'auth_token': CLI OAuth authentication (subscription mode)
@@ -19,24 +25,22 @@
  * 5. Default: 'auth_token'
  */
 
-import { getDataDirectory } from '@automaker/platform';
 import { createLogger } from '@automaker/utils';
 import type { AnthropicAuthMode } from '@automaker/types';
-import { SettingsService } from '../services/settings-service.js';
+import {
+  initializeProviderAuthMode,
+  getProviderAuthModeSync,
+  getProviderAuthMode,
+  setProviderAuthModeRuntime,
+  isApiKeyDisabledSync,
+  isApiKeyDisabled,
+  getProviderAuthStatus,
+} from './provider-auth-config.js';
 
 const logger = createLogger('AuthConfig');
 
-/** Environment variable for auth mode (new) */
-const ENV_AUTH_MODE = 'AUTOMAKER_ANTHROPIC_AUTH_MODE';
-
 /** Environment variable for disabling API key auth (legacy) */
 const ENV_DISABLE_API_KEY_AUTH = 'AUTOMAKER_DISABLE_API_KEY_AUTH';
-
-/** Cached auth mode for synchronous access after initialization */
-let cachedAuthMode: AnthropicAuthMode = 'auth_token';
-
-/** Flag to track if initialization has been called */
-let initialized = false;
 
 /**
  * Initialize auth mode at server startup.
@@ -49,53 +53,40 @@ let initialized = false;
  *    to prevent any fallback to API key usage
  * 3. Caches the mode for synchronous access
  *
+ * Note: This function handles legacy env var mapping before delegating
+ * to the unified provider-auth-config.
+ *
  * @returns The effective auth mode
  */
 export function initializeAuthMode(): AnthropicAuthMode {
-  const mode = getAuthModeFromEnv();
-  cachedAuthMode = mode;
-  initialized = true;
+  // Handle legacy env var mapping BEFORE delegating to provider-auth-config
+  // This ensures legacy AUTOMAKER_DISABLE_API_KEY_AUTH is properly translated
+  handleLegacyEnvVar();
 
-  if (mode === 'auth_token') {
-    // CRITICAL: Clear inherited env var to prevent accidental API key usage
-    // This is defense layer 1 of 4
-    const hadApiKey = !!process.env.ANTHROPIC_API_KEY;
-    delete process.env.ANTHROPIC_API_KEY;
-    // Double-ensure by setting to empty string (some code checks for truthy)
-    process.env.ANTHROPIC_API_KEY = '';
-
-    if (hadApiKey) {
-      logger.info('[AuthMode] Auth Token mode: ANTHROPIC_API_KEY cleared from environment');
-      logger.info('[AuthMode] To use API key mode, set AUTOMAKER_ANTHROPIC_AUTH_MODE=api_key');
-    } else {
-      logger.debug('[AuthMode] Auth Token mode active (no env API key to clear)');
-    }
-  } else {
-    logger.info(
-      '[AuthMode] API Key mode active - using ANTHROPIC_API_KEY from environment or credentials'
-    );
-  }
-
-  return mode;
+  // Delegate to unified provider auth config
+  return initializeProviderAuthMode('anthropic') as AnthropicAuthMode;
 }
 
 /**
- * Get auth mode from environment variables only (synchronous).
- * Does NOT check settings file - use for early startup before settings are loaded.
+ * Handle legacy AUTOMAKER_DISABLE_API_KEY_AUTH env var by mapping it
+ * to the new AUTOMAKER_ANTHROPIC_AUTH_MODE format.
+ *
+ * This ensures backward compatibility with existing deployments.
  */
-function getAuthModeFromEnv(): AnthropicAuthMode {
-  // Check new env var first
-  const envMode = process.env[ENV_AUTH_MODE]?.toLowerCase();
-  if (envMode === 'api_key') return 'api_key';
-  if (envMode === 'auth_token') return 'auth_token';
+function handleLegacyEnvVar(): void {
+  // Only process legacy var if new var is not set
+  if (process.env.AUTOMAKER_ANTHROPIC_AUTH_MODE) {
+    return;
+  }
 
-  // Check legacy env var
   const legacyDisabled = process.env[ENV_DISABLE_API_KEY_AUTH]?.toLowerCase();
-  if (legacyDisabled === 'true') return 'auth_token';
-  if (legacyDisabled === 'false') return 'api_key';
-
-  // Default to auth_token (subscription mode)
-  return 'auth_token';
+  if (legacyDisabled === 'true') {
+    process.env.AUTOMAKER_ANTHROPIC_AUTH_MODE = 'auth_token';
+    logger.debug('Mapped legacy AUTOMAKER_DISABLE_API_KEY_AUTH=true to auth_token mode');
+  } else if (legacyDisabled === 'false') {
+    process.env.AUTOMAKER_ANTHROPIC_AUTH_MODE = 'api_key';
+    logger.debug('Mapped legacy AUTOMAKER_DISABLE_API_KEY_AUTH=false to api_key mode');
+  }
 }
 
 /**
@@ -107,11 +98,7 @@ function getAuthModeFromEnv(): AnthropicAuthMode {
  * @returns The current auth mode
  */
 export function getAuthModeSync(): AnthropicAuthMode {
-  if (initialized) {
-    return cachedAuthMode;
-  }
-  // Fallback to env-only check if not initialized
-  return getAuthModeFromEnv();
+  return getProviderAuthModeSync('anthropic') as AnthropicAuthMode;
 }
 
 /**
@@ -123,41 +110,9 @@ export function getAuthModeSync(): AnthropicAuthMode {
  * @returns Promise resolving to the auth mode
  */
 export async function getAuthMode(): Promise<AnthropicAuthMode> {
-  // Environment variables take precedence
-  const envMode = process.env[ENV_AUTH_MODE]?.toLowerCase();
-  if (envMode === 'api_key' || envMode === 'auth_token') {
-    return envMode as AnthropicAuthMode;
-  }
-
-  const legacyEnv = process.env[ENV_DISABLE_API_KEY_AUTH]?.toLowerCase();
-  if (legacyEnv === 'true') return 'auth_token';
-  if (legacyEnv === 'false') return 'api_key';
-
-  // Check settings file
-  try {
-    const dataDir = getDataDirectory();
-    if (!dataDir) {
-      return 'auth_token'; // Default
-    }
-
-    const settingsService = new SettingsService(dataDir);
-    const settings = await settingsService.getGlobalSettings();
-
-    // Check new field first
-    if (settings.anthropicAuthMode === 'api_key' || settings.anthropicAuthMode === 'auth_token') {
-      return settings.anthropicAuthMode;
-    }
-
-    // Check legacy field
-    if (typeof settings.disableApiKeyAuth === 'boolean') {
-      return settings.disableApiKeyAuth ? 'auth_token' : 'api_key';
-    }
-
-    return 'auth_token'; // Default
-  } catch (error) {
-    logger.warn('Failed to read settings for auth mode:', error);
-    return 'auth_token'; // Default on error
-  }
+  // Handle legacy env var mapping for async path as well
+  handleLegacyEnvVar();
+  return getProviderAuthMode('anthropic') as Promise<AnthropicAuthMode>;
 }
 
 /**
@@ -172,18 +127,7 @@ export async function getAuthMode(): Promise<AnthropicAuthMode> {
  * @param mode The new auth mode to set
  */
 export function setAuthModeRuntime(mode: AnthropicAuthMode): void {
-  const oldMode = cachedAuthMode;
-  cachedAuthMode = mode;
-  initialized = true;
-
-  if (mode === 'auth_token' && oldMode !== 'auth_token') {
-    // Switching TO auth_token mode - clear API key
-    delete process.env.ANTHROPIC_API_KEY;
-    process.env.ANTHROPIC_API_KEY = '';
-    logger.info('[AuthMode] Switched to Auth Token mode, cleared ANTHROPIC_API_KEY');
-  } else if (mode === 'api_key' && oldMode !== 'api_key') {
-    logger.info('[AuthMode] Switched to API Key mode');
-  }
+  setProviderAuthModeRuntime('anthropic', mode);
 }
 
 /**
@@ -194,8 +138,9 @@ export function setAuthModeRuntime(mode: AnthropicAuthMode): void {
  * @returns true if in auth_token mode (API keys disabled)
  */
 export async function isApiKeyAuthDisabled(): Promise<boolean> {
-  const mode = await getAuthMode();
-  return mode === 'auth_token';
+  // Handle legacy env var mapping
+  handleLegacyEnvVar();
+  return isApiKeyDisabled('anthropic');
 }
 
 /**
@@ -205,7 +150,7 @@ export async function isApiKeyAuthDisabled(): Promise<boolean> {
  * @returns true if in auth_token mode (API keys disabled)
  */
 export function isApiKeyAuthDisabledSync(): boolean {
-  return getAuthModeSync() === 'auth_token';
+  return isApiKeyDisabledSync('anthropic');
 }
 
 /**
@@ -233,21 +178,18 @@ export async function getAuthStatus(): Promise<{
   hasEnvApiKey: boolean;
   envApiKeyCleared: boolean;
 }> {
-  const mode = await getAuthMode();
+  const providerStatus = await getProviderAuthStatus('anthropic');
 
   // Lazy import to avoid circular dependency
   const { getApiKey } = await import('../routes/setup/common.js');
 
   return {
-    mode,
+    mode: providerStatus.mode as AnthropicAuthMode,
     hasStoredOAuthToken: !!getApiKey('anthropic_oauth_token'),
     hasEnvAuthToken: !!process.env.ANTHROPIC_AUTH_TOKEN,
     hasCliOAuthToken: !!process.env.CLAUDE_CODE_OAUTH_TOKEN,
     hasStoredApiKey: !!getApiKey('anthropic'),
-    // In auth_token mode, env API key should be cleared
-    hasEnvApiKey:
-      mode === 'api_key' && !!process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== '',
-    // Indicates if we cleared the env API key at startup
-    envApiKeyCleared: mode === 'auth_token' && process.env.ANTHROPIC_API_KEY === '',
+    hasEnvApiKey: providerStatus.hasEnvApiKey,
+    envApiKeyCleared: providerStatus.envApiKeyCleared,
   };
 }

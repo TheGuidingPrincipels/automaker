@@ -10,10 +10,10 @@
 // This runs synchronously before ESM module resolution
 import 'dotenv/config';
 
-// CRITICAL: Initialize auth mode BEFORE any other imports that might use credentials
-// This clears ANTHROPIC_API_KEY from process.env if we're in auth_token mode
-import { initializeAuthMode } from './lib/auth-config.js';
-initializeAuthMode();
+// CRITICAL: Initialize auth modes BEFORE any other imports that might use credentials
+// This clears API keys from process.env if we're in auth_token mode for each provider
+import { initializeProviderAuthModes } from './lib/provider-auth-config.js';
+initializeProviderAuthModes();
 
 import express from 'express';
 import cors from 'cors';
@@ -138,7 +138,7 @@ export function isRequestLoggingEnabled(): boolean {
 const BOX_CONTENT_WIDTH = 67;
 
 // Check for Claude authentication
-// Note: In auth_token mode, ANTHROPIC_API_KEY is intentionally cleared by initializeAuthMode()
+// Note: In auth_token mode, ANTHROPIC_API_KEY is intentionally cleared by initializeProviderAuthModes()
 import { getAuthModeSync } from './lib/auth-config.js';
 
 const authMode = getAuthModeSync();

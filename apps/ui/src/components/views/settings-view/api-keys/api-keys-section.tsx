@@ -7,7 +7,7 @@ import { ApiKeyField } from './api-key-field';
 import { buildProviderConfigs } from '@/config/api-providers';
 import { SecurityNotice } from './security-notice';
 import { useApiKeyManagement } from './hooks/use-api-key-management';
-import { useAuthMode } from '@/hooks';
+import { useAllAuthModes } from '@/hooks/use-auth-config';
 import { cn } from '@/lib/utils';
 import { useState, useCallback } from 'react';
 import { getElectronAPI } from '@/lib/electron';
@@ -20,8 +20,10 @@ export function ApiKeysSection() {
     useSetupStore();
   const [isDeletingAnthropicKey, setIsDeletingAnthropicKey] = useState(false);
   const [isDeletingOpenaiKey, setIsDeletingOpenaiKey] = useState(false);
-  const { authMode, isLoading: isLoadingAuthMode } = useAuthMode();
-  const isAuthTokenMode = authMode === 'auth_token';
+
+  // Use generic hook to get all auth modes
+  const authModes = useAllAuthModes();
+  const { isAllAuthTokenMode } = authModes;
 
   const { providerConfigParams, handleSave, saved } = useApiKeyManagement();
 
@@ -105,12 +107,19 @@ export function ApiKeysSection() {
         </p>
       </div>
       <div className="p-6 space-y-6">
-        {/* Auth Mode Toggle */}
-        <AuthModeToggle />
+        {/* Per-Provider Auth Mode Toggles */}
+        <div className="space-y-4">
+          <AuthModeToggle provider="anthropic" testId="anthropic-auth-mode-toggle" />
+          <AuthModeToggle provider="openai" testId="openai-auth-mode-toggle" />
+        </div>
 
-        {/* API Key Fields with contextual info - hidden in Auth Token mode */}
-        {!isAuthTokenMode &&
-          providerConfigs.map((provider) => (
+        {/* API Key Fields with contextual info - shown per provider based on their auth mode */}
+        {providerConfigs.map((provider) => {
+          // Use the shouldShowApiKeyField helper to determine visibility
+          // This correctly handles managed providers (anthropic, openai) vs unmanaged ones (google)
+          if (!authModes.shouldShowApiKeyField(provider.key)) return null;
+
+          return (
             <div key={provider.key}>
               <ApiKeyField config={provider} />
               {/* Anthropic-specific provider info */}
@@ -143,13 +152,14 @@ export function ApiKeysSection() {
                 </div>
               )}
             </div>
-          ))}
+          );
+        })}
 
-        {/* Security Notice - only when API keys are enabled */}
-        {!isAuthTokenMode && <SecurityNotice />}
+        {/* Security Notice - only when at least one provider uses API keys */}
+        {!isAllAuthTokenMode && <SecurityNotice />}
 
-        {/* Action Buttons - hidden in Auth Token mode */}
-        {!isAuthTokenMode && (
+        {/* Action Buttons - shown when at least one provider uses API keys */}
+        {!isAllAuthTokenMode && (
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <Button
               onClick={handleSave}
@@ -174,7 +184,8 @@ export function ApiKeysSection() {
               )}
             </Button>
 
-            {apiKeys.anthropic && (
+            {/* Delete Anthropic Key - only shown when Anthropic is in API key mode */}
+            {apiKeys.anthropic && authModes.anthropic.authMode === 'api_key' && (
               <Button
                 onClick={deleteAnthropicKey}
                 disabled={isDeletingAnthropicKey}
@@ -191,7 +202,8 @@ export function ApiKeysSection() {
               </Button>
             )}
 
-            {apiKeys.openai && (
+            {/* Delete OpenAI Key - only shown when OpenAI is in API key mode */}
+            {apiKeys.openai && authModes.openai.authMode === 'api_key' && (
               <Button
                 onClick={deleteOpenaiKey}
                 disabled={isDeletingOpenaiKey}
