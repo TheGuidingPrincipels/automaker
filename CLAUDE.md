@@ -271,7 +271,7 @@ Use the **SYSTEMS feature** as the canonical reference:
 Technical debt, refactoring opportunities, and potential enhancements are tracked in:
 
 ```
-docs/possible-improvements/
+possible-improvements/
 ├── README.md                      # Index of all items
 └── 001-rollup-circular-deps.md    # Rollup warning analysis
 ```
