@@ -1,21 +1,29 @@
 # Ship Changes to Remote
 
-Complete workflow to commit, push, and create a PR from the current worktree branch.
+Complete workflow to commit, push, merge locally, and create a PR from the current worktree branch.
 
 ## Purpose
 
-Automates the full "ship it" workflow:
+Automates the full "ship it" workflow with local merging:
 
 ```
 ┌─────────────────┐     commit      ┌─────────────────┐     push      ┌─────────────────┐
-│  Working Dir    │ ───────────►    │  Local Branch   │ ──────────►   │  Origin (fork)  │
-│  (changes)      │                 │                 │               │                 │
+│  Working Dir    │ ───────────►    │  Feature Branch │ ──────────►   │  origin/branch  │
+│  (changes)      │                 │  (worktree)     │               │                 │
 └─────────────────┘                 └─────────────────┘               └─────────────────┘
+                                            │
+                                            │ merge locally
+                                            ▼
+                                    ┌─────────────────┐     push      ┌─────────────────┐
+                                    │  Local main     │ ──────────►   │  origin/main    │
+                                    │  (main repo)    │               │                 │
+                                    └─────────────────┘               └─────────────────┘
                                                                               │
-                                                                              │ PR
+                                                                              │ PR (docs)
                                                                               ▼
                                                                     ┌─────────────────┐
-                                                                    │  main branch    │
+                                                                    │  GitHub PR #    │
+                                                                    │  (for record)   │
                                                                     └─────────────────┘
 ```
 
@@ -43,7 +51,7 @@ git log --oneline -5
 
 If there are no uncommitted changes, ask the user:
 
-- "No uncommitted changes found. Would you like to create a PR for existing commits?"
+- "No uncommitted changes found. Would you like to ship existing commits?"
 
 If there ARE uncommitted changes, proceed to Step 3.
 
@@ -102,7 +110,7 @@ EOF
 )"
 ```
 
-### Step 5: Push to Origin
+### Step 5: Push Feature Branch to Origin
 
 Push the branch to the fork:
 
@@ -112,9 +120,33 @@ git push -u origin $(git branch --show-current)
 
 If push fails due to divergence, ask user how to proceed.
 
-### Step 6: Create Pull Request
+### Step 6: Merge Locally into Main
 
-Create a PR with a visually appealing, easy-to-read description.
+**IMPORTANT**: Always merge locally before creating the PR.
+
+```bash
+# Go to main repo
+cd /Users/ruben/Documents/GitHub/automaker
+
+# Merge the feature branch into main
+git merge <feature-branch-name>
+
+# Push main to origin
+git push origin main
+
+# Return to worktree
+cd /Users/ruben/Documents/GitHub/automaker-dev
+```
+
+This ensures:
+
+- Changes are immediately available on main
+- Both repos stay in sync
+- No waiting for GitHub PR review
+
+### Step 7: Create Pull Request (Documentation)
+
+Create a PR as documentation of the changes. Since we already merged locally, this PR serves as a record.
 
 **PR Format:**
 
@@ -169,6 +201,7 @@ A brief, human-friendly summary of what this PR does.
 gh pr create \
   --repo TheGuidingPrincipels/automaker \
   --base main \
+  --head <feature-branch> \
   --title "<type>: <summary>" \
   --body "$(cat <<'EOF'
 <PR body here>
@@ -176,7 +209,9 @@ EOF
 )"
 ```
 
-### Step 7: Report Success
+Note: The PR may show as already merged or have no diff since we merged locally first. That's expected - the PR serves as documentation.
+
+### Step 8: Report Success
 
 Display a summary:
 
@@ -186,21 +221,26 @@ Display a summary:
 
 📦 Commit:  <commit hash>
 🌿 Branch:  <branch name>
-🔗 PR:      <PR URL>
+🔀 Merged:  Into main locally
+🚀 Pushed:  origin/main updated
+🔗 PR:      <PR URL> (documentation)
 
-What's Next:
-• Review the PR on GitHub
-• Merge when ready
-• Run /sync-dev to update main repo
+Both repos are now in sync!
 ```
 
 ## Important Rules
 
-1. **ALWAYS use `--repo TheGuidingPrincipels/automaker`** when creating PRs
-2. **NEVER push to upstream** (it's disabled anyway)
-3. **Use simple, clear language** in commit messages and PR descriptions
-4. **Include visual elements** (emojis, tables) to make PRs scannable
-5. **Group changes logically** so reviewers can understand at a glance
+1. **ALWAYS merge locally** before creating the PR
+2. **ALWAYS use `--repo TheGuidingPrincipels/automaker`** when creating PRs
+3. **NEVER push to upstream** (it's disabled anyway)
+4. **Use simple, clear language** in commit messages and PR descriptions
+5. **Include visual elements** (emojis, tables) to make PRs scannable
+6. **Group changes logically** so reviewers can understand at a glance
+
+## Repository Paths
+
+- **Main repo**: `/Users/ruben/Documents/GitHub/automaker`
+- **Dev worktree**: `/Users/ruben/Documents/GitHub/automaker-dev`
 
 ## Arguments
 
@@ -218,3 +258,11 @@ If user says "dry run" or asks to preview:
 - Show the commit message that WOULD be created
 - Show the PR body that WOULD be used
 - Ask for confirmation before executing
+
+## Skip PR Mode
+
+If user says "no pr" or "skip pr":
+
+- Complete steps 1-6 (commit, push, merge)
+- Skip creating the PR
+- Just report the merge was successful
