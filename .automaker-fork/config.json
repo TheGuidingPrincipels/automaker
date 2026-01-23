@@ -6,9 +6,12 @@
     "createdAt": "2026-01-18T00:00:00Z"
   },
   "tracking": {
-    "lastCheckedCommit": "a8ddd0744209a9ce09e34d55c39bc61f637d2888",
-    "lastCheckedAt": "2026-01-21T12:05:00Z",
-    "checkFrequencyDays": 1
+    "lastCheckedCommit": "7a33940816edc9ea9c7fd1b610fa1700fc19d316",
+    "lastCheckedAt": "2026-01-23T13:10:00Z",
+    "checkFrequencyDays": 1,
+    "lastCheckedBranch": "upstream/v0.14.0rc",
+    "lastMergedBranch": "upstream/v0.14.0rc",
+    "lastMergedAt": "2026-01-23T13:10:00Z"
   },
   "analysis": {
     "skipPatterns": ["^docs:", "^chore\\(deps\\):", "^style:", "^test:", "^ci:"],
