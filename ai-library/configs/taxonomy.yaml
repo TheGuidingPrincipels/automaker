@@ -1,0 +1,126 @@
+# Taxonomy Configuration for Knowledge Library
+# Human-controlled Level 1-2 categories
+# AI can propose Level 3+ with auto-approval option
+
+version: '1.0'
+
+# Classification thresholds
+classification:
+  fast_tier_confidence_threshold: 0.75 # Below this, escalate to LLM
+  new_category_confidence_threshold: 0.85 # Above this for auto-approve
+  auto_approve_level3_plus: true # Auto-approve high-confidence Level 3+
+
+# Human-defined taxonomy (Levels 1-2 are locked)
+categories:
+  # Level 1: Technical Knowledge
+  technical:
+    description: 'Technical and programming knowledge'
+    locked: true # Human-controlled
+    children:
+      # Level 2: Programming Languages
+      programming:
+        description: 'Programming languages and paradigms'
+        locked: true
+        children: {} # Level 3+ can be AI-proposed
+
+      # Level 2: Architecture
+      architecture:
+        description: 'System design and architecture patterns'
+        locked: true
+        children: {}
+
+      # Level 2: DevOps
+      devops:
+        description: 'DevOps, CI/CD, and infrastructure'
+        locked: true
+        children: {}
+
+      # Level 2: Data
+      data:
+        description: 'Data engineering and databases'
+        locked: true
+        children: {}
+
+      # Level 2: AI/ML
+      ai_ml:
+        description: 'Artificial intelligence and machine learning'
+        locked: true
+        children: {}
+
+  # Level 1: Domain Knowledge
+  domain:
+    description: 'Domain-specific knowledge'
+    locked: true
+    children:
+      # Level 2: Business
+      business:
+        description: 'Business processes and strategy'
+        locked: true
+        children: {}
+
+      # Level 2: Finance
+      finance:
+        description: 'Finance and accounting'
+        locked: true
+        children: {}
+
+      # Level 2: Healthcare
+      healthcare:
+        description: 'Healthcare and medical'
+        locked: true
+        children: {}
+
+  # Level 1: Process Knowledge
+  process:
+    description: 'Processes, methodologies, and best practices'
+    locked: true
+    children:
+      # Level 2: Development
+      development:
+        description: 'Software development methodologies'
+        locked: true
+        children: {}
+
+      # Level 2: Project Management
+      project_management:
+        description: 'Project and product management'
+        locked: true
+        children: {}
+
+      # Level 2: Quality
+      quality:
+        description: 'Testing and quality assurance'
+        locked: true
+        children: {}
+
+  # Level 1: Reference
+  reference:
+    description: 'Reference materials and documentation'
+    locked: true
+    children:
+      # Level 2: APIs
+      apis:
+        description: 'API documentation and specs'
+        locked: true
+        children: {}
+
+      # Level 2: Standards
+      standards:
+        description: 'Standards and specifications'
+        locked: true
+        children: {}
+
+      # Level 2: Tutorials
+      tutorials:
+        description: 'Tutorials and guides'
+        locked: true
+        children: {}
+
+# Proposed categories (AI-proposed, pending approval)
+proposed_categories: []
+
+# Category evolution rules
+evolution:
+  min_content_for_split: 10 # Min items before suggesting split
+  max_items_per_category: 100 # Suggest split above this
+  similarity_threshold: 0.8 # Merge similar categories above this

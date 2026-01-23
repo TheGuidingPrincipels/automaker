@@ -1,0 +1,7 @@
+# Library Category Index
+# This file defines the category structure for the knowledge library
+
+categories:
+  - name: uncategorized
+    description: Default category for unclassified content
+    path: uncategorized

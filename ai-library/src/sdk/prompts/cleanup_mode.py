@@ -1,0 +1,119 @@
+# src/sdk/prompts/cleanup_mode.py
+"""
+System prompt for cleanup/structuring plan generation.
+
+The cleanup phase identifies:
+- Blocks that may be candidates for discard (user decides)
+- Blocks that may need restructuring
+- Overall document organization suggestions
+"""
+
+from typing import List, Dict, Any
+
+
+CLEANUP_SYSTEM_PROMPT = """You are a knowledge librarian assistant analyzing a document for extraction into a personal knowledge library.
+
+Your task is to analyze the provided document blocks and suggest a cleanup plan. The user will make final decisions on all suggestions.
+
+## Your Role
+
+1. **Identify Discard Candidates**: Flag content that may not belong in a permanent knowledge library:
+   - Temporary notes, reminders, or time-sensitive content
+   - Duplicate information
+   - Placeholder text or incomplete thoughts
+   - Personal todos that have been completed
+
+2. **Preserve by Default**: When in doubt, suggest KEEP. The user can always discard later.
+
+3. **Never Auto-Discard**: Nothing is discarded without explicit user approval.
+
+## Output Format
+
+Return a JSON object with the following structure:
+
+```json
+{
+  "cleanup_items": [
+    {
+      "block_id": "block_001",
+      "suggested_disposition": "keep",
+      "suggestion_reason": "Contains valuable technical information",
+      "confidence": 0.9
+    },
+    {
+      "block_id": "block_002",
+      "suggested_disposition": "discard",
+      "suggestion_reason": "Appears to be a temporary reminder dated 2023",
+      "confidence": 0.7
+    }
+  ],
+  "overall_notes": "Document contains 4 blocks. 3 appear to be valuable knowledge content. 1 may be a temporary note."
+}
+```
+
+## Rules
+
+- Always provide a reason for each suggestion
+- Use "keep" as default unless there's clear evidence for "discard"
+- Confidence should reflect how certain you are (0.0 to 1.0)
+- Never modify content - only classify it
+- Be conservative - it's better to keep something than lose valuable information
+"""
+
+
+def build_cleanup_prompt(
+    blocks: List[Dict[str, Any]],
+    source_file: str,
+    content_mode: str = "strict",
+) -> str:
+    """
+    Build the user prompt for cleanup plan generation.
+
+    Args:
+        blocks: List of block dictionaries with id, content, type, heading_path
+        source_file: Name of the source file
+        content_mode: "strict" or "refinement"
+
+    Returns:
+        Formatted prompt string
+    """
+    block_descriptions = []
+
+    for block in blocks:
+        heading = " > ".join(block.get("heading_path", [])) or "(no heading)"
+        preview = block["content"][:300]
+        if len(block["content"]) > 300:
+            preview += "..."
+
+        block_descriptions.append(
+            f"### Block {block['id']}\n"
+            f"- Type: {block['type']}\n"
+            f"- Heading Path: {heading}\n"
+            f"- Content Preview:\n```\n{preview}\n```\n"
+        )
+
+    blocks_text = "\n".join(block_descriptions)
+
+    prompt = f"""Analyze this document for cleanup.
+
+## Source File
+{source_file}
+
+## Content Mode
+{content_mode.upper()} - {"No modifications allowed to content" if content_mode == "strict" else "Minor formatting fixes allowed"}
+
+## Document Blocks
+
+{blocks_text}
+
+## Instructions
+
+Analyze each block and provide your cleanup suggestions as JSON. Remember:
+- Default to "keep" unless there's a clear reason to suggest discard
+- Provide clear reasoning for each suggestion
+- The user makes all final decisions
+
+Return your analysis as a valid JSON object.
+"""
+
+    return prompt

@@ -1,0 +1,117 @@
+# configs/settings.yaml
+
+# Library settings
+library:
+  path: ./library
+  index_file: _index.yaml
+
+# Session settings
+sessions:
+  path: ./sessions
+  auto_save: true
+
+# SDK settings
+sdk:
+  # Claude Code runtime model to use for this repository/session.
+  # Verified: Claude Code supports `--model ...` (e.g., `claude --model opus`).
+  # Not yet verified (skip for now): programmatic temperature/max_tokens via Claude Code SDK.
+  model: claude-opus-4-5-20251101
+  temperature: 0 # TODO(verify): only enforce if supported by Claude Code/SDK
+  max_turns: 6
+
+  # Auth: use Claude Code subscription/auth token via environment.
+  # TODO(verify): confirm the correct env var name in current Claude Code docs.
+  auth_token_env_var: ANTHROPIC_AUTH_TOKEN
+
+# Safety settings
+safety:
+  require_all_resolved: true
+  verify_before_execute: true
+  verify_after_execute: true
+  backup_before_write: true
+  require_explicit_discard: true # No silent deletion of content blocks
+  forbid_merges_in_strict: true # No rewrites/merges in STRICT mode
+
+# Extraction settings
+extraction:
+  confidence_threshold: 0.8 # Below this, ask user
+  max_block_size: 5000 # Characters
+  preserve_code_blocks: true
+
+# Structuring/Cleanup settings (Phase 1)
+cleanup:
+  default_disposition: keep # keep unless user explicitly discards
+  allow_split_suggestions: true # model may suggest splitting oversized/mixed blocks
+  allow_format_suggestions: true # model may suggest safe formatting changes (no word changes)
+
+# STRICT verification settings (Phase 1)
+strict:
+  canonicalization_version: v1
+  code_blocks_byte_strict: true
+
+# Content handling settings
+content:
+  default_mode: strict # "strict" or "refinement"
+
+# Source deletion settings
+source:
+  deletion_behavior: confirm # "auto", "confirm", or "never"
+
+# Phase 3A: Vector Infrastructure Settings
+
+# Embedding provider configuration
+embeddings:
+  provider: mistral
+  model: mistral-embed
+  # api_key: (use MISTRAL_API_KEY env var)
+
+# Example: Switch to OpenAI
+# embeddings:
+#   provider: openai
+#   model: text-embedding-3-small
+#   # api_key: sk-...  # Or set OPENAI_API_KEY env var
+
+# Qdrant vector store
+vector:
+  url: localhost
+  port: 6333
+  # api_key: (for Qdrant Cloud)
+  collection_name: knowledge_library
+
+# Chunking settings
+chunking:
+  min_tokens: 512
+  max_tokens: 2048
+  overlap_tokens: 128
+  strategy: semantic # "semantic" | "fixed" | "sentence"
+
+# Phase D: REST API settings
+api:
+  host: 127.0.0.1
+  port: 8000
+  cors_origins:
+    - http://localhost:3000
+    - http://localhost:5173
+  debug: false
+
+# Phase 3B: Intelligence Layer Settings
+
+# Classification settings (two-tier)
+classification:
+  fast_tier_confidence_threshold: 0.75 # Below this, escalate to LLM tier
+  new_category_confidence_threshold: 0.85 # Above this for auto-approve
+  auto_approve_level3_plus: true # Auto-approve high-confidence Level 3+ categories
+  max_content_length_for_llm: 2000 # Truncate content for LLM tier
+
+# Composite ranking settings
+ranking:
+  similarity_weight: 0.6 # Vector similarity weight
+  taxonomy_weight: 0.25 # Taxonomy match weight
+  recency_weight: 0.15 # Content freshness weight
+  recency_half_life_days: 30.0 # Half-life for recency decay
+
+# Taxonomy management settings
+taxonomy:
+  config_path: configs/taxonomy.yaml
+  centroids_cache_dir: data/centroids
+  min_samples_for_centroid: 3

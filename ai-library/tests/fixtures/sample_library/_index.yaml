@@ -1,0 +1,5 @@
+# Sample Library Category Index
+categories:
+  - name: tech
+    description: Technical notes and documentation
+    path: tech
