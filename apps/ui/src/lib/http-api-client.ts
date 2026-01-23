@@ -16,12 +16,9 @@ import type {
   SaveImageResult,
   AutoModeAPI,
   FeaturesAPI,
-  SuggestionsAPI,
   SpecRegenerationAPI,
   AutoModeEvent,
-  SuggestionsEvent,
   SpecRegenerationEvent,
-  SuggestionType,
   GitHubAPI,
   IssueValidationInput,
   IssueValidationEvent,
@@ -550,7 +547,6 @@ export const checkSandboxEnvironment = async (): Promise<{
 type EventType =
   | 'agent:stream'
   | 'auto-mode:event'
-  | 'suggestions:event'
   | 'spec-regeneration:event'
   | 'issue-validation:event'
   | 'backlog-plan:event'
@@ -562,6 +558,9 @@ type EventType =
   | 'dev-server:started'
   | 'dev-server:output'
   | 'dev-server:stopped'
+  | 'test-runner:started'
+  | 'test-runner:output'
+  | 'test-runner:completed'
   | 'notification:created';
 
 /**
@@ -594,6 +593,44 @@ export type DevServerLogEvent =
   | { type: 'dev-server:stopped'; payload: DevServerStoppedEvent };
 
 /**
+ * Test runner event payloads for WebSocket streaming
+ */
+export type TestRunStatus = 'pending' | 'running' | 'passed' | 'failed' | 'cancelled' | 'error';
+
+export interface TestRunnerStartedEvent {
+  sessionId: string;
+  worktreePath: string;
+  /** The test command being run (from project settings) */
+  command: string;
+  testFile?: string;
+  timestamp: string;
+}
+
+export interface TestRunnerOutputEvent {
+  sessionId: string;
+  worktreePath: string;
+  content: string;
+  timestamp: string;
+}
+
+export interface TestRunnerCompletedEvent {
+  sessionId: string;
+  worktreePath: string;
+  /** The test command that was run */
+  command: string;
+  status: TestRunStatus;
+  testFile?: string;
+  exitCode: number | null;
+  duration: number;
+  timestamp: string;
+}
+
+export type TestRunnerEvent =
+  | { type: 'test-runner:started'; payload: TestRunnerStartedEvent }
+  | { type: 'test-runner:output'; payload: TestRunnerOutputEvent }
+  | { type: 'test-runner:completed'; payload: TestRunnerCompletedEvent };
+
+/**
  * Response type for fetching dev server logs
  */
 export interface DevServerLogsResponse {
@@ -604,6 +641,26 @@ export interface DevServerLogsResponse {
     url: string;
     logs: string;
     startedAt: string;
+  };
+  error?: string;
+}
+
+/**
+ * Response type for fetching test logs
+ */
+export interface TestLogsResponse {
+  success: boolean;
+  result?: {
+    sessionId: string;
+    worktreePath: string;
+    /** The test command that was/is being run */
+    command: string;
+    status: TestRunStatus;
+    testFile?: string;
+    logs: string;
+    startedAt: string;
+    finishedAt: string | null;
+    exitCode: number | null;
   };
   error?: string;
 }
@@ -1598,6 +1655,48 @@ export class HttpApiClient implements ElectronAPI {
       error?: string;
     }> => this.post('/api/setup/opencode/cache/clear'),
 
+    // Gemini CLI methods
+    getGeminiStatus: (): Promise<{
+      success: boolean;
+      status?: string;
+      installed?: boolean;
+      method?: string;
+      version?: string;
+      path?: string;
+      recommendation?: string;
+      installCommands?: {
+        macos?: string;
+        linux?: string;
+        npm?: string;
+      };
+      auth?: {
+        authenticated: boolean;
+        method: string;
+        hasApiKey?: boolean;
+        hasEnvApiKey?: boolean;
+        error?: string;
+      };
+      loginCommand?: string;
+      installCommand?: string;
+      error?: string;
+    }> => this.get('/api/setup/gemini-status'),
+
+    authGemini: (): Promise<{
+      success: boolean;
+      requiresManualAuth?: boolean;
+      command?: string;
+      message?: string;
+      error?: string;
+    }> => this.post('/api/setup/auth-gemini'),
+
+    deauthGemini: (): Promise<{
+      success: boolean;
+      requiresManualDeauth?: boolean;
+      command?: string;
+      message?: string;
+      error?: string;
+    }> => this.post('/api/setup/deauth-gemini'),
+
     onInstallProgress: (callback: (progress: unknown) => void) => {
       return this.subscribeToEvent('agent:stream', callback);
     },
@@ -1629,6 +1728,64 @@ export class HttpApiClient implements ElectronAPI {
       deletedCount?: number;
       failedCount?: number;
       results?: Array<{ featureId: string; success: boolean; error?: string }>;
+      error?: string;
+    }>;
+    export: (
+      projectPath: string,
+      options?: {
+        featureIds?: string[];
+        format?: 'json' | 'yaml';
+        includeHistory?: boolean;
+        includePlanSpec?: boolean;
+        category?: string;
+        status?: string;
+        prettyPrint?: boolean;
+        metadata?: Record<string, unknown>;
+      }
+    ) => Promise<{
+      success: boolean;
+      data?: string;
+      format?: 'json' | 'yaml';
+      contentType?: string;
+      filename?: string;
+      error?: string;
+    }>;
+    import: (
+      projectPath: string,
+      data: string,
+      options?: {
+        overwrite?: boolean;
+        preserveBranchInfo?: boolean;
+        targetCategory?: string;
+      }
+    ) => Promise<{
+      success: boolean;
+      importedCount?: number;
+      failedCount?: number;
+      results?: Array<{
+        success: boolean;
+        featureId?: string;
+        importedAt: string;
+        warnings?: string[];
+        errors?: string[];
+        wasOverwritten?: boolean;
+      }>;
+      error?: string;
+    }>;
+    checkConflicts: (
+      projectPath: string,
+      data: string
+    ) => Promise<{
+      success: boolean;
+      hasConflicts?: boolean;
+      conflicts?: Array<{
+        featureId: string;
+        title?: string;
+        existingTitle?: string;
+        hasConflict: boolean;
+      }>;
+      totalFeatures?: number;
+      conflictCount?: number;
       error?: string;
     }>;
   } = {
@@ -1663,6 +1820,64 @@ export class HttpApiClient implements ElectronAPI {
       this.post('/api/features/bulk-update', { projectPath, featureIds, updates }),
     bulkDelete: (projectPath: string, featureIds: string[]) =>
       this.post('/api/features/bulk-delete', { projectPath, featureIds }),
+    export: (
+      projectPath: string,
+      options?: {
+        featureIds?: string[];
+        format?: 'json' | 'yaml';
+        includeHistory?: boolean;
+        includePlanSpec?: boolean;
+        category?: string;
+        status?: string;
+        prettyPrint?: boolean;
+        metadata?: Record<string, unknown>;
+      }
+    ): Promise<{
+      success: boolean;
+      data?: string;
+      format?: 'json' | 'yaml';
+      contentType?: string;
+      filename?: string;
+      error?: string;
+    }> => this.post('/api/features/export', { projectPath, ...options }),
+    import: (
+      projectPath: string,
+      data: string,
+      options?: {
+        overwrite?: boolean;
+        preserveBranchInfo?: boolean;
+        targetCategory?: string;
+      }
+    ): Promise<{
+      success: boolean;
+      importedCount?: number;
+      failedCount?: number;
+      results?: Array<{
+        success: boolean;
+        featureId?: string;
+        importedAt: string;
+        warnings?: string[];
+        errors?: string[];
+        wasOverwritten?: boolean;
+      }>;
+      error?: string;
+    }> => this.post('/api/features/import', { projectPath, data, ...options }),
+    checkConflicts: (
+      projectPath: string,
+      data: string
+    ): Promise<{
+      success: boolean;
+      hasConflicts?: boolean;
+      conflicts?: Array<{
+        featureId: string;
+        title?: string;
+        existingTitle?: string;
+        hasConflict: boolean;
+      }>;
+      totalFeatures?: number;
+      conflictCount?: number;
+      error?: string;
+    }> => this.post('/api/features/check-conflicts', { projectPath, data }),
   };
 
   // Auto Mode API
@@ -1817,6 +2032,8 @@ export class HttpApiClient implements ElectronAPI {
       this.post('/api/worktree/switch-branch', { worktreePath, branchName }),
     listRemotes: (worktreePath: string) =>
       this.post('/api/worktree/list-remotes', { worktreePath }),
+    addRemote: (worktreePath: string, remoteName: string, remoteUrl: string) =>
+      this.post('/api/worktree/add-remote', { worktreePath, remoteName, remoteUrl }),
     openInEditor: (worktreePath: string, editorCommand?: string) =>
       this.post('/api/worktree/open-in-editor', { worktreePath, editorCommand }),
     getDefaultEditor: () => this.get('/api/worktree/default-editor'),
@@ -1885,6 +2102,32 @@ export class HttpApiClient implements ElectronAPI {
         unsub3();
       };
     },
+    // Test runner methods
+    startTests: (worktreePath: string, options?: { projectPath?: string; testFile?: string }) =>
+      this.post('/api/worktree/start-tests', { worktreePath, ...options }),
+    stopTests: (sessionId: string) => this.post('/api/worktree/stop-tests', { sessionId }),
+    getTestLogs: (worktreePath?: string, sessionId?: string): Promise<TestLogsResponse> => {
+      const params = new URLSearchParams();
+      if (worktreePath) params.append('worktreePath', worktreePath);
+      if (sessionId) params.append('sessionId', sessionId);
+      return this.get(`/api/worktree/test-logs?${params.toString()}`);
+    },
+    onTestRunnerEvent: (callback: (event: TestRunnerEvent) => void) => {
+      const unsub1 = this.subscribeToEvent('test-runner:started', (payload) =>
+        callback({ type: 'test-runner:started', payload: payload as TestRunnerStartedEvent })
+      );
+      const unsub2 = this.subscribeToEvent('test-runner:output', (payload) =>
+        callback({ type: 'test-runner:output', payload: payload as TestRunnerOutputEvent })
+      );
+      const unsub3 = this.subscribeToEvent('test-runner:completed', (payload) =>
+        callback({ type: 'test-runner:completed', payload: payload as TestRunnerCompletedEvent })
+      );
+      return () => {
+        unsub1();
+        unsub2();
+        unsub3();
+      };
+    },
   };
 
   // Git API
@@ -1892,22 +2135,6 @@ export class HttpApiClient implements ElectronAPI {
     getDiffs: (projectPath: string) => this.post('/api/git/diffs', { projectPath }),
     getFileDiff: (projectPath: string, filePath: string) =>
       this.post('/api/git/file-diff', { projectPath, filePath }),
-  };
-
-  // Suggestions API
-  suggestions: SuggestionsAPI = {
-    generate: (
-      projectPath: string,
-      suggestionType?: SuggestionType,
-      model?: string,
-      thinkingLevel?: string
-    ) =>
-      this.post('/api/suggestions/generate', { projectPath, suggestionType, model, thinkingLevel }),
-    stop: () => this.post('/api/suggestions/stop'),
-    status: () => this.get('/api/suggestions/status'),
-    onEvent: (callback: (event: SuggestionsEvent) => void) => {
-      return this.subscribeToEvent('suggestions:event', callback as EventCallback);
-    },
   };
 
   // Spec Regeneration API
@@ -2246,6 +2473,7 @@ export class HttpApiClient implements ElectronAPI {
         defaultDeleteBranchWithWorktree?: boolean;
         autoDismissInitScriptIndicator?: boolean;
         lastSelectedSessionId?: string;
+        testCommand?: string;
       };
       error?: string;
     }> => this.post('/api/settings/project', { projectPath }),

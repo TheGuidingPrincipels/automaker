@@ -1,8 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { createLogger } from '@automaker/utils/logger';
 import { useNavigate, useLocation } from '@tanstack/react-router';
-
-const logger = createLogger('Sidebar');
+import { PanelLeftClose, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/app-store';
 import { useNotificationsStore } from '@/store/notifications-store';
@@ -10,22 +9,18 @@ import { useKeyboardShortcuts, useKeyboardShortcutsConfig } from '@/hooks/use-ke
 import { getElectronAPI } from '@/lib/electron';
 import { initializeProject, hasAppSpec, hasAutomakerDir } from '@/lib/project-init';
 import { toast } from 'sonner';
-import { DeleteProjectDialog } from '@/components/views/settings-view/components/delete-project-dialog';
-import { NewProjectModal } from '@/components/dialogs/new-project-modal';
-import { CreateSpecDialog } from '@/components/views/spec-view/dialogs';
-
-// Local imports from subfolder
-import {
-  CollapseToggleButton,
-  SidebarHeader,
-  SidebarNavigation,
-  SidebarFooter,
-  MobileSidebarToggle,
-} from './sidebar/components';
 import { useIsCompact } from '@/hooks/use-media-query';
-import { PanelLeftClose } from 'lucide-react';
-import { TrashDialog, OnboardingDialog } from './sidebar/dialogs';
-import { SIDEBAR_FEATURE_FLAGS } from './sidebar/constants';
+import type { Project } from '@/lib/electron';
+
+// Sidebar components
+import {
+  SidebarNavigation,
+  CollapseToggleButton,
+  MobileSidebarToggle,
+  SidebarHeader,
+  SidebarFooter,
+} from './components';
+import { SIDEBAR_FEATURE_FLAGS } from './constants';
 import {
   useSidebarAutoCollapse,
   useRunningAgents,
@@ -35,7 +30,19 @@ import {
   useSetupDialog,
   useTrashOperations,
   useUnviewedValidations,
-} from './sidebar/hooks';
+} from './hooks';
+import { TrashDialog, OnboardingDialog } from './dialogs';
+
+// Reuse dialogs from project-switcher
+import { ProjectContextMenu } from '../project-switcher/components/project-context-menu';
+import { EditProjectDialog } from '../project-switcher/components/edit-project-dialog';
+
+// Import shared dialogs
+import { DeleteProjectDialog } from '@/components/views/settings-view/components/delete-project-dialog';
+import { NewProjectModal } from '@/components/dialogs/new-project-modal';
+import { CreateSpecDialog } from '@/components/views/spec-view/dialogs';
+
+const logger = createLogger('Sidebar');
 
 export function Sidebar() {
   const navigate = useNavigate();
@@ -59,18 +66,27 @@ export function Sidebar() {
     moveProjectToTrash,
     specCreatingForProject,
     setSpecCreatingForProject,
+    setCurrentProject,
   } = useAppStore();
 
   const isCompact = useIsCompact();
 
   // Environment variable flags for hiding sidebar items
-  const { hideTerminal, hideRunningAgents, hideContext, hideSpecEditor } = SIDEBAR_FEATURE_FLAGS;
+  const { hideTerminal, hideRunningAgents, hideContext, hideSpecEditor, hideWiki } =
+    SIDEBAR_FEATURE_FLAGS;
 
   // Get customizable keyboard shortcuts
   const shortcuts = useKeyboardShortcutsConfig();
 
   // Get unread notifications count
   const unreadNotificationsCount = useNotificationsStore((s) => s.unreadCount);
+
+  // State for context menu
+  const [contextMenuProject, setContextMenuProject] = useState<Project | null>(null);
+  const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(
+    null
+  );
+  const [editDialogProject, setEditDialogProject] = useState<Project | null>(null);
 
   // State for delete project confirmation dialog
   const [showDeleteProjectDialog, setShowDeleteProjectDialog] = useState(false);
@@ -129,7 +145,7 @@ export function Sidebar() {
   const isCurrentProjectGeneratingSpec =
     specCreatingForProject !== null && specCreatingForProject === currentProject?.path;
 
-  // Auto-collapse sidebar on small screens and update Electron window minWidth
+  // Auto-collapse sidebar on small screens
   useSidebarAutoCollapse({ sidebarOpen, toggleSidebar });
 
   // Running agents count
@@ -163,9 +179,28 @@ export function Sidebar() {
     setNewProjectPath,
   });
 
+  // Context menu handlers
+  const handleContextMenu = useCallback((project: Project, event: React.MouseEvent) => {
+    event.preventDefault();
+    setContextMenuProject(project);
+    setContextMenuPosition({ x: event.clientX, y: event.clientY });
+  }, []);
+
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenuProject(null);
+    setContextMenuPosition(null);
+  }, []);
+
+  const handleEditProject = useCallback(
+    (project: Project) => {
+      setEditDialogProject(project);
+      handleCloseContextMenu();
+    },
+    [handleCloseContextMenu]
+  );
+
   /**
    * Opens the system folder selection dialog and initializes the selected project.
-   * Used by both the 'O' keyboard shortcut and the folder icon button.
    */
   const handleOpenFolder = useCallback(async () => {
     const api = getElectronAPI();
@@ -173,14 +208,10 @@ export function Sidebar() {
 
     if (!result.canceled && result.filePaths[0]) {
       const path = result.filePaths[0];
-      // Extract folder name from path (works on both Windows and Mac/Linux)
       const name = path.split(/[/\\]/).filter(Boolean).pop() || 'Untitled Project';
 
       try {
-        // Check if this is a brand new project (no .automaker directory)
         const hadAutomakerDir = await hasAutomakerDir(path);
-
-        // Initialize the .automaker directory structure
         const initResult = await initializeProject(path);
 
         if (!initResult.success) {
@@ -190,15 +221,10 @@ export function Sidebar() {
           return;
         }
 
-        // Upsert project and set as current (handles both create and update cases)
-        // Theme handling (trashed project recovery or undefined for global) is done by the store
         upsertAndSetCurrentProject(path, name);
-
-        // Check if app_spec.txt exists
         const specExists = await hasAppSpec(path);
 
         if (!hadAutomakerDir && !specExists) {
-          // This is a brand new project - show setup dialog
           setSetupProjectPath(path);
           setShowSetupDialog(true);
           toast.success('Project opened', {
@@ -213,6 +239,8 @@ export function Sidebar() {
             description: `Opened ${name}`,
           });
         }
+
+        navigate({ to: '/board' });
       } catch (error) {
         logger.error('Failed to open project:', error);
         toast.error('Failed to open project', {
@@ -220,9 +248,13 @@ export function Sidebar() {
         });
       }
     }
-  }, [upsertAndSetCurrentProject]);
+  }, [upsertAndSetCurrentProject, navigate, setSetupProjectPath, setShowSetupDialog]);
 
-  // Navigation sections and keyboard shortcuts (defined after handlers)
+  const handleNewProject = useCallback(() => {
+    setShowNewProjectModal(true);
+  }, [setShowNewProjectModal]);
+
+  // Navigation sections and keyboard shortcuts
   const { navSections, navigationShortcuts } = useNavigation({
     shortcuts,
     hideSpecEditor,
@@ -244,11 +276,47 @@ export function Sidebar() {
   // Register keyboard shortcuts
   useKeyboardShortcuts(navigationShortcuts);
 
+  // Keyboard shortcuts for project switching (1-9, 0)
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      if (event.ctrlKey || event.metaKey || event.altKey) {
+        return;
+      }
+
+      const key = event.key;
+      let projectIndex: number | null = null;
+
+      if (key >= '1' && key <= '9') {
+        projectIndex = parseInt(key, 10) - 1;
+      } else if (key === '0') {
+        projectIndex = 9;
+      }
+
+      if (projectIndex !== null && projectIndex < projects.length) {
+        const targetProject = projects[projectIndex];
+        if (targetProject && targetProject.id !== currentProject?.id) {
+          setCurrentProject(targetProject);
+          navigate({ to: '/board' });
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [projects, currentProject, setCurrentProject, navigate]);
+
   const isActiveRoute = (id: string) => {
-    // Map view IDs to route paths
     const routePath = id === 'welcome' ? '/' : `/${id}`;
     return location.pathname === routePath;
   };
+
+  // Track if nav can scroll down
+  const [canScrollDown, setCanScrollDown] = useState(false);
 
   // Check if sidebar should be completely hidden on mobile
   const shouldHideSidebar = isCompact && mobileSidebarHidden;
@@ -266,6 +334,7 @@ export function Sidebar() {
           data-testid="sidebar-backdrop"
         />
       )}
+
       <aside
         className={cn(
           'flex-shrink-0 flex flex-col z-30',
@@ -277,9 +346,11 @@ export function Sidebar() {
           'transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
           // Mobile: completely hidden when mobileSidebarHidden is true
           shouldHideSidebar && 'hidden',
-          // Mobile: overlay when open, collapsed when closed
+          // Width based on state
           !shouldHideSidebar &&
-            (sidebarOpen ? 'fixed inset-y-0 left-0 w-72 lg:relative lg:w-72' : 'relative w-16')
+            (sidebarOpen
+              ? 'fixed inset-y-0 left-0 w-[17rem] lg:relative lg:w-[17rem]'
+              : 'relative w-14')
         )}
         data-testid="sidebar"
       >
@@ -313,8 +384,9 @@ export function Sidebar() {
           <SidebarHeader
             sidebarOpen={sidebarOpen}
             currentProject={currentProject}
-            onClose={toggleSidebar}
-            onExpand={toggleSidebar}
+            onNewProject={handleNewProject}
+            onOpenFolder={handleOpenFolder}
+            onProjectContextMenu={handleContextMenu}
           />
 
           <SidebarNavigation
@@ -323,17 +395,27 @@ export function Sidebar() {
             navSections={navSections}
             isActiveRoute={isActiveRoute}
             navigate={navigate}
+            onScrollStateChange={setCanScrollDown}
           />
         </div>
+
+        {/* Scroll indicator - shows there's more content below */}
+        {canScrollDown && sidebarOpen && (
+          <div className="flex justify-center py-1 border-t border-border/30">
+            <ChevronDown className="w-4 h-4 text-muted-foreground/50 animate-bounce" />
+          </div>
+        )}
 
         <SidebarFooter
           sidebarOpen={sidebarOpen}
           isActiveRoute={isActiveRoute}
           navigate={navigate}
           hideRunningAgents={hideRunningAgents}
+          hideWiki={hideWiki}
           runningAgentsCount={runningAgentsCount}
           shortcuts={{ settings: shortcuts.settings }}
         />
+
         <TrashDialog
           open={showTrashDialog}
           onOpenChange={setShowTrashDialog}
@@ -392,6 +474,25 @@ export function Sidebar() {
           isCreating={isCreatingProject}
         />
       </aside>
+
+      {/* Context Menu */}
+      {contextMenuProject && contextMenuPosition && (
+        <ProjectContextMenu
+          project={contextMenuProject}
+          position={contextMenuPosition}
+          onClose={handleCloseContextMenu}
+          onEdit={handleEditProject}
+        />
+      )}
+
+      {/* Edit Project Dialog */}
+      {editDialogProject && (
+        <EditProjectDialog
+          project={editDialogProject}
+          open={!!editDialogProject}
+          onOpenChange={(open) => !open && setEditDialogProject(null)}
+        />
+      )}
     </>
   );
 }

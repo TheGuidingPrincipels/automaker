@@ -4,9 +4,16 @@ import {
   CURSOR_MODEL_MAP,
   CODEX_MODEL_MAP,
   OPENCODE_MODELS as OPENCODE_MODEL_CONFIGS,
+  GEMINI_MODEL_MAP,
 } from '@automaker/types';
 import { Brain, Zap, Scale, Cpu, Rocket, Sparkles } from 'lucide-react';
-import { AnthropicIcon, CursorIcon, OpenAIIcon, OpenCodeIcon } from '@/components/ui/provider-icon';
+import {
+  AnthropicIcon,
+  CursorIcon,
+  OpenAIIcon,
+  OpenCodeIcon,
+  GeminiIcon,
+} from '@/components/ui/provider-icon';
 
 export type ModelOption = {
   id: string; // All model IDs use canonical prefixed format (e.g., "claude-sonnet", "cursor-auto")
@@ -118,13 +125,29 @@ export const OPENCODE_MODELS: ModelOption[] = OPENCODE_MODEL_CONFIGS.map((config
 }));
 
 /**
- * All available models (Claude + Cursor + Codex + OpenCode)
+ * Gemini models derived from GEMINI_MODEL_MAP
+ * Model IDs already have 'gemini-' prefix (like Cursor models)
+ */
+export const GEMINI_MODELS: ModelOption[] = Object.entries(GEMINI_MODEL_MAP).map(
+  ([id, config]) => ({
+    id, // IDs already have gemini- prefix (e.g., 'gemini-2.5-flash')
+    label: config.label,
+    description: config.description,
+    badge: config.supportsThinking ? 'Thinking' : 'Speed',
+    provider: 'gemini' as ModelProvider,
+    hasThinking: config.supportsThinking,
+  })
+);
+
+/**
+ * All available models (Claude + Cursor + Codex + OpenCode + Gemini)
  */
 export const ALL_MODELS: ModelOption[] = [
   ...CLAUDE_MODELS,
   ...CURSOR_MODELS,
   ...CODEX_MODELS,
   ...OPENCODE_MODELS,
+  ...GEMINI_MODELS,
 ];
 
 export const THINKING_LEVELS: ThinkingLevel[] = ['none', 'low', 'medium', 'high', 'ultrathink'];
@@ -171,4 +194,5 @@ export const PROFILE_ICONS: Record<string, React.ComponentType<{ className?: str
   Cursor: CursorIcon,
   Codex: OpenAIIcon,
   OpenCode: OpenCodeIcon,
+  Gemini: GeminiIcon,
 };

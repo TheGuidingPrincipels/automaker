@@ -57,7 +57,6 @@ import { createWorktreeRoutes } from './routes/worktree/index.js';
 import { createGitRoutes } from './routes/git/index.js';
 import { createSetupRoutes } from './routes/setup/index.js';
 import { loadApiKeysFromCredentials } from './routes/setup/common.js';
-import { createSuggestionsRoutes } from './routes/suggestions/index.js';
 import { createModelsRoutes } from './routes/models/index.js';
 import { createRunningAgentsRoutes } from './routes/running-agents/index.js';
 import { createWorkspaceRoutes } from './routes/workspace/index.js';
@@ -97,6 +96,8 @@ import { createNotificationsRoutes } from './routes/notifications/index.js';
 import { getNotificationService } from './services/notification-service.js';
 import { createEventHistoryRoutes } from './routes/event-history/index.js';
 import { getEventHistoryService } from './services/event-history-service.js';
+import { getTestRunnerService } from './services/test-runner-service.js';
+import { createProjectsRoutes } from './routes/projects/index.js';
 import { createTeamStorage } from './lib/team-storage.js';
 import { createCustomAgentsRoutes } from './routes/custom-agents/index.js';
 import { createSystemsRoutes } from './routes/systems/index.js';
@@ -308,6 +309,10 @@ notificationService.setEventEmitter(events);
 // Initialize Event History Service
 const eventHistoryService = getEventHistoryService();
 
+// Initialize Test Runner Service with event emitter for real-time test output streaming
+const testRunnerService = getTestRunnerService();
+testRunnerService.setEventEmitter(events);
+
 // Initialize Event Hook Service for custom event triggers (with history storage)
 eventHookService.initialize(events, settingsService, eventHistoryService, featureLoader);
 
@@ -402,7 +407,6 @@ app.use('/api/auto-mode', createAutoModeRoutes(autoModeService));
 app.use('/api/enhance-prompt', createEnhancePromptRoutes(settingsService));
 app.use('/api/worktree', createWorktreeRoutes(events, settingsService));
 app.use('/api/git', createGitRoutes());
-app.use('/api/suggestions', createSuggestionsRoutes(events, settingsService));
 app.use('/api/models', createModelsRoutes());
 app.use('/api/spec-regeneration', createSpecRegenerationRoutes(events, settingsService));
 app.use('/api/running-agents', createRunningAgentsRoutes(autoModeService));
@@ -420,6 +424,10 @@ app.use('/api/pipeline', createPipelineRoutes(pipelineService));
 app.use('/api/ideation', createIdeationRoutes(events, ideationService, featureLoader));
 app.use('/api/notifications', createNotificationsRoutes(notificationService));
 app.use('/api/event-history', createEventHistoryRoutes(eventHistoryService, settingsService));
+app.use(
+  '/api/projects',
+  createProjectsRoutes(featureLoader, autoModeService, settingsService, notificationService)
+);
 
 // SYSTEMS section routes - Custom Agents, Systems, and Knowledge Hub
 app.use('/api/custom-agents', createCustomAgentsRoutes(teamStorage));

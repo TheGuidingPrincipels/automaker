@@ -24,6 +24,9 @@ import { createDeauthCursorHandler } from './routes/deauth-cursor.js';
 import { createAuthOpencodeHandler } from './routes/auth-opencode.js';
 import { createDeauthOpencodeHandler } from './routes/deauth-opencode.js';
 import { createOpencodeStatusHandler } from './routes/opencode-status.js';
+import { createGeminiStatusHandler } from './routes/gemini-status.js';
+import { createAuthGeminiHandler } from './routes/auth-gemini.js';
+import { createDeauthGeminiHandler } from './routes/deauth-gemini.js';
 import {
   createGetOpencodeModelsHandler,
   createRefreshOpencodeModelsHandler,
@@ -80,6 +83,11 @@ export function createSetupRoutes(): Router {
   router.get('/opencode-status', createOpencodeStatusHandler());
   router.post('/auth-opencode', createAuthOpencodeHandler());
   router.post('/deauth-opencode', createDeauthOpencodeHandler());
+
+  // Gemini CLI routes
+  router.get('/gemini-status', createGeminiStatusHandler());
+  router.post('/auth-gemini', createAuthGeminiHandler());
+  router.post('/deauth-gemini', createDeauthGeminiHandler());
 
   // OpenCode Dynamic Model Discovery routes
   router.get('/opencode/models', createGetOpencodeModelsHandler());

@@ -19,6 +19,8 @@ export type {
   McpHttpServerConfig,
   AgentDefinition,
   ReasoningEffort,
+  // System prompt configuration for CLAUDE.md auto-loading
+  SystemPromptPreset,
 } from './provider.js';
 
 // Provider constants and utilities
@@ -34,6 +36,10 @@ export type {
   CodexApprovalPolicy,
   CodexCliConfig,
   CodexAuthStatus,
+  // Event types for CLI event parsing
+  CodexEventType,
+  CodexItemType,
+  CodexEvent,
 } from './codex.js';
 export * from './codex-models.js';
 
@@ -58,6 +64,9 @@ export type {
   FeatureTextFilePath,
   FeatureStatus,
   DescriptionHistoryEntry,
+  FeatureExport,
+  FeatureImport,
+  FeatureImportResult,
 } from './feature.js';
 
 // Session types
@@ -200,6 +209,7 @@ export {
 export type { ModelOption, ThinkingLevelOption, ReasoningEffortOption } from './model-display.js';
 export {
   CLAUDE_MODELS,
+  GEMINI_MODELS,
   THINKING_LEVELS,
   THINKING_LEVEL_LABELS,
   REASONING_EFFORT_LEVELS,
@@ -244,6 +254,9 @@ export * from './cursor-cli.js';
 // OpenCode types
 export * from './opencode-models.js';
 
+// Gemini types
+export * from './gemini-models.js';
+
 // Provider utilities
 export {
   PROVIDER_PREFIXES,
@@ -251,6 +264,7 @@ export {
   isClaudeModel,
   isCodexModel,
   isOpencodeModel,
+  isGeminiModel,
   getModelProvider,
   stripProviderPrefix,
   addProviderPrefix,
@@ -328,11 +342,37 @@ export type {
 export { EVENT_HISTORY_VERSION, DEFAULT_EVENT_HISTORY_INDEX } from './event-history.js';
 
 // Worktree and PR types
-export type { PRState, WorktreePRInfo } from './worktree.js';
+export type {
+  PRState,
+  WorktreePRInfo,
+  AddRemoteRequest,
+  AddRemoteResult,
+  AddRemoteResponse,
+  AddRemoteErrorResponse,
+} from './worktree.js';
 export { PR_STATES, validatePRState } from './worktree.js';
 
 // Terminal types
 export type { TerminalInfo } from './terminal.js';
+
+// Test runner types
+export type { TestRunnerInfo } from './test-runner.js';
+
+// Project overview types (multi-project dashboard)
+export type {
+  ProjectHealthStatus,
+  FeatureStatusCounts,
+  ProjectStatus,
+  AggregateFeatureCounts,
+  AggregateProjectCounts,
+  AggregateStatus,
+  ActivityType,
+  ActivitySeverity,
+  RecentActivity,
+  ActivityFeedOptions,
+  MultiProjectOverview,
+  ProjectOverviewError,
+} from './project-overview.js';
 
 // Custom Agent types
 export type {

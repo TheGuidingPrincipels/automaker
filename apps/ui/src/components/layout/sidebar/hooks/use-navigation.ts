@@ -13,6 +13,7 @@ import {
   Network,
   Bell,
   Settings,
+  Home,
   Cpu,
   Workflow,
   BookOpenCheck,
@@ -180,13 +181,30 @@ export function useNavigation({
     }
 
     const sections: NavSection[] = [
+      // Dashboard - standalone at top (links to projects overview)
+      {
+        label: '',
+        items: [
+          {
+            id: 'overview',
+            label: 'Dashboard',
+            icon: Home,
+          },
+        ],
+      },
+      // Project section - expanded by default
       {
         label: 'Project',
         items: projectItems,
+        collapsible: true,
+        defaultCollapsed: false,
       },
+      // Tools section - collapsed by default
       {
         label: 'Tools',
         items: visibleToolsItems,
+        collapsible: true,
+        defaultCollapsed: true,
       },
       {
         label: 'Systems',
@@ -232,6 +250,8 @@ export function useNavigation({
             shortcut: shortcuts.githubPrs,
           },
         ],
+        collapsible: true,
+        defaultCollapsed: true,
       });
     }
 

@@ -274,11 +274,55 @@ class DevServerService {
   }
 
   /**
+   * Parse a custom command string into cmd and args
+   * Handles quoted strings with spaces (e.g., "my command" arg1 arg2)
+   */
+  private parseCustomCommand(command: string): { cmd: string; args: string[] } {
+    const tokens: string[] = [];
+    let current = '';
+    let inQuote = false;
+    let quoteChar = '';
+
+    for (let i = 0; i < command.length; i++) {
+      const char = command[i];
+
+      if (inQuote) {
+        if (char === quoteChar) {
+          inQuote = false;
+        } else {
+          current += char;
+        }
+      } else if (char === '"' || char === "'") {
+        inQuote = true;
+        quoteChar = char;
+      } else if (char === ' ') {
+        if (current) {
+          tokens.push(current);
+          current = '';
+        }
+      } else {
+        current += char;
+      }
+    }
+
+    if (current) {
+      tokens.push(current);
+    }
+
+    const [cmd, ...args] = tokens;
+    return { cmd: cmd || '', args };
+  }
+
+  /**
    * Start a dev server for a worktree
+   * @param projectPath - The project root path
+   * @param worktreePath - The worktree directory path
+   * @param customCommand - Optional custom command to run instead of auto-detected dev command
    */
   async startDevServer(
     projectPath: string,
-    worktreePath: string
+    worktreePath: string,
+    customCommand?: string
   ): Promise<{
     success: boolean;
     result?: {
@@ -311,22 +355,41 @@ class DevServerService {
       };
     }
 
-    // Check for package.json
-    const packageJsonPath = path.join(worktreePath, 'package.json');
-    if (!(await this.fileExists(packageJsonPath))) {
-      return {
-        success: false,
-        error: `No package.json found in: ${worktreePath}`,
-      };
-    }
+    // Determine the dev command to use
+    let devCommand: { cmd: string; args: string[] };
 
-    // Get dev command
-    const devCommand = await this.getDevCommand(worktreePath);
-    if (!devCommand) {
-      return {
-        success: false,
-        error: `Could not determine dev command for: ${worktreePath}`,
-      };
+    // Normalize custom command: trim whitespace and treat empty strings as undefined
+    const normalizedCustomCommand = customCommand?.trim();
+
+    if (normalizedCustomCommand) {
+      // Use the provided custom command
+      devCommand = this.parseCustomCommand(normalizedCustomCommand);
+      if (!devCommand.cmd) {
+        return {
+          success: false,
+          error: 'Invalid custom command: command cannot be empty',
+        };
+      }
+      logger.debug(`Using custom command: ${normalizedCustomCommand}`);
+    } else {
+      // Check for package.json when auto-detecting
+      const packageJsonPath = path.join(worktreePath, 'package.json');
+      if (!(await this.fileExists(packageJsonPath))) {
+        return {
+          success: false,
+          error: `No package.json found in: ${worktreePath}`,
+        };
+      }
+
+      // Get dev command from package manager detection
+      const detectedCommand = await this.getDevCommand(worktreePath);
+      if (!detectedCommand) {
+        return {
+          success: false,
+          error: `Could not determine dev command for: ${worktreePath}`,
+        };
+      }
+      devCommand = detectedCommand;
     }
 
     // Find available port

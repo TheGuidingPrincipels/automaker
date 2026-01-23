@@ -63,6 +63,7 @@ export {
   useCursorCliStatus,
   useCodexCliStatus,
   useOpencodeCliStatus,
+  useGeminiCliStatus,
   useGitHubCliStatus,
   useApiKeysStatus,
   usePlatformInfo,

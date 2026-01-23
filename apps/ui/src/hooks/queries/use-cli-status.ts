@@ -90,6 +90,26 @@ export function useOpencodeCliStatus() {
 }
 
 /**
+ * Fetch Gemini CLI status
+ *
+ * @returns Query result with Gemini CLI status
+ */
+export function useGeminiCliStatus() {
+  return useQuery({
+    queryKey: queryKeys.cli.gemini(),
+    queryFn: async () => {
+      const api = getElectronAPI();
+      const result = await api.setup.getGeminiStatus();
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to fetch Gemini status');
+      }
+      return result;
+    },
+    staleTime: STALE_TIMES.CLI_STATUS,
+  });
+}
+
+/**
  * Fetch GitHub CLI status
  *
  * @returns Query result with GitHub CLI status

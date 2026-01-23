@@ -88,10 +88,10 @@ export function useBoardDragDrop({
           const targetFeature = features.find((f) => f.id === targetFeatureId);
           if (!targetFeature) return;
 
-          // Only allow linking backlog features (both must be in backlog)
-          if (draggedFeature.status !== 'backlog' || targetFeature.status !== 'backlog') {
+          // Don't allow linking completed features (they're already done)
+          if (draggedFeature.status === 'completed' || targetFeature.status === 'completed') {
             toast.error('Cannot link features', {
-              description: 'Both features must be in the backlog to create a dependency link.',
+              description: 'Completed features cannot be linked.',
             });
             return;
           }

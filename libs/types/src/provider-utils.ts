@@ -10,12 +10,14 @@ import type { ModelProvider } from './settings.js';
 import { CURSOR_MODEL_MAP, LEGACY_CURSOR_MODEL_MAP } from './cursor-models.js';
 import { CLAUDE_MODEL_MAP, CODEX_MODEL_MAP } from './model.js';
 import { OPENCODE_MODEL_CONFIG_MAP, LEGACY_OPENCODE_MODEL_MAP } from './opencode-models.js';
+import { GEMINI_MODEL_MAP } from './gemini-models.js';
 
 /** Provider prefix constants */
 export const PROVIDER_PREFIXES = {
   cursor: 'cursor-',
   codex: 'codex-',
   opencode: 'opencode-',
+  gemini: 'gemini-',
 } as const;
 
 /**
@@ -91,6 +93,28 @@ export function isCodexModel(model: string | undefined | null): boolean {
 }
 
 /**
+ * Check if a model string represents a Gemini model
+ *
+ * @param model - Model string to check (e.g., "gemini-2.5-pro", "gemini-3-pro-preview")
+ * @returns true if the model is a Gemini model
+ */
+export function isGeminiModel(model: string | undefined | null): boolean {
+  if (!model || typeof model !== 'string') return false;
+
+  // Canonical format: gemini- prefix (e.g., "gemini-2.5-flash")
+  if (model.startsWith(PROVIDER_PREFIXES.gemini)) {
+    return true;
+  }
+
+  // Check if it's a known Gemini model ID (map keys include gemini- prefix)
+  if (model in GEMINI_MODEL_MAP) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Check if a model string represents an OpenCode model
  *
  * With canonical model IDs, static OpenCode models use 'opencode-' prefix.
@@ -151,7 +175,11 @@ export function isOpencodeModel(model: string | undefined | null): boolean {
  * @returns The provider type, defaults to 'claude' for unknown models
  */
 export function getModelProvider(model: string | undefined | null): ModelProvider {
-  // Check OpenCode first since it uses provider-prefixed formats that could conflict
+  // Check Gemini first since it uses gemini- prefix
+  if (isGeminiModel(model)) {
+    return 'gemini';
+  }
+  // Check OpenCode next since it uses provider-prefixed formats that could conflict
   if (isOpencodeModel(model)) {
     return 'opencode';
   }
@@ -199,6 +227,7 @@ export function stripProviderPrefix(model: string): string {
  * addProviderPrefix('cursor-composer-1', 'cursor') // 'cursor-composer-1' (no change)
  * addProviderPrefix('gpt-5.2', 'codex') // 'codex-gpt-5.2'
  * addProviderPrefix('sonnet', 'claude') // 'sonnet' (Claude doesn't use prefix)
+ * addProviderPrefix('2.5-flash', 'gemini') // 'gemini-2.5-flash'
  */
 export function addProviderPrefix(model: string, provider: ModelProvider): string {
   if (!model || typeof model !== 'string') return model;
@@ -214,6 +243,10 @@ export function addProviderPrefix(model: string, provider: ModelProvider): strin
   } else if (provider === 'opencode') {
     if (!model.startsWith(PROVIDER_PREFIXES.opencode)) {
       return `${PROVIDER_PREFIXES.opencode}${model}`;
+    }
+  } else if (provider === 'gemini') {
+    if (!model.startsWith(PROVIDER_PREFIXES.gemini)) {
+      return `${PROVIDER_PREFIXES.gemini}${model}`;
     }
   }
   // Claude models don't use prefixes
@@ -250,6 +283,7 @@ export function normalizeModelString(model: string | undefined | null): string {
     model.startsWith(PROVIDER_PREFIXES.cursor) ||
     model.startsWith(PROVIDER_PREFIXES.codex) ||
     model.startsWith(PROVIDER_PREFIXES.opencode) ||
+    model.startsWith(PROVIDER_PREFIXES.gemini) ||
     model.startsWith('claude-')
   ) {
     return model;

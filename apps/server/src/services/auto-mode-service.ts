@@ -534,7 +534,11 @@ export class AutoModeService {
       const autoModeByWorktree = settings.autoModeByWorktree;
 
       if (projectId && autoModeByWorktree && typeof autoModeByWorktree === 'object') {
-        const key = `${projectId}::${branchName ?? '__main__'}`;
+        // Normalize branch name to match UI convention:
+        // - null or "main" -> "__main__" (UI treats "main" as the main worktree)
+        // This ensures consistency with how the UI stores worktree settings
+        const normalizedBranch = branchName === 'main' ? null : branchName;
+        const key = `${projectId}::${normalizedBranch ?? '__main__'}`;
         const entry = autoModeByWorktree[key];
         if (entry && typeof entry.maxConcurrency === 'number') {
           return entry.maxConcurrency;
@@ -1039,7 +1043,9 @@ export class AutoModeService {
   }> {
     // Load feature to get branchName
     const feature = await this.loadFeature(projectPath, featureId);
-    const branchName = feature?.branchName ?? null;
+    const rawBranchName = feature?.branchName ?? null;
+    // Normalize "main" to null to match UI convention for main worktree
+    const branchName = rawBranchName === 'main' ? null : rawBranchName;
 
     // Get per-worktree limit
     const maxAgents = await this.resolveMaxConcurrency(projectPath, branchName);
@@ -1281,7 +1287,11 @@ export class AutoModeService {
 
       // Check for pipeline steps and execute them
       const pipelineConfig = await pipelineService.getPipelineConfig(projectPath);
-      const sortedSteps = [...(pipelineConfig?.steps || [])].sort((a, b) => a.order - b.order);
+      // Filter out excluded pipeline steps and sort by order
+      const excludedStepIds = new Set(feature.excludedPipelineSteps || []);
+      const sortedSteps = [...(pipelineConfig?.steps || [])]
+        .sort((a, b) => a.order - b.order)
+        .filter((step) => !excludedStepIds.has(step.id));
 
       if (sortedSteps.length > 0) {
         // Execute pipeline steps sequentially
@@ -1743,15 +1753,76 @@ Complete the pipeline step instructions above. Review the previous work and appl
   ): Promise<void> {
     const featureId = feature.id;
 
-    const sortedSteps = [...pipelineConfig.steps].sort((a, b) => a.order - b.order);
+    // Sort all steps first
+    const allSortedSteps = [...pipelineConfig.steps].sort((a, b) => a.order - b.order);
 
-    // Validate step index
-    if (startFromStepIndex < 0 || startFromStepIndex >= sortedSteps.length) {
+    // Get the current step we're resuming from (using the index from unfiltered list)
+    if (startFromStepIndex < 0 || startFromStepIndex >= allSortedSteps.length) {
       throw new Error(`Invalid step index: ${startFromStepIndex}`);
     }
+    const currentStep = allSortedSteps[startFromStepIndex];
 
-    // Get steps to execute (from startFromStepIndex onwards)
-    const stepsToExecute = sortedSteps.slice(startFromStepIndex);
+    // Filter out excluded pipeline steps
+    const excludedStepIds = new Set(feature.excludedPipelineSteps || []);
+
+    // Check if the current step is excluded
+    // If so, use getNextStatus to find the appropriate next step
+    if (excludedStepIds.has(currentStep.id)) {
+      console.log(
+        `[AutoMode] Current step ${currentStep.id} is excluded for feature ${featureId}, finding next valid step`
+      );
+      const nextStatus = pipelineService.getNextStatus(
+        `pipeline_${currentStep.id}`,
+        pipelineConfig,
+        feature.skipTests ?? false,
+        feature.excludedPipelineSteps
+      );
+
+      // If next status is not a pipeline step, feature is done
+      if (!pipelineService.isPipelineStatus(nextStatus)) {
+        await this.updateFeatureStatus(projectPath, featureId, nextStatus);
+        this.emitAutoModeEvent('auto_mode_feature_complete', {
+          featureId,
+          featureName: feature.title,
+          branchName: feature.branchName ?? null,
+          passes: true,
+          message: 'Pipeline completed (remaining steps excluded)',
+          projectPath,
+        });
+        return;
+      }
+
+      // Find the next step and update the start index
+      const nextStepId = pipelineService.getStepIdFromStatus(nextStatus);
+      const nextStepIndex = allSortedSteps.findIndex((s) => s.id === nextStepId);
+      if (nextStepIndex === -1) {
+        throw new Error(`Next step ${nextStepId} not found in pipeline config`);
+      }
+      startFromStepIndex = nextStepIndex;
+    }
+
+    // Get steps to execute (from startFromStepIndex onwards, excluding excluded steps)
+    const stepsToExecute = allSortedSteps
+      .slice(startFromStepIndex)
+      .filter((step) => !excludedStepIds.has(step.id));
+
+    // If no steps left to execute, complete the feature
+    if (stepsToExecute.length === 0) {
+      const finalStatus = feature.skipTests ? 'waiting_approval' : 'verified';
+      await this.updateFeatureStatus(projectPath, featureId, finalStatus);
+      this.emitAutoModeEvent('auto_mode_feature_complete', {
+        featureId,
+        featureName: feature.title,
+        branchName: feature.branchName ?? null,
+        passes: true,
+        message: 'Pipeline completed (all remaining steps excluded)',
+        projectPath,
+      });
+      return;
+    }
+
+    // Use the filtered steps for counting
+    const sortedSteps = allSortedSteps.filter((step) => !excludedStepIds.has(step.id));
 
     console.log(
       `[AutoMode] Resuming pipeline for feature ${featureId} from step ${startFromStepIndex + 1}/${sortedSteps.length}`

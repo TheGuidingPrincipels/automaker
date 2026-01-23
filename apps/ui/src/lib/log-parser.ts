@@ -1326,13 +1326,21 @@ export function getLogTypeColors(type: LogEntryType): {
         icon: 'text-primary',
         badge: 'bg-primary/20 text-primary',
       };
+    case 'info':
+      return {
+        bg: 'bg-zinc-500/10',
+        border: 'border-zinc-500/30',
+        text: 'text-primary',
+        icon: 'text-zinc-400',
+        badge: 'bg-zinc-500/20 text-primary',
+      };
     default:
       return {
         bg: 'bg-zinc-500/10',
         border: 'border-zinc-500/30',
-        text: 'text-zinc-300',
+        text: 'text-black',
         icon: 'text-zinc-400',
-        badge: 'bg-zinc-500/20 text-zinc-300',
+        badge: 'bg-zinc-500/20 text-black',
       };
   }
 }

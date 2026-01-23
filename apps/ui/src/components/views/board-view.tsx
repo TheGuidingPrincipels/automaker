@@ -87,6 +87,7 @@ import { usePipelineConfig } from '@/hooks/queries';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { useAutoModeQueryInvalidation } from '@/hooks/use-query-invalidation';
+import { useUpdateGlobalSettings } from '@/hooks/mutations/use-settings-mutations';
 
 // Stable empty array to avoid infinite loop in selector
 const EMPTY_WORKTREES: ReturnType<ReturnType<typeof useAppStore.getState>['getWorktrees']> = [];
@@ -451,6 +452,8 @@ export function BoardView() {
   const maxConcurrency = autoMode.maxConcurrency;
   // Get worktree-specific setter
   const setMaxConcurrencyForWorktree = useAppStore((state) => state.setMaxConcurrencyForWorktree);
+  // Mutation to persist maxConcurrency to server settings
+  const updateGlobalSettings = useUpdateGlobalSettings({ showSuccessToast: false });
 
   // Get the current branch from the selected worktree (not from store which may be stale)
   const currentWorktreeBranch = selectedWorktree?.branch ?? null;
@@ -1277,6 +1280,15 @@ export function BoardView() {
           if (currentProject && selectedWorktree) {
             const branchName = selectedWorktree.isMain ? null : selectedWorktree.branch;
             setMaxConcurrencyForWorktree(currentProject.id, branchName, newMaxConcurrency);
+
+            // Persist to server settings so capacity checks use the correct value
+            const worktreeKey = `${currentProject.id}::${branchName ?? '__main__'}`;
+            updateGlobalSettings.mutate({
+              autoModeByWorktree: {
+                [worktreeKey]: { maxConcurrency: newMaxConcurrency },
+              },
+            });
+
             // Also update backend if auto mode is running
             if (autoMode.isRunning) {
               // Restart auto mode with new concurrency (backend will handle this)
@@ -1489,6 +1501,7 @@ export function BoardView() {
         branchSuggestions={branchSuggestions}
         branchCardCounts={branchCardCounts}
         currentBranch={currentWorktreeBranch || undefined}
+        projectPath={currentProject?.path}
       />
 
       {/* Board Background Modal */}
@@ -1538,6 +1551,7 @@ export function BoardView() {
         isMaximized={isMaximized}
         parentFeature={spawnParentFeature}
         allFeatures={hookFeatures}
+        projectPath={currentProject?.path}
         // When setting is enabled and a non-main worktree is selected, pass its branch to default to 'custom' work mode
         selectedNonMainWorktreeBranch={
           addFeatureUseSelectedWorktreeBranch && currentWorktreePath !== null
@@ -1568,6 +1582,7 @@ export function BoardView() {
         currentBranch={currentWorktreeBranch || undefined}
         isMaximized={isMaximized}
         allFeatures={hookFeatures}
+        projectPath={currentProject?.path}
       />
 
       {/* Agent Output Modal */}

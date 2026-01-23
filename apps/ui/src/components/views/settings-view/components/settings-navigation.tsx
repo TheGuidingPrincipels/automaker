@@ -17,6 +17,7 @@ const NAV_ID_TO_PROVIDER: Record<string, ModelProvider> = {
   'cursor-provider': 'cursor',
   'codex-provider': 'codex',
   'opencode-provider': 'opencode',
+  'gemini-provider': 'gemini',
 };
 
 interface SettingsNavigationProps {

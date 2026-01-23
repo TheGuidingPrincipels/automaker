@@ -176,6 +176,8 @@ export const queryKeys = {
     codex: () => ['cli', 'codex'] as const,
     /** OpenCode CLI status */
     opencode: () => ['cli', 'opencode'] as const,
+    /** Gemini CLI status */
+    gemini: () => ['cli', 'gemini'] as const,
     /** GitHub CLI status */
     github: () => ['cli', 'github'] as const,
     /** API keys status */
