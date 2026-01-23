@@ -321,9 +321,22 @@ git merge origin/main
 ### Test Command
 
 ```bash
-cd /Users/ruben/Documents/GitHub/automaker-dev
-PORT=3028 TEST_PORT=3027 npm run dev:electron
+cd /Users/ruben/Documents/GitHub/automaker-dev && PORT=3028 TEST_PORT=3027 npm run dev:electron
 ```
+
+### Running Two Instances Simultaneously
+
+**Yes, you CAN run both instances at the same time:**
+
+- Stable Automaker.app continues running on ports 3017/3018
+- Dev testing instance runs on ports 3027/3028
+- No conflicts - they are completely independent
+
+**Important notes:**
+
+- Both instances share the same git repository (worktrees)
+- Changes made in dev instance are visible in dev worktree only
+- Stable instance remains unaffected until you merge
 
 ### Port Reference
 
