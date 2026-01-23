@@ -3,18 +3,23 @@
 ## Overview
 
 **Duration**: ~3-4 hours
-**Goal**: Implement document upload/creation endpoints with full PDF extraction using PyMuPDF.
+**Goal**: Implement document creation endpoints for **text input** (paste + Markdown `.md` contents), with **PDF upload deferred**.
 
-**Deliverable**: Working API endpoints for creating documents from text, Markdown files, and PDFs, with tokens stored in database.
+**Deliverable**: Working API endpoints for creating documents from text (used for paste and Markdown file contents), with tokens stored in database.
+
+> **v1 Scope Note (Web-only)**:
+>
+> - `.md` “upload” happens in the web UI by reading the file contents in the browser and sending them via `POST /documents/from-text`.
+> - `POST /documents/from-file` and PDF extraction are deferred (see `../docs/FUTURE-PDF-UPLOAD.md`).
 
 ---
 
 ## Prerequisites
 
-- Session 1 completed (database models, Docker Compose, `python-multipart`)
+- Session 1 completed (database models, Docker Compose)
 - Session 2 completed (tokenization engine)
-- Add PyMuPDF to backend dependencies (`pymupdf`) and install
-- (One-time) Confirm PyMuPDF licensing fits your deployment model (hosted vs distributed)
+- **Deferred (PDF future)**: Add PyMuPDF (`pymupdf`) + validate licensing
+- **Deferred (file upload future)**: Add `python-multipart` for multipart uploads
 
 ---
 
@@ -37,17 +42,17 @@
 
 ## Objectives & Acceptance Criteria
 
-| #   | Objective                   | Acceptance Criteria                                                           |
-| --- | --------------------------- | ----------------------------------------------------------------------------- |
-| 1   | POST /documents/from-text   | Creates document from pasted text; returns `{document, warnings: []}`         |
-| 2   | POST /documents/from-file   | Accepts .md and .pdf uploads; returns `{document, warnings}`                  |
-| 3   | PDF extraction              | Rejects encrypted PDFs; surfaces per-page warnings for empty/image-only pages |
-| 4   | Token storage               | All tokens stored with correct indices; write is atomic (single transaction)  |
-| 5   | GET /documents/{id}         | Returns document metadata                                                     |
-| 6   | GET /documents/{id}/preview | Returns full text for preview                                                 |
-| 7   | GET /documents/{id}/tokens  | Returns paginated token chunks (UUID `document_id`)                           |
-| 8   | Word limit enforcement      | Rejects documents >20,000 words                                               |
-| 9   | Error handling              | Domain errors map to clear 400/413/422/404 responses                          |
+| #   | Objective                            | Acceptance Criteria                                                           |
+| --- | ------------------------------------ | ----------------------------------------------------------------------------- |
+| 1   | POST /documents/from-text            | Creates document from pasted text; returns `{document, warnings: []}`         |
+| 2   | (Deferred) POST /documents/from-file | Accepts uploads; returns `{document, warnings}`                               |
+| 3   | (Deferred) PDF extraction            | Rejects encrypted PDFs; surfaces per-page warnings for empty/image-only pages |
+| 4   | Token storage                        | All tokens stored with correct indices; write is atomic (single transaction)  |
+| 5   | GET /documents/{id}                  | Returns document metadata                                                     |
+| 6   | GET /documents/{id}/preview          | Returns full text for preview                                                 |
+| 7   | GET /documents/{id}/tokens           | Returns paginated token chunks (UUID `document_id`)                           |
+| 8   | Word limit enforcement               | Rejects documents >20,000 words                                               |
+| 9   | Error handling                       | Domain errors map to clear 400/413/422/404 responses                          |
 
 ---
 

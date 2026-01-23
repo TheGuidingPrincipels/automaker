@@ -611,7 +611,7 @@ const handlePreview = (documentId: string) => {
 ## Dependencies
 
 ```bash
-# In 1.apps/ui/
+# In apps/ui/
 pnpm add date-fns
 ```
 

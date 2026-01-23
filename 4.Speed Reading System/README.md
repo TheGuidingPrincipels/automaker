@@ -4,6 +4,13 @@ An RSVP (Rapid Serial Visual Presentation) speed reading application integrated 
 
 ---
 
+## v1 Scope (Web-only)
+
+- **Inputs**: paste text, upload `.md` (read in the browser and sent as text JSON)
+- **PDF upload**: deferred (see `4.Speed Reading System/docs/FUTURE-PDF-UPLOAD.md`)
+
+---
+
 ## 🚨 CRITICAL: Code Organization Principles for LLMs
 
 > **READ THIS BEFORE IMPLEMENTING ANY CODE**
@@ -71,16 +78,16 @@ The Speed Reading System is designed to be **exportable as a standalone feature*
 
 These are the **ONLY** files that should be modified/created in the main Automaker codebase:
 
-| File                                              | Purpose           | Notes                                   |
-| ------------------------------------------------- | ----------------- | --------------------------------------- |
-| `1.apps/ui/src/routes/speed-reading*.tsx`         | Route definitions | Minimal - just imports components       |
-| `1.apps/ui/src/components/views/speed-reading-*/` | UI components     | Frontend only, no backend logic         |
-| `1.apps/ui/src/hooks/speed-reading/`              | React hooks       | API calls, state management             |
-| `1.apps/ui/src/lib/speed-reading/`                | Types, API client | TypeScript types mirror backend schemas |
-| `1.apps/ui/src/store/speed-reading-store.ts`      | Zustand store     | Reader settings persistence             |
-| `1.apps/server/src/routes/deepread/index.ts`      | **Proxy only**    | Just forwards to Python backend         |
-| `libs/types/src/settings.ts`                      | Keyboard shortcut | Add `speedReading: string`              |
-| `use-navigation.ts`                               | Sidebar item      | Add nav entry                           |
+| File                                            | Purpose           | Notes                                   |
+| ----------------------------------------------- | ----------------- | --------------------------------------- |
+| `apps/ui/src/routes/speed-reading*.tsx`         | Route definitions | Minimal - just imports components       |
+| `apps/ui/src/components/views/speed-reading-*/` | UI components     | Frontend only, no backend logic         |
+| `apps/ui/src/hooks/speed-reading/`              | React hooks       | API calls, state management             |
+| `apps/ui/src/lib/speed-reading/`                | Types, API client | TypeScript types mirror backend schemas |
+| `apps/ui/src/store/speed-reading-store.ts`      | Zustand store     | Reader settings persistence             |
+| `apps/server/src/routes/deepread/index.ts`      | **Proxy only**    | Just forwards to Python backend         |
+| `libs/types/src/settings.ts`                    | Keyboard shortcut | Add `speedReading: string`              |
+| `use-navigation.ts`                             | Sidebar item      | Add nav entry                           |
 
 ### ❌ Do NOT Do This
 
@@ -136,7 +143,7 @@ These are the **ONLY** files that should be modified/created in the main Automak
 │  - FastAPI application                                           │
 │  - SQLite database                                               │
 │  - Tokenization, ORP calculation                                 │
-│  - Document parsing (MD, PDF)                                    │
+│  - Markdown parsing (PDF deferred)                               │
 │  - Session management                                            │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -158,13 +165,18 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 ### 2. Start Automaker (will proxy to backend)
 
 ```bash
-# From automaker root
-npm run dev
+# From automaker root (web-only):
+#
+# Terminal A (Automaker server)
+npm run dev:server
+#
+# Terminal B (Automaker UI in web mode)
+npm run dev:web
 ```
 
 ### 3. Access Speed Reading
 
-- Navigate to `/speed-reading` in Automaker
+- Open the Automaker web UI and navigate to `/speed-reading`
 - Or press `Shift+R` keyboard shortcut
 
 ---
@@ -189,8 +201,7 @@ All endpoints are prefixed with `/api` and proxied through Automaker at `/api/de
 
 ### Documents
 
-- `POST /api/documents/from-text` - Create from pasted text
-- `POST /api/documents/from-file` - Create from uploaded file
+- `POST /api/documents/from-text` - Create document from text (paste OR `.md` file contents)
 - `GET /api/documents/{id}` - Get document metadata
 - `GET /api/documents/{id}/preview` - Get preview text
 - `GET /api/documents/{id}/tokens` - Get token chunk

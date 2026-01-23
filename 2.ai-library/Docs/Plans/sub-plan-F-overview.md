@@ -36,11 +36,11 @@ Sub-Plan F integrates the AI-Library backend into the Automaker frontend, replac
 
 ## Sub-Plans
 
-| Plan    | Document                          | Scope                                             | Location        |
-| ------- | --------------------------------- | ------------------------------------------------- | --------------- |
-| **F-1** | `sub-plan-F1-backend-setup.md`    | Configure AI-Library as standalone service        | AI-Library repo |
-| **F-2** | `sub-plan-F2-api-client-types.md` | TypeScript types, API client, hooks, store        | Automaker repo  |
-| **F-3** | `sub-plan-F3-ui-components.md`    | Replace Blueprints section with Knowledge Library | Automaker repo  |
+| Plan    | Document                          | Scope                                             | Location                         |
+| ------- | --------------------------------- | ------------------------------------------------- | -------------------------------- |
+| **F-1** | `sub-plan-F1-backend-setup.md`    | Configure AI-Library as standalone service        | `2.ai-library/` in automaker     |
+| **F-2** | `sub-plan-F2-api-client-types.md` | TypeScript types, API client, hooks, store        | Automaker `libs/` and `apps/ui/` |
+| **F-3** | `sub-plan-F3-ui-components.md`    | Replace Blueprints section with Knowledge Library | Automaker `apps/ui/`             |
 
 ---
 
@@ -49,7 +49,7 @@ Sub-Plan F integrates the AI-Library backend into the Automaker frontend, replac
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           AUTOMAKER (React Frontend)                         │
-│                           http://localhost:5173                              │
+│                           http://localhost:3007                              │
 │  ┌─────────────────────────────────────────────────────────────────────────┐│
 │  │                        Knowledge Hub                                     ││
 │  │  ┌───────────────────┐  ┌──────────────────┐  ┌─────────────────────┐   ││
@@ -64,13 +64,20 @@ Sub-Plan F integrates the AI-Library backend into the Automaker frontend, replac
 │   AI-Library Python Backend  │                  ▼
 │   http://localhost:8001      │    ┌──────────────────────────────┐
 │                              │    │   Automaker Express Backend  │
-│   • Session management       │    │   http://localhost:3001      │
+│   • Session management       │    │   http://localhost:3008      │
 │   • Extraction pipeline      │    │                              │
 │   • Library browsing         │    │   • Knowledge Server storage │
 │   • Query/RAG (Sub-Plan E)   │    │   • Learning storage         │
 │                              │    │   • Other Automaker features │
 │   (SEPARATE SERVICE)         │    │                              │
 └──────────────────────────────┘    └──────────────────────────────┘
+               │
+               ▼
+┌──────────────────────────────┐
+│   Qdrant Vector Database     │
+│   http://localhost:6333      │
+│   (Docker container)         │
+└──────────────────────────────┘
 ```
 
 ---
@@ -106,19 +113,26 @@ Sub-Plan F integrates the AI-Library backend into the Automaker frontend, replac
 After all F sub-plans are complete:
 
 ```bash
-# Terminal 1: AI-Library Backend (from AI-Library repo)
+# Terminal 1: Qdrant Vector Database (if not already running)
+docker start qdrant
+# → Running on http://localhost:6333
+
+# Terminal 2: AI-Library Backend (from automaker/2.ai-library/)
+cd /Users/ruben/Documents/GitHub/automaker/2.ai-library
 ./start-api.sh
 # → Running on http://localhost:8001
 
-# Terminal 2: Automaker Backend (from Automaker repo)
+# Terminal 3: Automaker Backend (from automaker/)
+cd /Users/ruben/Documents/GitHub/automaker
 npm run dev:server
-# → Running on http://localhost:3001
+# → Running on http://localhost:3008
 
-# Terminal 3: Automaker Frontend (from Automaker repo)
+# Terminal 4: Automaker Frontend (from automaker/)
+cd /Users/ruben/Documents/GitHub/automaker
 npm run dev
-# → Running on http://localhost:5173
+# → Running on http://localhost:3007
 
-# Open browser: http://localhost:5173/knowledge-hub
+# Open browser: http://localhost:3007/knowledge-hub
 # Click "Knowledge Library" section
 ```
 

@@ -1,0 +1,44 @@
+#!/bin/bash
+# start-api.sh - Start AI-Library API server
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Load .env if exists
+if [ -f ".env" ]; then
+    export $(grep -v '^#' .env | xargs)
+fi
+
+# Check for required environment variables
+if [ -z "$MISTRAL_API_KEY" ]; then
+    echo "ERROR: MISTRAL_API_KEY environment variable is not set"
+    echo "Please set it in .env or export it directly"
+    exit 1
+fi
+
+# Check if Qdrant is running
+if ! curl -s http://localhost:6333/health > /dev/null 2>&1; then
+    echo "WARNING: Qdrant is not running on localhost:6333"
+    echo "Start it with: docker start qdrant"
+    echo "Or first time: docker run -d --name qdrant -p 6333:6333 -v qdrant_storage:/qdrant/storage qdrant/qdrant:latest"
+    exit 1
+fi
+
+# Activate virtual environment
+if [ -d ".venv" ]; then
+    source .venv/bin/activate
+else
+    echo "Creating virtual environment..."
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip install -e ".[dev]"
+fi
+
+# Start API on port 8001
+echo "Starting AI-Library API on http://localhost:8001"
+echo "  - Swagger UI: http://localhost:8001/docs"
+echo "  - ReDoc: http://localhost:8001/redoc"
+echo "  - Health: http://localhost:8001/health"
+python run_api.py --port 8001

@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Goal**: Implement document import (text/MD/PDF) and preview components integrated with Automaker's UI patterns.
+**Goal**: Implement document import (paste text / Markdown `.md`) and preview components integrated with Automaker's UI patterns.
 
 **Prerequisites**:
 
@@ -20,7 +20,7 @@
 | --- | ---------------- | ------------------------------------- |
 | 1   | ImportForm       | Tabs for paste text / upload file     |
 | 2   | TextInput        | Textarea with word count validation   |
-| 3   | FileUpload       | Drag-drop for .md and .pdf            |
+| 3   | FileUpload       | Upload `.md` file (PDF deferred)      |
 | 4   | LanguageSelect   | EN/DE radio buttons                   |
 | 5   | PreviewText      | Virtualized text with clickable words |
 | 6   | ProgressScrubber | Slider to jump to % position          |
@@ -66,14 +66,13 @@ import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useToast } from '@/components/ui/use-toast';
+import { toast } from 'sonner';
 import { ImportForm } from './components/import-form';
 import { useImportDocument } from '@/hooks/speed-reading/use-import-document';
 import type { Language } from '@/lib/speed-reading/types';
 
 export function SpeedReadingImport() {
   const navigate = useNavigate();
-  const { toast } = useToast();
   const importDocument = useImportDocument();
   const [activeTab, setActiveTab] = useState<'paste' | 'upload'>('paste');
 
@@ -84,14 +83,12 @@ export function SpeedReadingImport() {
   const handleImportText = async (text: string, language: Language, title?: string) => {
     try {
       const document = await importDocument.mutateAsync({
-        type: 'text',
         text,
         language,
         title,
       });
 
-      toast({
-        title: 'Document imported',
+      toast.success('Document imported', {
         description: `${document.total_words.toLocaleString()} words ready to read`,
       });
 
@@ -100,9 +97,7 @@ export function SpeedReadingImport() {
         params: { documentId: document.id },
       });
     } catch (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Import failed',
+      toast.error('Import failed', {
         description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
@@ -110,14 +105,15 @@ export function SpeedReadingImport() {
 
   const handleImportFile = async (file: File, language: Language) => {
     try {
+      const text = await file.text();
+      const inferredTitle = file.name.replace(/\.md$/i, '');
       const document = await importDocument.mutateAsync({
-        type: 'file',
-        file,
+        text,
         language,
+        title: inferredTitle,
       });
 
-      toast({
-        title: 'Document imported',
+      toast.success('Document imported', {
         description: `${document.total_words.toLocaleString()} words ready to read`,
       });
 
@@ -126,9 +122,7 @@ export function SpeedReadingImport() {
         params: { documentId: document.id },
       });
     } catch (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Import failed',
+      toast.error('Import failed', {
         description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
@@ -145,7 +139,7 @@ export function SpeedReadingImport() {
           <div>
             <h1 className="text-xl font-semibold">Import Document</h1>
             <p className="text-sm text-muted-foreground">
-              Paste text or upload a Markdown/PDF file
+              Paste text or upload a Markdown (.md) file
             </p>
           </div>
         </div>
@@ -314,7 +308,7 @@ export function ImportForm({ mode, onSubmit, onSubmitFile, isLoading }: ImportFo
             <FileUpload
               onFileSelect={setFile}
               selectedFile={file}
-              accept=".md,.pdf"
+              accept=".md"
             />
           </div>
 
@@ -336,8 +330,8 @@ export function ImportForm({ mode, onSubmit, onSubmitFile, isLoading }: ImportFo
 
 ```typescript
 // components/file-upload.tsx
-import { useCallback } from 'react';
-import { useDropzone } from 'react-dropzone';
+import { useCallback, useRef, useState } from 'react';
+import type { ChangeEvent, DragEvent } from 'react';
 import { Upload, File, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -348,22 +342,47 @@ interface FileUploadProps {
   accept?: string;
 }
 
-export function FileUpload({ onFileSelect, selectedFile, accept = '.md,.pdf' }: FileUploadProps) {
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    if (acceptedFiles.length > 0) {
-      onFileSelect(acceptedFiles[0]);
-    }
-  }, [onFileSelect]);
+const MAX_BYTES = 10 * 1024 * 1024; // 10MB
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      'text/markdown': ['.md'],
-      'application/pdf': ['.pdf'],
+export function FileUpload({ onFileSelect, selectedFile, accept = '.md' }: FileUploadProps) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [isDragActive, setIsDragActive] = useState(false);
+
+  const pickFile = useCallback(
+    (file: File | null) => {
+      if (!file) return;
+
+      // v1: Markdown only (PDF deferred)
+      if (!file.name.toLowerCase().endsWith('.md')) {
+        return;
+      }
+
+      if (file.size > MAX_BYTES) {
+        return;
+      }
+
+      onFileSelect(file);
     },
-    maxFiles: 1,
-    maxSize: 10 * 1024 * 1024, // 10MB
-  });
+    [onFileSelect]
+  );
+
+  const handleInputChange = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0] ?? null;
+      pickFile(file);
+    },
+    [pickFile]
+  );
+
+  const handleDrop = useCallback(
+    (e: DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      setIsDragActive(false);
+      const file = e.dataTransfer.files?.[0] ?? null;
+      pickFile(file);
+    },
+    [pickFile]
+  );
 
   const handleRemove = () => {
     onFileSelect(null);
@@ -392,19 +411,37 @@ export function FileUpload({ onFileSelect, selectedFile, accept = '.md,.pdf' }: 
 
   return (
     <div
-      {...getRootProps()}
+      onDragEnter={(e) => {
+        e.preventDefault();
+        setIsDragActive(true);
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setIsDragActive(true);
+      }}
+      onDragLeave={() => setIsDragActive(false)}
+      onDrop={handleDrop}
       className={cn(
         'border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors',
-        isDragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50'
+        isDragActive
+          ? 'border-primary bg-primary/5'
+          : 'border-muted-foreground/25 hover:border-primary/50'
       )}
+      onClick={() => inputRef.current?.click()}
     >
-      <input {...getInputProps()} />
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        className="hidden"
+        onChange={handleInputChange}
+      />
       <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-4" />
       <p className="text-sm text-muted-foreground mb-1">
-        {isDragActive ? 'Drop the file here...' : 'Drag and drop a file here, or click to select'}
+        {isDragActive ? 'Drop the file here...' : 'Drag and drop a .md file here, or click to select'}
       </p>
       <p className="text-xs text-muted-foreground">
-        Supports .md and .pdf files up to 10MB
+        Supports .md files up to 10MB
       </p>
     </div>
   );
@@ -696,23 +733,15 @@ export function useImportDocument() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (input: {
-      type: 'text' | 'file';
-      text?: string;
-      language: Language;
-      title?: string;
-      file?: File;
-    }) => {
-      if (input.type === 'text' && input.text) {
-        return documentsApi.createFromText({
-          text: input.text,
-          language: input.language,
-          title: input.title,
-        });
-      } else if (input.type === 'file' && input.file) {
-        return documentsApi.createFromFile(input.file, input.language);
+    mutationFn: async (input: { text: string; language: Language; title?: string }) => {
+      if (!input.text.trim()) {
+        throw new Error('Text is required');
       }
-      throw new Error('Invalid import input');
+      return documentsApi.createFromText({
+        text: input.text,
+        language: input.language,
+        title: input.title,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: documentKeys.all });
@@ -753,8 +782,8 @@ export function useImportDocument() {
 ## Dependencies to Install
 
 ```bash
-# In 1.apps/ui/
-pnpm add react-window @types/react-window react-dropzone
+# In apps/ui/
+npm install react-window @types/react-window
 ```
 
 ---

@@ -2,6 +2,7 @@
 
 > **Prerequisites**: Sub-Plan F-1 (Backend Setup) complete
 > **Execution Location**: Automaker repository (`/Users/ruben/Documents/GitHub/automaker/`)
+> **AI-Library Location**: `2.ai-library/` within automaker repository
 > **Effort**: Medium (2-4 hours)
 > **Next**: Sub-Plan F-3 (UI Components)
 

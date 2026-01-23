@@ -2,13 +2,18 @@
 
 This directory contains 10 detailed implementation sessions for building the DeepRead RSVP speed-reading application.
 
+## v1 Scope (Web-only)
+
+- **Inputs**: paste text, upload `.md` (read in the browser and sent via `POST /api/documents/from-text`)
+- **PDF upload**: deferred (see `../docs/FUTURE-PDF-UPLOAD.md`)
+
 ## Overview
 
 | Session | Focus                                                                | Duration | Deliverable                                       |
 | ------- | -------------------------------------------------------------------- | -------- | ------------------------------------------------- |
 | **1**   | [Foundation & Schema](./SESSION-01-foundation-schema.md)             | 3-4 hrs  | FastAPI skeleton, database models, Docker Compose |
 | **2**   | [Tokenization Engine](./SESSION-02-tokenization-engine.md)           | 3-4 hrs  | Text normalization, tokenizer, ORP calculation    |
-| **3**   | [Document Ingestion API](./SESSION-03-document-ingestion-api.md)     | 3-4 hrs  | Upload endpoints, PDF extraction with PyMuPDF     |
+| **3**   | [Document Ingestion API](./SESSION-03-document-ingestion-api.md)     | 3-4 hrs  | Text ingestion endpoint (`from-text`)             |
 | **4**   | [Sessions & Navigation API](./SESSION-04-sessions-navigation-api.md) | 2-3 hrs  | Session CRUD, resolve-start, cleanup task         |
 | **5**   | [Frontend Foundation](./SESSION-05-frontend-foundation.md)           | 3-4 hrs  | React 19 setup, routing, state, dark theme        |
 | **6**   | [Import & Preview UI](./SESSION-06-import-preview-ui.md)             | 3-4 hrs  | Import form, virtualized preview, word selection  |
@@ -50,8 +55,7 @@ Session 10 (Deployment)  ←── Project Complete
 - Python 3.11+
 - FastAPI
 - SQLAlchemy 2.0 + Alembic
-- PostgreSQL 16
-- PyMuPDF (PDF extraction)
+- SQLite (v1)
 
 ### Frontend
 
@@ -109,7 +113,6 @@ Health:
 
 Documents:
   POST /api/documents/from-text
-  POST /api/documents/from-file
   GET  /api/documents/{id}
   GET  /api/documents/{id}/preview
   GET  /api/documents/{id}/tokens
@@ -142,7 +145,7 @@ Sessions:
 
 From the original plan:
 
-1. ✅ Paste or upload .md/.pdf with EN/DE selection → document created
+1. ✅ Paste or upload `.md` with EN/DE selection → document created (**PDF deferred**)
 2. ✅ Preview shows full text; click word to set start
 3. ✅ Reader mode blacks out interface; ORP-aligned RSVP works with rhythm pauses
 4. ✅ Play/Pause is instant

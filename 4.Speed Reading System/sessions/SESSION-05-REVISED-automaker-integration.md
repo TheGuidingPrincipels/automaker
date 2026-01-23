@@ -11,6 +11,7 @@
 - ✅ Uses Automaker's existing router, components, and patterns
 - ✅ Python backend kept separate (proxied through Automaker server)
 - ✅ SQLite storage (no PostgreSQL required)
+- ✅ Web-only v1 (no packaged Electron support)
 
 ---
 
@@ -69,7 +70,7 @@ This ensures the Speed Reading System can be exported as a standalone feature.
 
 ## File Structure (What to Create)
 
-### Frontend Files (`1.apps/ui/src/`)
+### Frontend Files (`apps/ui/src/`)
 
 ```
 routes/
@@ -139,7 +140,7 @@ store/
 └── speed-reading-store.ts               # Zustand store for reader settings
 ```
 
-### Backend Files (Automaker Server - `1.apps/server/src/`)
+### Backend Files (Automaker Server - `apps/server/src/`)
 
 ```
 routes/
@@ -171,7 +172,7 @@ backend/
 │   │   ├── __init__.py
 │   │   ├── tokenizer.py                 # NLP tokenization
 │   │   ├── orp.py                       # ORP calculation
-│   │   └── parser.py                    # MD/PDF parsing
+│   │   └── parser.py                    # Markdown parsing (PDF deferred)
 │   └── routes/
 │       ├── __init__.py
 │       ├── documents.py                 # Document endpoints
@@ -189,7 +190,7 @@ backend/
 
 ### 1. Add to Sidebar Navigation
 
-**File**: `1.apps/ui/src/components/layout/sidebar/hooks/use-navigation.ts`
+**File**: `apps/ui/src/components/layout/sidebar/hooks/use-navigation.ts`
 
 Add to the Systems section:
 
@@ -437,7 +438,7 @@ export function SpeedReadingPage() {
 
 ```typescript
 // Document types
-export type SourceType = 'paste' | 'md' | 'pdf';
+export type SourceType = 'paste' | 'md'; // PDF deferred (see 4.Speed Reading System/docs/FUTURE-PDF-UPLOAD.md)
 export type Language = 'en' | 'de';
 
 export interface DocumentMeta {
@@ -549,7 +550,7 @@ export interface ResolveStartResult {
 **File**: `lib/speed-reading/api.ts`
 
 ```typescript
-import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api-fetch';
+import { apiFetch, apiGet, apiPost, apiDelete } from '@/lib/api-fetch';
 import type {
   DocumentMeta,
   DocumentPreview,
@@ -566,32 +567,17 @@ import type {
 
 const BASE = '/api/deepread';
 
+const apiPatchJson = async <T>(endpoint: string, body: unknown): Promise<T> => {
+  const response = await apiFetch(endpoint, 'PATCH', { body });
+  return response.json() as Promise<T>;
+};
+
 // Documents API
 export const documentsApi = {
   createFromText: (data: CreateDocumentFromTextRequest) =>
     apiPost<{ success: boolean; document: DocumentMeta }>(`${BASE}/documents/from-text`, data).then(
       (r) => r.document
     ),
-
-  createFromFile: async (file: File, language: Language) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('language', language);
-
-    const response = await fetch(`${BASE}/documents/from-file`, {
-      method: 'POST',
-      body: formData,
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Upload failed');
-    }
-
-    const result = await response.json();
-    return result.document as DocumentMeta;
-  },
 
   getDocument: (documentId: string) =>
     apiGet<{ success: boolean; document: DocumentMeta }>(`${BASE}/documents/${documentId}`).then(
@@ -641,7 +627,7 @@ export const sessionsApi = {
     ),
 
   updateProgress: (sessionId: string, data: UpdateProgressRequest) =>
-    apiPatch<{ success: boolean; session: Session }>(
+    apiPatchJson<{ success: boolean; session: Session }>(
       `${BASE}/sessions/${sessionId}/progress`,
       data
     ).then((r) => r.session),
@@ -720,11 +706,10 @@ export const useSpeedReadingStore = create<SpeedReadingState>()(
 
 ### 7. Backend Proxy Route
 
-**File**: `1.apps/server/src/routes/deepread/index.ts`
+**File**: `apps/server/src/routes/deepread/index.ts`
 
 ```typescript
-import { Router, Request, Response } from 'express';
-import { createProxyMiddleware } from 'http-proxy-middleware';
+import { Router, type Request, type Response } from 'express';
 import { createLogger } from '@automaker/utils';
 
 const logger = createLogger('deepread-proxy');
@@ -749,30 +734,49 @@ export function createDeepreadRoutes(): Router {
     }
   });
 
-  // Proxy all other requests to Python backend
-  router.use(
-    '/',
-    createProxyMiddleware({
-      target: DEEPREAD_BACKEND_URL,
-      changeOrigin: true,
-      pathRewrite: {
-        '^/api/deepread': '/api', // Remove /deepread prefix
-      },
-      onError: (err, _req, res) => {
-        logger.error('DeepRead proxy error:', err);
-        (res as Response).status(502).json({
-          success: false,
-          error: 'Failed to connect to Speed Reading backend',
-        });
-      },
-    })
-  );
+  /**
+   * JSON-only proxy (v1)
+   *
+   * v1 intentionally avoids multipart file uploads; `.md` files are read in the browser and sent as text JSON.
+   * This keeps the Automaker server security middleware intact and makes cloud deployment simpler.
+   */
+  router.all('/*', async (req: Request, res: Response) => {
+    try {
+      const upstreamPath = req.originalUrl.replace(/^\\/api\\/deepread/, '/api');
+      const upstreamUrl = `${DEEPREAD_BACKEND_URL}${upstreamPath}`;
+
+      const headers: Record<string, string> = {};
+      const contentType = req.headers['content-type'];
+      if (typeof contentType === 'string') headers['content-type'] = contentType;
+
+      const hasBody = !['GET', 'HEAD'].includes(req.method.toUpperCase());
+      const body = hasBody ? JSON.stringify(req.body ?? {}) : undefined;
+
+      const upstreamResponse = await fetch(upstreamUrl, {
+        method: req.method,
+        headers,
+        body,
+      });
+
+      const responseText = await upstreamResponse.text();
+      const upstreamContentType = upstreamResponse.headers.get('content-type');
+      if (upstreamContentType) res.setHeader('content-type', upstreamContentType);
+
+      res.status(upstreamResponse.status).send(responseText);
+    } catch (error) {
+      logger.error('DeepRead proxy error:', error);
+      res.status(502).json({
+        success: false,
+        error: 'Failed to connect to Speed Reading backend',
+      });
+    }
+  });
 
   return router;
 }
 ```
 
-Register in main server (`1.apps/server/src/index.ts`):
+Register in main server (`apps/server/src/index.ts`):
 
 ```typescript
 import { createDeepreadRoutes } from './routes/deepread';
@@ -815,7 +819,6 @@ The Python backend from Sessions 1-4 should already be running. Key endpoints:
 
 ```
 POST /api/documents/from-text     - Create document from text
-POST /api/documents/from-file     - Create document from file upload
 GET  /api/documents/{id}          - Get document metadata
 GET  /api/documents/{id}/preview  - Get preview text
 GET  /api/documents/{id}/tokens   - Get token chunk
