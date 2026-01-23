@@ -1071,7 +1071,9 @@ curl -X POST "http://localhost:8000/api/documents/doc-uuid/resolve-start" \
 
 ## Backend Complete!
 
-After Session 4, the backend is feature-complete for v1. The remaining sessions focus on the React frontend.
+After Session 4, the backend is feature-complete for v1 (web-only). The remaining sessions focus on the React frontend.
+
+> **v1 Scope Note**: `POST /api/documents/from-file` + PDF upload are deferred (see `../docs/FUTURE-PDF-UPLOAD.md`).
 
 **Full API Summary:**
 
@@ -1081,7 +1083,6 @@ Health:
 
 Documents:
   POST /api/documents/from-text
-  POST /api/documents/from-file
   GET  /api/documents/{id}
   GET  /api/documents/{id}/preview
   GET  /api/documents/{id}/tokens

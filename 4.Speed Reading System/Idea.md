@@ -3,7 +3,8 @@
 - **Option B (chunked tokens)**: backend stores tokens; frontend fetches chunks around the current index and prefetches ahead/behind.
 - **Rewind is time-based**, not word-based: 10s / 15s / 30s (implemented via playback history ring buffer).
 - **Build-up (ramp) mode**: start at ~50% of target WPM (e.g., 300 → 600) and linearly ramp over 30s (configurable 0–60s).
-- **Inputs**: paste text + upload `.md` + upload `.pdf` (best effort extraction).
+- **Inputs (v1)**: paste text + upload `.md` (read in the browser and sent as text JSON).
+- **PDF upload**: deferred (see `4.Speed Reading System/docs/FUTURE-PDF-UPLOAD.md`).
 - **Languages**: English + German (user selects at ingest time).
 - **Persistence**: documents persist until deleted; **sessions/history auto-expire after 7 days**.
 - **Single active reader** assumption (but architecture won’t break if you later allow multiple).
@@ -13,10 +14,10 @@
 ## Stress-test (pushback) — the 4 real risks you’re signing up for
 
 1. **“Click a word in full preview to start there” is expensive at scale**
-   Rendering every word as a clickable span can choke on large docs (PDF books). Mitigation in plan: **virtualized preview** + chunked token retrieval; only render what’s on screen.
+   Rendering every word as a clickable span can choke on large docs. Mitigation in plan: **virtualized preview** + chunked token retrieval; only render what’s on screen.
 
-2. **PDF text extraction is not deterministic**
-   Layout artifacts, broken hyphenation, missing paragraph boundaries. Mitigation: best-effort extraction + normalization heuristics + user-visible warnings.
+2. **Text normalization must be deterministic**
+   Paste + Markdown inputs can include odd whitespace, copy artifacts, and inconsistent paragraph boundaries. Mitigation: a single, documented normalization pipeline + “no silent fallbacks”.
 
 3. **Time-based rewind must stay correct under ramp + live WPM changes**
    If you try to “compute” rewind purely from multipliers, it will drift. Mitigation: **record actual playback history** (elapsed reading time → word index mapping) and rewind by that.
@@ -38,7 +39,7 @@ Enable users to **consume text faster** using RSVP: one word at a time, fixed fo
 
 1. **Paste text** into a textbox (plain text).
 2. **Upload Markdown** (`.md`).
-3. **Upload PDF** (`.pdf`) (best-effort extraction).
+3. **(Deferred)** Upload PDF (`.pdf`) (see `4.Speed Reading System/docs/FUTURE-PDF-UPLOAD.md`).
 
 ### Supported languages (v1)
 
@@ -55,6 +56,7 @@ Enable users to **consume text faster** using RSVP: one word at a time, fixed fo
 
 - Multi-user accounts/auth (design hooks exist; implement later if needed).
 - Rich Markdown rendering in preview (preview is plain-text/structured for v1).
+- PDF ingestion (deferred; see `4.Speed Reading System/docs/FUTURE-PDF-UPLOAD.md`).
 - EPUB/HTML ingestion.
 
 ---
@@ -135,7 +137,7 @@ Responsibilities:
 **Backend**
 
 - Python 3.11+ + FastAPI
-- Parsing + normalization (MD/PDF)
+- Parsing + normalization (paste + Markdown; PDF deferred)
 - Tokenization + ORP calculation
 - Persistence (documents, tokens, sessions)
 - Chunk retrieval endpoints
@@ -217,9 +219,8 @@ Primary key: (document_id, word_index)
 Body: title?, language, text
 Returns: document meta (id, total_words)
 
-**POST /api/documents/from-file** (multipart)
-Fields: language, file (.md/.pdf)
-Returns: document meta
+**(Deferred)** **POST /api/documents/from-file** (multipart)
+See `4.Speed Reading System/docs/FUTURE-PDF-UPLOAD.md`.
 
 ### 5.2 Metadata + preview
 
@@ -260,7 +261,6 @@ Returns: resolved_word_index + reason
 ### 6.1 Normalization
 
 - Normalize whitespace; preserve paragraph boundaries.
-- PDF: conservative hyphen-join; sentence join heuristics.
 - German punctuation wrappers „“ »« treated properly.
 - Minimal abbreviation list to reduce false sentence breaks (extendable).
 
@@ -336,7 +336,7 @@ Edge case:
 
 ### Routes
 
-`/deepread`
+`/speed-reading`
 
 ### Key components
 
@@ -353,7 +353,7 @@ Edge case:
 
 - File size limits + parse timeouts.
 - Structured logs for ingestion/tokenization.
-- PDF extraction warnings (don’t silently fail).
+- (Deferred) PDF extraction warnings (don’t silently fail).
 
 ---
 
@@ -377,7 +377,7 @@ Edge case:
 
 ## 12) Definition of Done (v1)
 
-1. Paste or upload .md/.pdf with EN/DE selection → document created.
+1. Paste or upload `.md` with EN/DE selection → document created (**PDF deferred**).
 2. Preview shows full text; click word to set start.
 3. Reader mode blacks out interface; ORP-aligned RSVP works with rhythm pauses.
 4. Play/Pause is instant.

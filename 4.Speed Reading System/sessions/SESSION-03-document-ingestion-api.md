@@ -26,33 +26,29 @@
 ## Key Decisions (Must Read)
 
 1. **Use sync ingestion endpoints (`def`)**  
-   We use sync SQLAlchemy + PyMuPDF. Implement the ingestion endpoints with `def` (not `async def`). FastAPI runs sync path operations in a threadpool, preventing event-loop blocking.
+   We use sync SQLAlchemy. Implement the ingestion endpoints with `def` (not `async def`). FastAPI runs sync path operations in a threadpool, preventing event-loop blocking.
 2. **Warnings are part of the API contract**  
-   PDF extraction warnings must be returned to clients in the JSON response body (not silently dropped).
+   Ingestion warnings (e.g., normalization notices) must be returned to clients in the JSON response body (not silently dropped).
 3. **No silent fallbacks**  
    Never return "0"/empty results on errors. Raise a typed exception and return a clear error response.
 4. **Service layer is framework-agnostic**  
    `DocumentService` raises domain errors; the API layer maps them to HTTP responses.
 5. **Atomic persistence**  
    A document is only considered created if the document row _and_ all token rows are persisted in the same transaction.
-6. **Defensive upload validation**  
-   Enforce max bytes while reading uploads; validate extension _and_ basic PDF signature (`%PDF-`).
 
 ---
 
 ## Objectives & Acceptance Criteria
 
-| #   | Objective                            | Acceptance Criteria                                                           |
-| --- | ------------------------------------ | ----------------------------------------------------------------------------- |
-| 1   | POST /documents/from-text            | Creates document from pasted text; returns `{document, warnings: []}`         |
-| 2   | (Deferred) POST /documents/from-file | Accepts uploads; returns `{document, warnings}`                               |
-| 3   | (Deferred) PDF extraction            | Rejects encrypted PDFs; surfaces per-page warnings for empty/image-only pages |
-| 4   | Token storage                        | All tokens stored with correct indices; write is atomic (single transaction)  |
-| 5   | GET /documents/{id}                  | Returns document metadata                                                     |
-| 6   | GET /documents/{id}/preview          | Returns full text for preview                                                 |
-| 7   | GET /documents/{id}/tokens           | Returns paginated token chunks (UUID `document_id`)                           |
-| 8   | Word limit enforcement               | Rejects documents >20,000 words                                               |
-| 9   | Error handling                       | Domain errors map to clear 400/413/422/404 responses                          |
+| #   | Objective                   | Acceptance Criteria                                                          |
+| --- | --------------------------- | ---------------------------------------------------------------------------- |
+| 1   | POST /documents/from-text   | Creates document from pasted text; returns `{document, warnings: []}`        |
+| 2   | Token storage               | All tokens stored with correct indices; write is atomic (single transaction) |
+| 3   | GET /documents/{id}         | Returns document metadata                                                    |
+| 4   | GET /documents/{id}/preview | Returns full text for preview                                                |
+| 5   | GET /documents/{id}/tokens  | Returns paginated token chunks (UUID `document_id`)                          |
+| 6   | Word limit enforcement      | Rejects documents >20,000 words                                              |
+| 7   | Error handling              | Domain errors map to clear 400/413/404 responses                             |
 
 ---
 
@@ -64,7 +60,6 @@ backend/
 │   ├── services/
 │   │   ├── tokenizer/              # From Session 2
 │   │   ├── document_service.py     # Document CRUD operations + domain errors
-│   │   └── pdf_extractor.py        # PyMuPDF integration
 │   ├── api/
 │   │   ├── health.py               # From Session 1
 │   │   └── documents.py            # Document endpoints
@@ -74,126 +69,13 @@ backend/
     ├── conftest.py                 # DB + dependency overrides for API tests
     ├── api/
     │   └── test_documents.py
-    └── services/
-        └── test_pdf_extractor.py
 ```
 
 ---
 
 ## Implementation Details
 
-### 1. PDF Extractor (`services/pdf_extractor.py`)
-
-```python
-"""
-PDF text extraction using PyMuPDF.
-
-Notes:
-- Prefer importing `pymupdf` (not `fitz`) to avoid confusion with the unrelated `fitz` package on PyPI.
-- Do not silently swallow extraction errors—raise `PDFExtractionError` with a user-safe message.
-"""
-
-import pymupdf  # PyMuPDF
-from dataclasses import dataclass
-from typing import BinaryIO
-
-@dataclass
-class PDFExtractionResult:
-    """Result of PDF text extraction."""
-    text: str
-    page_count: int
-    warnings: list[str]
-    metadata: dict
-
-class PDFExtractionError(Exception):
-    """Raised when PDF extraction fails."""
-    pass
-
-def extract_text_from_pdf(
-    file: BinaryIO | bytes,
-    max_pages: int | None = None,
-) -> PDFExtractionResult:
-    """
-    Extract text from a PDF file.
-
-    Args:
-        file: File-like object or bytes containing PDF data
-        max_pages: Maximum pages to process (None = all)
-
-    Returns:
-        PDFExtractionResult with extracted text and metadata
-
-    Raises:
-        PDFExtractionError: If PDF cannot be read or processed
-    """
-    warnings: list[str] = []
-
-    try:
-        pdf_data = file if isinstance(file, bytes) else file.read()
-        doc = pymupdf.open(stream=pdf_data, filetype="pdf")
-    except Exception as e:
-        raise PDFExtractionError(f"Failed to open PDF: {e}") from e
-
-    try:
-        if doc.needs_pass:
-            raise PDFExtractionError("PDF is password-protected and cannot be processed.")
-
-        page_count = doc.page_count
-
-        if page_count == 0:
-            raise PDFExtractionError("PDF has no pages")
-
-        # Extract metadata
-        metadata = {
-            "title": (doc.metadata or {}).get("title", "") or "",
-            "author": (doc.metadata or {}).get("author", "") or "",
-            "page_count": page_count,
-        }
-
-        # Determine pages to process
-        pages_to_process = page_count
-        if max_pages and max_pages < page_count:
-            pages_to_process = max_pages
-            warnings.append(f"Only processed first {max_pages} of {page_count} pages")
-
-        # Extract text from each page
-        text_blocks = []
-
-        for page_num in range(pages_to_process):
-            page = doc[page_num]
-
-            # Extract text with layout preservation
-            page_text = page.get_text("text")
-
-            if not page_text.strip():
-                warnings.append(f"Page {page_num + 1} appears to be empty or image-only")
-                continue
-
-            text_blocks.append(page_text)
-
-        # Join pages with double newlines (paragraph break)
-        full_text = "\n\n".join(text_blocks)
-
-        if not full_text.strip():
-            raise PDFExtractionError(
-                "No text could be extracted. PDF may be image-based (scanned) "
-                "or have copy protection."
-            )
-
-        return PDFExtractionResult(
-            text=full_text,
-            page_count=page_count,
-            warnings=warnings,
-            metadata=metadata,
-        )
-
-    finally:
-        doc.close()
-```
-
-> Optional enhancement (later): add a fast word-count estimator for early rejection. If you do, return `int | None` (“unknown”) and plumb “unknown” as a warning—never silently return `0`.
-
-### 2. Document Service (`services/document_service.py`)
+### 1. Document Service (`services/document_service.py`)
 
 ```python
 """
@@ -213,7 +95,6 @@ from app.models.token import Token, BreakType
 from app.schemas.document import DocumentPreview
 from app.schemas.token import TokenDTO, TokenChunkResponse
 from app.services.tokenizer import tokenize_text, get_tokenizer_version
-from app.services.pdf_extractor import extract_text_from_pdf, PDFExtractionError
 from app.config import get_settings
 
 settings = get_settings()
@@ -233,6 +114,9 @@ class DocumentNotFoundError(DocumentServiceError):
 class InvalidLanguageError(DocumentServiceError):
     pass
 
+class InvalidSourceTypeError(DocumentServiceError):
+    pass
+
 class DocumentService:
     def __init__(self, db: Session):
         self.db = db
@@ -242,16 +126,27 @@ class DocumentService:
         text: str,
         language: str,
         title: str | None = None,
+        source_type: str = "paste",
+        original_filename: str | None = None,
         user_id: UUID | None = None,
     ) -> Document:
         """
-        Create a document from pasted text.
+        Create a document from text input.
+
+        v1 notes:
+        - Used for both paste input and Markdown `.md` "upload" (file contents are read client-side).
+        - PDF upload is deferred.
         """
+        try:
+            source_type_enum = SourceType(source_type)
+        except ValueError as e:
+            raise InvalidSourceTypeError(f"Unsupported source type: {source_type}") from e
+
         # Validate and tokenize
         normalized_text, tokens = tokenize_text(
             text,
             language=language,
-            source_type="paste"
+            source_type=source_type_enum.value,
         )
 
         if len(tokens) == 0:
@@ -266,8 +161,14 @@ class DocumentService:
 
         # Generate title if not provided
         if not title:
-            # Use first few words as title
-            title = self._generate_title(normalized_text)
+            if source_type_enum == SourceType.MARKDOWN and original_filename:
+                title = (
+                    original_filename.rsplit('.', 1)[0]
+                    if '.' in original_filename
+                    else original_filename
+                )
+            else:
+                title = self._generate_title(normalized_text)
 
         # Create document
         try:
@@ -279,8 +180,9 @@ class DocumentService:
             id=uuid4(),
             user_id=user_id,
             title=title,
-            source_type=SourceType.PASTE,
+            source_type=source_type_enum,
             language=language_enum,
+            original_filename=original_filename,
             normalized_text=normalized_text,
             total_words=len(tokens),
             tokenizer_version=get_tokenizer_version(),
@@ -292,116 +194,6 @@ class DocumentService:
         self.db.refresh(document)
 
         return document
-
-    def create_from_markdown(
-        self,
-        content: str,
-        filename: str,
-        language: str,
-        user_id: UUID | None = None,
-    ) -> Document:
-        """
-        Create a document from a Markdown file.
-        """
-        normalized_text, tokens = tokenize_text(
-            content,
-            language=language,
-            source_type="md"
-        )
-
-        if len(tokens) == 0:
-            raise DocumentEmptyError("Markdown file contains no readable text.")
-
-        if len(tokens) > settings.max_document_words:
-            raise DocumentTooLargeError(
-                f"Document exceeds maximum word limit of {settings.max_document_words:,}."
-            )
-
-        # Use filename as title (without extension)
-        title = filename.rsplit('.', 1)[0] if '.' in filename else filename
-
-        try:
-            language_enum = Language(language)
-        except ValueError as e:
-            raise InvalidLanguageError(f"Unsupported language: {language}") from e
-
-        document = Document(
-            id=uuid4(),
-            user_id=user_id,
-            title=title,
-            source_type=SourceType.MARKDOWN,
-            language=language_enum,
-            original_filename=filename,
-            normalized_text=normalized_text,
-            total_words=len(tokens),
-            tokenizer_version=get_tokenizer_version(),
-        )
-
-        with self.db.begin():
-            self.db.add(document)
-            self._store_tokens(document.id, tokens)
-        self.db.refresh(document)
-
-        return document
-
-    def create_from_pdf(
-        self,
-        file_content: bytes,
-        filename: str,
-        language: str,
-        user_id: UUID | None = None,
-    ) -> tuple[Document, list[str]]:
-        """
-        Create a document from a PDF file.
-
-        Returns:
-            Tuple of (Document, list of warnings)
-        """
-        extraction = extract_text_from_pdf(file_content)  # may raise PDFExtractionError
-
-        normalized_text, tokens = tokenize_text(
-            extraction.text,
-            language=language,
-            source_type="pdf"
-        )
-
-        if len(tokens) == 0:
-            raise DocumentEmptyError(
-                "PDF contains no extractable text. It may be image-based (scanned)."
-            )
-
-        if len(tokens) > settings.max_document_words:
-            raise DocumentTooLargeError(
-                f"Document exceeds maximum word limit of {settings.max_document_words:,}. "
-                f"This PDF has approximately {len(tokens):,} words."
-            )
-
-        # Use PDF title metadata or filename
-        title = extraction.metadata.get("title") or filename.rsplit('.', 1)[0]
-
-        try:
-            language_enum = Language(language)
-        except ValueError as e:
-            raise InvalidLanguageError(f"Unsupported language: {language}") from e
-
-        document = Document(
-            id=uuid4(),
-            user_id=user_id,
-            title=title,
-            source_type=SourceType.PDF,
-            language=language_enum,
-            original_filename=filename,
-            normalized_text=normalized_text,
-            total_words=len(tokens),
-            tokenizer_version=get_tokenizer_version(),
-        )
-
-        with self.db.begin():
-            self.db.add(document)
-            self._store_tokens(document.id, tokens)
-        self.db.refresh(document)
-
-        return document, extraction.warnings
 
     def get_document(self, document_id: UUID) -> Document:
         """
@@ -579,7 +371,7 @@ Document API endpoints.
 """
 
 from uuid import UUID
-from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -589,6 +381,7 @@ from app.services.document_service import (
     DocumentNotFoundError,
     DocumentTooLargeError,
     InvalidLanguageError,
+    InvalidSourceTypeError,
 )
 from app.schemas.document import (
     DocumentFromTextRequest,
@@ -600,13 +393,10 @@ from app.schemas.token import TokenChunkResponse
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
-# Maximum file size: 10MB
-MAX_FILE_SIZE = 10 * 1024 * 1024
-
 def _raise_for_service_error(err: Exception) -> None:
     if isinstance(err, DocumentTooLargeError):
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=str(err))
-    if isinstance(err, (DocumentEmptyError, InvalidLanguageError)):
+    if isinstance(err, (DocumentEmptyError, InvalidLanguageError, InvalidSourceTypeError)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
     if isinstance(err, DocumentNotFoundError):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(err))
@@ -615,32 +405,19 @@ def _raise_for_service_error(err: Exception) -> None:
         detail="Internal server error",
     )
 
-def _read_upload_with_limit(upload: UploadFile, max_bytes: int) -> bytes:
-    # Read in chunks to enforce max size without unbounded memory growth.
-    buf = bytearray()
-    while True:
-        chunk = upload.file.read(1024 * 1024)  # 1MB
-        if not chunk:
-            break
-        buf.extend(chunk)
-        if len(buf) > max_bytes:
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"File size exceeds maximum of {max_bytes // (1024*1024)}MB",
-            )
-    return bytes(buf)
-
 @router.post("/from-text", response_model=DocumentCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_document_from_text(
     request: DocumentFromTextRequest,
     db: Session = Depends(get_db),
 ):
     """
-    Create a document from pasted text.
+    Create a document from text.
 
     - **title**: Optional document title (auto-generated if not provided)
     - **language**: Language code ("en" or "de")
     - **text**: The text content to process
+    - **source_type**: Optional ("paste" or "md") — for Markdown `.md` contents sent as text
+    - **original_filename**: Optional (e.g., `"notes.md"`)
     """
     service = DocumentService(db)
     try:
@@ -648,6 +425,8 @@ def create_document_from_text(
             text=request.text,
             language=request.language.value,
             title=request.title,
+            source_type=request.source_type.value,
+            original_filename=request.original_filename,
         )
     except Exception as e:
         _raise_for_service_error(e)
@@ -656,95 +435,6 @@ def create_document_from_text(
         document=DocumentMeta.model_validate(document),
         warnings=[],
     )
-
-@router.post("/from-file", response_model=DocumentCreateResponse, status_code=status.HTTP_201_CREATED)
-def create_document_from_file(
-    language: str = Form(..., description="Language code: 'en' or 'de'"),
-    file: UploadFile = File(..., description="Markdown (.md) or PDF (.pdf) file"),
-    db: Session = Depends(get_db),
-):
-    """
-    Create a document from an uploaded file.
-
-    Supported formats:
-    - Markdown (.md)
-    - PDF (.pdf)
-
-    Maximum file size: 10MB
-    Maximum words: 20,000
-    """
-    # Validate language
-    if language not in ("en", "de"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Language must be 'en' or 'de'"
-        )
-
-    # Validate file type
-    filename = file.filename or "unknown"
-    extension = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ""
-
-    if extension not in ("md", "pdf"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only .md and .pdf files are supported"
-        )
-
-    # Read file content
-    content = _read_upload_with_limit(file, MAX_FILE_SIZE)
-
-    service = DocumentService(db)
-
-    if extension == "md":
-        # Decode markdown as UTF-8
-        try:
-            text_content = content.decode("utf-8")
-        except UnicodeDecodeError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Markdown file must be UTF-8 encoded"
-            )
-
-        try:
-            document = service.create_from_markdown(
-                content=text_content,
-                filename=filename,
-                language=language,
-            )
-        except Exception as e:
-            _raise_for_service_error(e)
-
-        return DocumentCreateResponse(
-            document=DocumentMeta.model_validate(document),
-            warnings=[],
-        )
-
-    else:  # PDF
-        # Basic signature validation (defense-in-depth; content_type is not authoritative)
-        if not content[:1024].lstrip().startswith(b"%PDF-"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="File extension is .pdf but content does not look like a PDF.",
-            )
-
-        try:
-            document, warnings = service.create_from_pdf(
-                file_content=content,
-                filename=filename,
-                language=language,
-            )
-        except PDFExtractionError as e:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=str(e),
-            )
-        except Exception as e:
-            _raise_for_service_error(e)
-
-        return DocumentCreateResponse(
-            document=DocumentMeta.model_validate(document),
-            warnings=warnings,
-        )
 
 @router.get("/{document_id}", response_model=DocumentMeta)
 def get_document(
@@ -830,12 +520,9 @@ from app.api import health, documents
 app.include_router(documents.router, prefix="/api", tags=["documents"])
 ```
 
-### 5. Add PyMuPDF to Dependencies
+### (Deferred) File/PDF Upload Dependencies
 
-```toml
-# Add to pyproject.toml dependencies
-"pymupdf>=1.24.0",
-```
+PDF upload and multipart uploads are deferred (see `../docs/FUTURE-PDF-UPLOAD.md`). v1 does not add `python-multipart` or PyMuPDF.
 
 ---
 

@@ -7,20 +7,22 @@ This directory contains 10 detailed implementation sessions for building the Dee
 - **Inputs**: paste text, upload `.md` (read in the browser and sent via `POST /api/documents/from-text`)
 - **PDF upload**: deferred (see `../docs/FUTURE-PDF-UPLOAD.md`)
 
+> **Automaker Integration Note**: Sessions **5–9** have **REVISED** versions designed to integrate into `apps/ui` + `apps/server`. The original (standalone) session docs are kept for reference but are not the recommended path in this repo.
+
 ## Overview
 
-| Session | Focus                                                                | Duration | Deliverable                                       |
-| ------- | -------------------------------------------------------------------- | -------- | ------------------------------------------------- |
-| **1**   | [Foundation & Schema](./SESSION-01-foundation-schema.md)             | 3-4 hrs  | FastAPI skeleton, database models, Docker Compose |
-| **2**   | [Tokenization Engine](./SESSION-02-tokenization-engine.md)           | 3-4 hrs  | Text normalization, tokenizer, ORP calculation    |
-| **3**   | [Document Ingestion API](./SESSION-03-document-ingestion-api.md)     | 3-4 hrs  | Text ingestion endpoint (`from-text`)             |
-| **4**   | [Sessions & Navigation API](./SESSION-04-sessions-navigation-api.md) | 2-3 hrs  | Session CRUD, resolve-start, cleanup task         |
-| **5**   | [Frontend Foundation](./SESSION-05-frontend-foundation.md)           | 3-4 hrs  | React 19 setup, routing, state, dark theme        |
-| **6**   | [Import & Preview UI](./SESSION-06-import-preview-ui.md)             | 3-4 hrs  | Import form, virtualized preview, word selection  |
-| **7**   | [Reader Engine](./SESSION-07-reader-engine.md)                       | 4 hrs    | RSVP display, playback loop, token caching        |
-| **8**   | [Reader Controls](./SESSION-08-reader-controls.md)                   | 3-4 hrs  | Play/pause, rewind, WPM, keyboard shortcuts       |
-| **9**   | [Session Persistence](./SESSION-09-session-persistence.md)           | 2-3 hrs  | Auto-save, resume, recent sessions                |
-| **10**  | [Integration & Deployment](./SESSION-10-integration-deployment.md)   | 4 hrs    | E2E tests, Docker, Hetzner deployment             |
+| Session | Focus                                                                           | Duration | Deliverable                                       |
+| ------- | ------------------------------------------------------------------------------- | -------- | ------------------------------------------------- |
+| **1**   | [Foundation & Schema](./SESSION-01-foundation-schema.md)                        | 3-4 hrs  | FastAPI skeleton, database models, Docker Compose |
+| **2**   | [Tokenization Engine](./SESSION-02-tokenization-engine.md)                      | 3-4 hrs  | Text normalization, tokenizer, ORP calculation    |
+| **3**   | [Document Ingestion API](./SESSION-03-document-ingestion-api.md)                | 3-4 hrs  | Text ingestion endpoint (`from-text`)             |
+| **4**   | [Sessions & Navigation API](./SESSION-04-sessions-navigation-api.md)            | 2-3 hrs  | Session CRUD, resolve-start, cleanup task         |
+| **5**   | [Frontend Integration (REVISED)](./SESSION-05-REVISED-automaker-integration.md) | 3-4 hrs  | Automaker UI routes, nav, proxy wiring            |
+| **6**   | [Import & Preview UI (REVISED)](./SESSION-06-REVISED-import-preview.md)         | 3-4 hrs  | Import form, virtualized preview, word selection  |
+| **7**   | [Reader Engine (REVISED)](./SESSION-07-REVISED-reader-engine.md)                | 4 hrs    | RSVP display, playback loop, token caching        |
+| **8**   | [Reader Controls (REVISED)](./SESSION-08-REVISED-reader-controls.md)            | 3-4 hrs  | Play/pause, rewind, WPM, keyboard shortcuts       |
+| **9**   | [Session Persistence (REVISED)](./SESSION-09-REVISED-session-persistence.md)    | 2-3 hrs  | Auto-save, resume, recent sessions                |
+| **10**  | [Integration & Deployment](./SESSION-10-integration-deployment.md)              | 4 hrs    | E2E tests, Docker, Hetzner deployment             |
 
 **Total estimated time: ~30-35 hours**
 
