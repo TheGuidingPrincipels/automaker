@@ -47,7 +47,7 @@ export function OverviewView() {
                 <LayoutDashboard className="w-4 h-4 text-brand-500" />
               </div>
               <div>
-                <h1 className="text-lg font-semibold text-foreground">Dashboard</h1>
+                <h1 className="text-lg font-semibold text-foreground">Auto-Maker Dashboard</h1>
                 <p className="text-xs text-muted-foreground">
                   {overview ? `${overview.aggregate.projectCounts.total} projects` : 'Loading...'}
                 </p>
