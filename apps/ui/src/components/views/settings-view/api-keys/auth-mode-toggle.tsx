@@ -13,38 +13,20 @@
  * - 'openai': OpenAI/Codex authentication
  */
 
-import { useState, useCallback, useEffect } from 'react';
-import { getServerUrlSync } from '@/lib/http-api-client';
+import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
-import { CheckCircle2, Key, ShieldCheck, AlertTriangle, Terminal, Copy } from 'lucide-react';
+import { CheckCircle2, Key, ShieldCheck, AlertTriangle, Terminal, Copy, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { AnthropicAuthMode, OpenaiAuthMode } from '@automaker/types';
+import { useProviderAuthMode, type AuthProvider, type AnyAuthMode } from '@/hooks/use-auth-config';
 
 /** Supported provider types for auth mode toggle */
-export type AuthModeProvider = 'anthropic' | 'openai';
+export type AuthModeProvider = AuthProvider;
 
 /** Union type for auth modes across providers */
-type AuthMode = AnthropicAuthMode | OpenaiAuthMode;
-
-interface AuthModeStatus {
-  isAuthTokenMode: boolean;
-  isApiKeyMode: boolean;
-  hasOAuthToken?: boolean;
-  hasApiKey?: boolean;
-  apiKeyAllowed?: boolean;
-  envApiKeyCleared: boolean;
-  hasEnvApiKey?: boolean;
-}
-
-interface AuthModeResponse {
-  success: boolean;
-  mode: AuthMode;
-  status: AuthModeStatus;
-  error?: string;
-}
+type AuthMode = AnyAuthMode;
 
 /** Provider-specific configuration */
 interface ProviderConfig {
@@ -92,67 +74,28 @@ export function AuthModeToggle({
   onModeChange,
   testId = 'auth-mode-toggle',
 }: AuthModeToggleProps) {
-  const [mode, setMode] = useState<AuthMode>('auth_token');
-  const [status, setStatus] = useState<AuthModeStatus | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // Use shared hook for single source of truth (syncs with api-keys-section.tsx)
+  const { authMode: mode, status, isLoading, setAuthMode } = useProviderAuthMode(provider);
   const [isSwitching, setIsSwitching] = useState(false);
 
   const config = PROVIDER_CONFIGS[provider];
 
-  // Fetch current auth mode on mount or when provider changes
-  useEffect(() => {
-    const fetchAuthMode = async () => {
-      setIsLoading(true);
-      try {
-        const response = await fetch(`${getServerUrlSync()}${config.endpoint}`, {
-          method: 'GET',
-          credentials: 'include',
-        });
-        if (response.ok) {
-          const data: AuthModeResponse = await response.json();
-          if (data.success) {
-            setMode(data.mode);
-            setStatus(data.status);
-          }
-        }
-      } catch (error) {
-        console.error(`Failed to fetch ${config.displayName} auth mode:`, error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchAuthMode();
-  }, [config.endpoint, config.displayName]);
-
-  // Switch auth mode
+  // Switch auth mode using shared hook
   const switchMode = useCallback(
     async (newMode: AuthMode) => {
       if (isSwitching) return;
 
       setIsSwitching(true);
       try {
-        const response = await fetch(`${getServerUrlSync()}${config.endpoint}`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: newMode }),
-        });
+        const result = await setAuthMode(newMode as AnyAuthMode);
 
-        if (response.ok) {
-          const data: AuthModeResponse = await response.json();
-          if (data.success) {
-            setMode(data.mode);
-            setStatus(data.status);
-            onModeChange?.(data.mode);
-            toast.success(
-              newMode === 'auth_token'
-                ? `Switched ${config.displayName} to Auth Token mode (subscription)`
-                : `Switched ${config.displayName} to API Key mode (pay-per-use)`
-            );
-          } else {
-            toast.error(data.error || `Failed to switch ${config.displayName} auth mode`);
-          }
+        if (result.success) {
+          onModeChange?.(newMode);
+          toast.success(
+            newMode === 'auth_token'
+              ? `Switched ${config.displayName} to Auth Token mode (subscription)`
+              : `Switched ${config.displayName} to API Key mode (pay-per-use)`
+          );
         } else {
           toast.error(`Failed to switch ${config.displayName} auth mode`);
         }
@@ -163,7 +106,7 @@ export function AuthModeToggle({
         setIsSwitching(false);
       }
     },
-    [isSwitching, config.endpoint, config.displayName, onModeChange]
+    [isSwitching, config.displayName, onModeChange, setAuthMode]
   );
 
   if (isLoading) {
@@ -181,6 +124,7 @@ export function AuthModeToggle({
   const hasAuth = isAuthTokenMode
     ? Boolean(status?.hasOAuthToken)
     : Boolean(status?.hasApiKey ?? status?.hasEnvApiKey);
+  const hasInactiveAuthToken = !isAuthTokenMode && Boolean(status?.hasOAuthToken);
 
   return (
     <div
@@ -349,6 +293,12 @@ export function AuthModeToggle({
               </>
             )}
           </div>
+          {hasInactiveAuthToken && (
+            <div className="mt-2 flex items-start gap-2 text-xs text-muted-foreground">
+              <Info className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 mt-0.5" />
+              <p>Auth token detected but inactive. Switch to Auth Token mode to use it.</p>
+            </div>
+          )}
         </div>
       )}
     </div>

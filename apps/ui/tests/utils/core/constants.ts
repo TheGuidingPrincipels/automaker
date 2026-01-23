@@ -7,10 +7,18 @@
 // API Configuration
 // ============================================================================
 
+const TEST_PORT = process.env.TEST_PORT || '3007';
+const TEST_SERVER_PORT = process.env.TEST_SERVER_PORT || '3008';
+
+/**
+ * Base URL for the UI server
+ */
+export const UI_BASE_URL = `http://localhost:${TEST_PORT}`;
+
 /**
  * Base URL for the API server
  */
-export const API_BASE_URL = 'http://localhost:3008';
+export const API_BASE_URL = `http://localhost:${TEST_SERVER_PORT}`;
 
 /**
  * API endpoints for worktree operations

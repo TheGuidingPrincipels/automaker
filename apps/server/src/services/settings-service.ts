@@ -23,6 +23,7 @@ import {
 import type {
   GlobalSettings,
   Credentials,
+  CredentialsUpdate,
   ProjectSettings,
   KeyboardShortcuts,
   ProjectRef,
@@ -673,27 +674,21 @@ export class SettingsService {
    * Creates dataDir if needed. Credentials are written atomically.
    * WARNING: Use only in secure contexts - keys are unencrypted.
    *
-   * @param updates - Partial Credentials (usually just apiKeys)
+   * @param updates - Credential updates (supports partial apiKeys)
    * @returns Promise resolving to complete updated Credentials object
    */
-  async updateCredentials(updates: Partial<Credentials>): Promise<Credentials> {
+  async updateCredentials(updates: CredentialsUpdate): Promise<Credentials> {
     await ensureDataDir(this.dataDir);
     const credentialsPath = getCredentialsPath(this.dataDir);
 
     const current = await this.getCredentials();
+
+    // Build updated credentials - handle apiKeys separately to allow partial updates
     const updated: Credentials = {
       ...current,
-      ...updates,
       version: CREDENTIALS_VERSION,
+      apiKeys: updates.apiKeys ? { ...current.apiKeys, ...updates.apiKeys } : current.apiKeys,
     };
-
-    // Deep merge api keys if provided
-    if (updates.apiKeys) {
-      updated.apiKeys = {
-        ...current.apiKeys,
-        ...updates.apiKeys,
-      };
-    }
 
     await writeSettingsJson(credentialsPath, updated);
     logger.info('Credentials updated');

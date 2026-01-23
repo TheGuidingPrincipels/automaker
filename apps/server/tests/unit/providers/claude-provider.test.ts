@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ClaudeProvider } from '@/providers/claude-provider.js';
 import * as sdk from '@anthropic-ai/claude-agent-sdk';
 import { collectAsyncGenerator } from '../../utils/helpers.js';
+import { setApiKey } from '@/routes/setup/common.js';
 
 vi.mock('@anthropic-ai/claude-agent-sdk');
 
@@ -14,7 +15,11 @@ describe('claude-provider.ts', () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.ANTHROPIC_BASE_URL;
     delete process.env.ANTHROPIC_AUTH_TOKEN;
+    delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    delete process.env.AUTOMAKER_ANTHROPIC_AUTH_MODE;
     delete process.env.AUTOMAKER_DISABLE_HOOK_TTS;
+    setApiKey('anthropic', '');
+    setApiKey('anthropic_oauth_token', '');
   });
 
   describe('getName', () => {
@@ -511,6 +516,35 @@ describe('claude-provider.ts', () => {
       const config = provider.getConfig();
       expect(config.apiKey).toBe('key1');
       expect(config.model).toBe('model1');
+    });
+  });
+
+  describe('auth mode enforcement', () => {
+    it('should prefer API key in api_key mode even if OAuth token is stored', async () => {
+      process.env.AUTOMAKER_ANTHROPIC_AUTH_MODE = 'api_key';
+      setApiKey('anthropic', 'stored-api-key');
+      setApiKey('anthropic_oauth_token', 'stored-oauth-token');
+
+      vi.mocked(sdk.query).mockReturnValue(
+        (async function* () {
+          yield { type: 'text', text: 'test' };
+        })()
+      );
+
+      const generator = provider.executeQuery({
+        prompt: 'Test',
+        model: 'claude-opus-4-5-20251101',
+        cwd: '/test',
+      });
+
+      await collectAsyncGenerator(generator);
+
+      const call = vi.mocked(sdk.query).mock.calls[0]?.[0];
+      const env = call?.options?.env as Record<string, string | undefined>;
+
+      expect(env?.ANTHROPIC_API_KEY).toBe('stored-api-key');
+      expect(env?.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+      expect(env?.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
     });
   });
 });

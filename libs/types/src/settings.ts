@@ -1113,11 +1113,24 @@ export interface Credentials {
   apiKeys: {
     /** Anthropic Claude API key */
     anthropic: string;
+    /** Anthropic OAuth token (subscription/CLI auth) */
+    anthropic_oauth_token: string;
     /** Google API key (for embeddings or other services) */
     google: string;
     /** OpenAI API key (for compatibility or alternative providers) */
     openai: string;
   };
+}
+
+/**
+ * Type for updating credentials with partial API keys support.
+ * Allows updating individual API keys without providing all of them.
+ */
+export interface CredentialsUpdate {
+  /** Version number (optional in update) */
+  version?: number;
+  /** Partial API keys - can update individual keys */
+  apiKeys?: Partial<Credentials['apiKeys']>;
 }
 
 /**
@@ -1391,6 +1404,7 @@ export const DEFAULT_CREDENTIALS: Credentials = {
   version: CREDENTIALS_VERSION,
   apiKeys: {
     anthropic: '',
+    anthropic_oauth_token: '',
     google: '',
     openai: '',
   },

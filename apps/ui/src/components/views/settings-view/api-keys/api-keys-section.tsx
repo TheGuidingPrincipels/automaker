@@ -109,8 +109,16 @@ export function ApiKeysSection() {
       <div className="p-6 space-y-6">
         {/* Per-Provider Auth Mode Toggles */}
         <div className="space-y-4">
-          <AuthModeToggle provider="anthropic" testId="anthropic-auth-mode-toggle" />
-          <AuthModeToggle provider="openai" testId="openai-auth-mode-toggle" />
+          <AuthModeToggle
+            provider="anthropic"
+            testId="anthropic-auth-mode-toggle"
+            onModeChange={() => authModes.anthropic.refresh()}
+          />
+          <AuthModeToggle
+            provider="openai"
+            testId="openai-auth-mode-toggle"
+            onModeChange={() => authModes.openai.refresh()}
+          />
         </div>
 
         {/* API Key Fields with contextual info - shown per provider based on their auth mode */}

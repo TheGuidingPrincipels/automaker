@@ -1,16 +1,27 @@
 /**
  * POST /delete-api-key endpoint - Delete a stored API key
+ *
+ * Removes API key from:
+ * - In-memory cache
+ * - process.env
+ * - credentials.json (DATA_DIR/credentials.json)
+ * - .env file (legacy cleanup)
  */
 
 import type { Request, Response } from 'express';
 import { createLogger } from '@automaker/utils';
 import path from 'path';
 import { secureFs } from '@automaker/platform';
+import { SettingsService } from '../../../services/settings-service.js';
+import {
+  setApiKey,
+  PROVIDER_CONFIG,
+  SUPPORTED_PROVIDERS,
+  isSupportedProvider,
+  resolveDataDirectory,
+} from '../common.js';
 
 const logger = createLogger('Setup');
-
-// In-memory storage reference (imported from common.ts pattern)
-import { setApiKey } from '../common.js';
 
 /**
  * Remove an API key from the .env file
@@ -41,23 +52,20 @@ export function createDeleteApiKeyHandler() {
         return;
       }
 
-      logger.info(`[Setup] Deleting API key for provider: ${provider}`);
-
-      // Map provider to env key name
-      const envKeyMap: Record<string, string> = {
-        anthropic: 'ANTHROPIC_API_KEY',
-        anthropic_oauth_token: 'ANTHROPIC_AUTH_TOKEN',
-        openai: 'OPENAI_API_KEY',
-      };
-
-      const envKey = envKeyMap[provider];
-      if (!envKey) {
+      // Validate provider using shared configuration
+      if (!isSupportedProvider(provider)) {
         res.status(400).json({
           success: false,
-          error: `Unknown provider: ${provider}. Only anthropic and openai are supported.`,
+          error: `Unknown provider: ${provider}. Supported: ${SUPPORTED_PROVIDERS.join(', ')}.`,
         });
         return;
       }
+
+      logger.info(`[Setup] Deleting API key for provider: ${provider}`);
+
+      // Get provider configuration from shared config
+      const providerConfig = PROVIDER_CONFIG[provider];
+      const { envKey, credentialsKey } = providerConfig;
 
       // Clear from in-memory storage
       setApiKey(provider, '');
@@ -65,7 +73,20 @@ export function createDeleteApiKeyHandler() {
       // Remove from environment
       delete process.env[envKey];
 
-      // Remove from .env file
+      // Remove from credentials.json
+      const dataDir = resolveDataDirectory();
+      const settingsService = new SettingsService(dataDir);
+      const apiKeysUpdate: Partial<{
+        anthropic: string;
+        anthropic_oauth_token: string;
+        google: string;
+        openai: string;
+      }> = { [credentialsKey]: '' };
+
+      await settingsService.updateCredentials({ apiKeys: apiKeysUpdate });
+      logger.info(`[Setup] Removed ${provider} API key from credentials.json`);
+
+      // Remove from .env file (legacy cleanup)
       await removeApiKeyFromEnv(envKey);
 
       logger.info(`[Setup] Successfully deleted API key for ${provider}`);

@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { createLogger } from '@automaker/utils/logger';
 import { useAppStore } from '@/store/app-store';
+import { toast } from 'sonner';
 
 const logger = createLogger('ApiKeyManagement');
 import { getElectronAPI } from '@/lib/electron';
@@ -173,15 +174,61 @@ export function useApiKeyManagement() {
     }
   };
 
-  // Save API keys
-  const handleSave = () => {
-    setApiKeys({
-      anthropic: anthropicKey,
-      google: googleKey,
-      openai: openaiKey,
-    });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  // Save API keys to backend and local store
+  const handleSave = async () => {
+    try {
+      const api = getElectronAPI();
+      const setupApi = api.setup;
+
+      // Save each key that has a value to the backend (credentials.json)
+      const keysToSave: Array<{ provider: string; key: string }> = [];
+      if (anthropicKey.trim()) keysToSave.push({ provider: 'anthropic', key: anthropicKey });
+      if (googleKey.trim()) keysToSave.push({ provider: 'google', key: googleKey });
+      if (openaiKey.trim()) keysToSave.push({ provider: 'openai', key: openaiKey });
+
+      if (keysToSave.length === 0) {
+        return;
+      }
+
+      if (!setupApi?.storeApiKey) {
+        logger.error('Save API not available');
+        toast.error('Save API not available');
+        return;
+      }
+
+      let hasError = false;
+      for (const { provider, key } of keysToSave) {
+        try {
+          const result = await setupApi.storeApiKey(provider, key);
+          if (!result.success) {
+            logger.error(`Failed to save ${provider} API key:`, result.error);
+            hasError = true;
+          }
+        } catch (error) {
+          logger.error(`Failed to save ${provider} API key:`, error);
+          hasError = true;
+        }
+      }
+
+      if (hasError) {
+        toast.error('Some API keys failed to save');
+        return;
+      }
+
+      // Update local Zustand store only after all saves succeed
+      setApiKeys({
+        anthropic: anthropicKey,
+        google: googleKey,
+        openai: openaiKey,
+      });
+
+      toast.success('API keys saved successfully');
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (error) {
+      logger.error('Unexpected error saving API keys:', error);
+      toast.error('Unexpected error saving API keys');
+    }
   };
 
   // Build provider config params for buildProviderConfigs

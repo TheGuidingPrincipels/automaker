@@ -178,46 +178,46 @@ function buildEnv(
     // API KEY MODE (pay-per-use):
     // - Use stored or env API key
     //
-    // AUTHENTICATION METHODS (in priority order):
-    // 1. Stored OAuth token (from UI settings) → ANTHROPIC_AUTH_TOKEN
-    // 2. ANTHROPIC_AUTH_TOKEN env var → ANTHROPIC_AUTH_TOKEN (direct API auth)
-    // 3. CLAUDE_CODE_OAUTH_TOKEN env var → Pass through to SDK (CLI handles OAuth)
-    // 4. [api_key mode only] Stored API key (from credentials) → ANTHROPIC_API_KEY
-    // 5. [api_key mode only] ANTHROPIC_API_KEY env var → ANTHROPIC_API_KEY
+    // AUTHENTICATION METHODS (mode-specific):
+    // - auth_token mode: OAuth/CLI tokens only (no API key fallback)
+    // - api_key mode: API key only (no OAuth/CLI fallback)
 
-    // Check for OAuth/auth tokens first (both modes try OAuth first)
-    const storedAuthToken = getApiKey('anthropic_oauth_token');
+    if (isAuthTokenMode) {
+      // AUTH TOKEN MODE - use OAuth tokens only
+      const storedAuthToken = getApiKey('anthropic_oauth_token');
 
-    if (storedAuthToken) {
-      // User explicitly stored an auth token via UI - use it for direct API auth
-      env['ANTHROPIC_AUTH_TOKEN'] = storedAuthToken;
-      env['ANTHROPIC_API_KEY'] = ''; // DEFENSE LAYER 2: Clear to prevent SDK from using wrong auth
-      logger.debug('[buildEnv] Using stored OAuth token as ANTHROPIC_AUTH_TOKEN');
-    } else if (process.env.ANTHROPIC_AUTH_TOKEN) {
-      // Direct API auth token from environment
-      env['ANTHROPIC_AUTH_TOKEN'] = process.env.ANTHROPIC_AUTH_TOKEN;
-      env['ANTHROPIC_API_KEY'] = ''; // DEFENSE LAYER 2: Clear to prevent SDK from using wrong auth
-      logger.debug('[buildEnv] Using ANTHROPIC_AUTH_TOKEN from environment');
-    } else if (process.env.CLAUDE_CODE_OAUTH_TOKEN) {
-      // CLI OAuth token - pass through to SDK environment, CLI will handle OAuth flow
-      // DO NOT map to ANTHROPIC_AUTH_TOKEN - that's for direct API auth
-      env['CLAUDE_CODE_OAUTH_TOKEN'] = process.env.CLAUDE_CODE_OAUTH_TOKEN;
-      env['ANTHROPIC_API_KEY'] = ''; // DEFENSE LAYER 2: Clear to prevent SDK from using pay-per-use key
-      logger.debug('[buildEnv] Using CLAUDE_CODE_OAUTH_TOKEN (CLI will handle OAuth)');
-    } else if (isAuthTokenMode) {
-      // AUTH TOKEN MODE but no auth token found - throw error, don't fall back to API key
-      // CRITICAL: This prevents accidental API key usage in subscription mode
-      env['ANTHROPIC_API_KEY'] = ''; // DEFENSE LAYER 2: Explicitly clear
-      logger.warn('[buildEnv] Auth Token mode: No OAuth token found');
+      if (storedAuthToken) {
+        // User explicitly stored an auth token via UI - use it for direct API auth
+        env['ANTHROPIC_AUTH_TOKEN'] = storedAuthToken;
+        env['ANTHROPIC_API_KEY'] = ''; // DEFENSE LAYER 2: Clear to prevent SDK from using wrong auth
+        logger.debug('[buildEnv] Using stored OAuth token as ANTHROPIC_AUTH_TOKEN');
+      } else if (process.env.ANTHROPIC_AUTH_TOKEN) {
+        // Direct API auth token from environment
+        env['ANTHROPIC_AUTH_TOKEN'] = process.env.ANTHROPIC_AUTH_TOKEN;
+        env['ANTHROPIC_API_KEY'] = ''; // DEFENSE LAYER 2: Clear to prevent SDK from using wrong auth
+        logger.debug('[buildEnv] Using ANTHROPIC_AUTH_TOKEN from environment');
+      } else if (process.env.CLAUDE_CODE_OAUTH_TOKEN) {
+        // CLI OAuth token - pass through to SDK environment, CLI will handle OAuth flow
+        // DO NOT map to ANTHROPIC_AUTH_TOKEN - that's for direct API auth
+        env['CLAUDE_CODE_OAUTH_TOKEN'] = process.env.CLAUDE_CODE_OAUTH_TOKEN;
+        env['ANTHROPIC_API_KEY'] = ''; // DEFENSE LAYER 2: Clear to prevent SDK from using pay-per-use key
+        logger.debug('[buildEnv] Using CLAUDE_CODE_OAUTH_TOKEN (CLI will handle OAuth)');
+      } else {
+        // AUTH TOKEN MODE but no auth token found - don't fall back to API key
+        // CRITICAL: This prevents accidental API key usage in subscription mode
+        env['ANTHROPIC_API_KEY'] = ''; // DEFENSE LAYER 2: Explicitly clear
+        logger.warn('[buildEnv] Auth Token mode: No OAuth token found');
 
-      // Don't throw here - let the SDK handle the auth failure gracefully
-      // The SDK will provide a better error message about authentication
-      // Just make absolutely sure no API key is used
+        // Don't throw here - let the SDK handle the auth failure gracefully
+        // The SDK will provide a better error message about authentication
+        // Just make absolutely sure no API key is used
+      }
     } else {
-      // API KEY MODE - use API key from credentials or environment
-      if (credentials?.apiKeys?.anthropic) {
-        env['ANTHROPIC_API_KEY'] = credentials.apiKeys.anthropic;
-        logger.debug('[buildEnv] API Key mode: Using API key from credentials');
+      // API KEY MODE - use API key only (ignore OAuth tokens)
+      const storedApiKey = credentials?.apiKeys?.anthropic || getApiKey('anthropic');
+      if (storedApiKey) {
+        env['ANTHROPIC_API_KEY'] = storedApiKey;
+        logger.debug('[buildEnv] API Key mode: Using stored API key');
       } else if (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== '') {
         env['ANTHROPIC_API_KEY'] = process.env.ANTHROPIC_API_KEY;
         logger.debug('[buildEnv] API Key mode: Using API key from environment');

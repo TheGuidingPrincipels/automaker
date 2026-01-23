@@ -207,6 +207,7 @@ describe('settings-service.ts', () => {
       const customCredentials: Credentials = {
         ...DEFAULT_CREDENTIALS,
         apiKeys: {
+          ...DEFAULT_CREDENTIALS.apiKeys,
           anthropic: 'sk-test-key',
         },
       };
@@ -255,6 +256,7 @@ describe('settings-service.ts', () => {
       const initial: Credentials = {
         ...DEFAULT_CREDENTIALS,
         apiKeys: {
+          ...DEFAULT_CREDENTIALS.apiKeys,
           anthropic: 'sk-initial',
         },
       };
@@ -276,6 +278,7 @@ describe('settings-service.ts', () => {
       const initial: Credentials = {
         ...DEFAULT_CREDENTIALS,
         apiKeys: {
+          ...DEFAULT_CREDENTIALS.apiKeys,
           anthropic: 'sk-anthropic',
         },
       };

@@ -19,6 +19,9 @@ export default defineConfig(({ command }) => {
   const skipElectron =
     command === 'serve' && (process.env.CI === 'true' || process.env.VITE_SKIP_ELECTRON === 'true');
 
+  const testServerPort = parseInt(process.env.TEST_SERVER_PORT || '3008', 10);
+  const proxyTarget = process.env.VITE_SERVER_URL || `http://localhost:${testServerPort}`;
+
   return {
     plugins: [
       // Only include electron plugin when not in CI/headless dev mode
@@ -70,7 +73,7 @@ export default defineConfig(({ command }) => {
       allowedHosts: true,
       proxy: {
         '/api': {
-          target: 'http://localhost:3008',
+          target: proxyTarget,
           changeOrigin: true,
           ws: true,
         },
