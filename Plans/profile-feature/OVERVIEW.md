@@ -213,7 +213,9 @@ Each phase has its own detailed document:
 libs/types/src/user.ts                    # User type definitions
 apps/server/src/services/user-service.ts  # User CRUD operations
 apps/server/src/lib/database.ts           # SQLite connection
-prisma/schema.prisma                      # Database schema
+apps/server/prisma/schema.prisma          # Database schema
+apps/server/src/types/express.d.ts        # req.user typing (server-local)
+apps/server/src/routes/auth/routes/*      # Auth route handlers (testable)
 ```
 
 **Modified Files:**

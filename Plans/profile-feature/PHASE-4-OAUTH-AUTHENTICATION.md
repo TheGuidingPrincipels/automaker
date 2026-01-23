@@ -38,7 +38,7 @@ Add Google OAuth as an alternative to email/password authentication. After this 
 
 ### 1. Database Schema Addition
 
-**File to Modify**: `prisma/schema.prisma`
+**File to Modify**: `apps/server/prisma/schema.prisma`
 
 ```prisma
 model User {
