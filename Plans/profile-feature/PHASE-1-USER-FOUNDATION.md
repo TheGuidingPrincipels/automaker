@@ -1,47 +1,70 @@
 # Phase 1: User Foundation
 
-> **Status**: Planning
-> **Estimated Duration**: 1-2 weeks
+> **Status**: Planning (Revised to match current repo)
+> **Estimated Duration**: 1–2 weeks
 > **Prerequisites**: None
 > **Blocks**: Phases 2, 3, 4
 
 ## Objective
 
-Establish the foundational user system that all other phases depend on. After this phase:
+Establish the foundational user identity system that all other phases depend on, **without breaking the current “API key → session cookie/token” auth model** that Automaker uses today.
 
-- Users can register and log in with email/password
-- Sessions are bound to user IDs
-- Authenticated requests have user context (`req.user`)
-- User data is stored in SQLite database
+After this phase:
 
-## What This Phase DOES
+- Users can register and log in with **email/password**
+- All authenticated requests have **user context** (`req.user`)
+- Sessions are **bound to user IDs** (including a `system` user for legacy/Electron flows)
+- User data is stored in a **SQLite database** (Prisma)
+- Existing functionality continues to work (API key login, Electron mode, existing UI bootstrap)
 
-- Creates User type definitions
-- Sets up SQLite database with Prisma
-- Implements user registration and login endpoints
-- Binds session tokens to user IDs
-- Adds user context to request middleware
-- Updates frontend auth store with user object
-- Adds basic registration/login UI
+## Current System Reality (must stay compatible)
 
-## What This Phase DOES NOT Do
+These are the key current behaviors this phase must align with:
 
-| Excluded Feature               | Handled In |
-| ------------------------------ | ---------- |
-| Per-user API key storage       | Phase 2    |
-| Per-user credential encryption | Phase 2    |
-| Knowledge Hub real-time sync   | Phase 3    |
-| Google/GitHub OAuth            | Phase 4    |
-| User profile editing           | Phase 4    |
-| Avatar upload                  | Phase 4    |
+- Server auth supports **API key** (`X-API-Key`) and **session token/cookie** (`X-Session-Token`, `automaker_session`) (`apps/server/src/lib/auth.ts`).
+- Sessions are persisted to `{DATA_DIR}/.sessions` for survival across restarts.
+- `/api/auth/*` routes are mounted **before** the global `authMiddleware` (`apps/server/src/index.ts`).
+- The UI login flow is an API-key-based state machine (`apps/ui/src/components/views/login-view.tsx`) calling `login(apiKey)` (`apps/ui/src/lib/http-api-client.ts`) and bootstrap auth uses `verifySession()` (`apps/ui/src/routes/__root.tsx`).
+- The codebase is **ESM/NodeNext**: local imports must use `.js` extensions in TS/ESM output.
 
----
+## Locked Decisions (to make this phase 100% executable)
+
+These decisions remove ambiguity for implementation and downstream phases:
+
+1. **Keep legacy API key auth** (Electron + existing web flow) and map it to a real user:
+   - API key authentication corresponds to the **System user** (`user.id === 'system'`).
+2. **Add email/password auth** (new web-mode primary path):
+   - `/api/auth/register` and `/api/auth/login` support email/password.
+   - UI defaults to email/password mode, but keeps an explicit “Legacy API key” option.
+3. **Self-signup is disabled by default in production**:
+   - `AUTOMAKER_ALLOW_SELF_SIGNUP=true` must be set to allow `/register` on a deployed/shared server.
+   - In development, you may enable it by default (recommended).
+4. **Session persistence remains file-backed in Phase 1**:
+   - Keep `{DATA_DIR}/.sessions` as the source of truth to preserve restart behavior.
+   - Extend the stored session payload to include `userId`.
+   - Do **not** introduce a DB-backed sessions table in Phase 1.
+5. **`req.user` is populated before handlers run**:
+   - The auth middleware must `await` the DB lookup and attach `req.user` before calling `next()`.
+   - No “fire-and-forget” user hydration.
+6. **Prepare for OAuth in Phase 4 now**:
+   - `User.passwordHash` must be nullable to support OAuth-only accounts.
 
 ## Technical Specification
 
-### 1. Database Schema
+### 1. Database (Prisma + SQLite)
 
-**File to Create**: `prisma/schema.prisma`
+**Why Prisma here?** Phase 2/4 already plan Prisma schema changes; Phase 1 establishes the initial schema/migrations.
+
+**Prisma schema location (monorepo-aligned)**:
+
+- **Create**: `apps/server/prisma/schema.prisma`
+
+**SQLite DB file location**:
+
+- `{DATA_DIR}/automaker.db`
+- Reminder: when running `npm run dev:server` the working directory is typically `apps/server`, so the default `{DATA_DIR}` is `apps/server/data` unless overridden.
+
+**Schema v1 (Phase 1)**
 
 ```prisma
 datasource db {
@@ -54,827 +77,424 @@ generator client {
 }
 
 model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
-  passwordHash  String
-  name          String
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  lastLoginAt   DateTime?
+  /// Use a stable id string. `system` is reserved for legacy/Electron auth.
+  id           String   @id @default(uuid())
+  email        String   @unique
+  /// Nullable for OAuth-only accounts (Phase 4)
+  passwordHash String?
+  name         String
 
-  sessions      Session[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  lastLoginAt  DateTime?
 
   @@map("users")
 }
-
-model Session {
-  id        String   @id @default(uuid())
-  token     String   @unique
-  userId    String
-  createdAt DateTime @default(now())
-  expiresAt DateTime
-
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([token])
-  @@index([userId])
-  @@map("sessions")
-}
 ```
 
-**Database Location**: `{DATA_DIR}/automaker.db`
+### 2. Shared Types (DTOs only; no Express types in @automaker/types)
 
-### 2. User Type Definitions
+**Create**: `libs/types/src/user.ts`
 
-**File to Create**: `libs/types/src/user.ts`
+```ts
+export type UserId = string;
 
-```typescript
-/**
- * User entity stored in database
- */
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-  createdAt: string; // ISO 8601
-  updatedAt: string; // ISO 8601
-  lastLoginAt?: string; // ISO 8601
-}
-
-/**
- * User object returned to frontend (no sensitive data)
- */
 export interface PublicUser {
-  id: string;
+  id: UserId;
   email: string;
   name: string;
 }
 
-/**
- * Registration request payload
- */
 export interface RegisterUserInput {
   email: string;
   password: string;
   name: string;
 }
 
-/**
- * Login request payload
- */
-export interface LoginInput {
+export interface LoginWithEmailInput {
   email: string;
   password: string;
 }
 
-/**
- * Login response
- */
-export interface LoginResult {
-  success: boolean;
-  user?: PublicUser;
-  token?: string;
-  error?: string;
-}
-
-/**
- * Express request with user context
- */
-export interface AuthenticatedRequest extends Request {
-  user?: PublicUser;
-}
+export type LoginResult =
+  | { success: true; user: PublicUser; token: string }
+  | { success: false; error: string };
 ```
 
-**File to Modify**: `libs/types/src/index.ts`
+**Modify**: `libs/types/src/index.ts`
 
-- Add: `export * from './user';`
+- Add: `export * from './user.js';` (note the `.js` extension)
 
-### 3. Database Service
+### 3. Server: Database bootstrap
 
-**File to Create**: `apps/server/src/lib/database.ts`
+**Create**: `apps/server/src/lib/database.ts`
 
-```typescript
+Key requirements:
+
+- **Async-only** filesystem usage (no `fs.*Sync`)
+- Use PrismaClient runtime URL override via `datasourceUrl` (supported in Prisma ≥ 5.2; Prisma v6 docs confirm).
+- Fail fast with a clear error if DB cannot be opened.
+
+Implementation shape:
+
+```ts
 import { PrismaClient } from '@prisma/client';
 import path from 'path';
+import fs from 'fs/promises';
 
 let prisma: PrismaClient | null = null;
 
-export function getDataDir(): string {
-  return process.env.DATA_DIR || './data';
-}
+export const getDataDir = (): string => process.env.DATA_DIR || './data';
 
-export function getDatabaseUrl(): string {
-  const dataDir = getDataDir();
-  return `file:${path.join(dataDir, 'automaker.db')}`;
-}
+export const getDatabasePath = (): string => path.join(getDataDir(), 'automaker.db');
 
-export async function initializeDatabase(): Promise<PrismaClient> {
+export const getDatabaseUrl = (): string => `file:${getDatabasePath()}`;
+
+export const initializeDatabase = async (): Promise<PrismaClient> => {
   if (prisma) return prisma;
-
-  // Set DATABASE_URL for Prisma
-  process.env.DATABASE_URL = getDatabaseUrl();
+  await fs.mkdir(getDataDir(), { recursive: true });
 
   prisma = new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+    datasourceUrl: getDatabaseUrl(),
+    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
   });
 
-  // Run migrations (in production, use prisma migrate deploy)
-  // For development, this ensures schema is up to date
   await prisma.$connect();
-
   return prisma;
-}
+};
 
-export function getPrisma(): PrismaClient {
-  if (!prisma) {
-    throw new Error('Database not initialized. Call initializeDatabase() first.');
-  }
+export const getPrisma = (): PrismaClient => {
+  if (!prisma) throw new Error('Database not initialized');
   return prisma;
-}
+};
 
-export async function closeDatabase(): Promise<void> {
-  if (prisma) {
-    await prisma.$disconnect();
-    prisma = null;
+export const closeDatabase = async (): Promise<void> => {
+  if (!prisma) return;
+  await prisma.$disconnect();
+  prisma = null;
+};
+```
+
+### 4. Server: Express request typing (server-local)
+
+Do **not** export `AuthenticatedRequest` from `@automaker/types`.
+
+**Create**: `apps/server/src/types/express.d.ts`
+
+```ts
+import 'express-serve-static-core';
+import type { PublicUser } from '@automaker/types';
+
+declare module 'express-serve-static-core' {
+  interface Request {
+    user?: PublicUser;
+    userId?: string;
   }
 }
 ```
 
-### 4. User Service
+### 5. Server: User service
 
-**File to Create**: `apps/server/src/services/user-service.ts`
+**Create**: `apps/server/src/services/user-service.ts`
 
-```typescript
-import bcrypt from 'bcrypt';
-import { getPrisma } from '../lib/database';
-import type { User, PublicUser, RegisterUserInput } from '@automaker/types';
+Requirements:
 
-const BCRYPT_ROUNDS = 12;
+- Normalize email (`trim().toLowerCase()`)
+- Validate password length (recommend `>= 12` for production; allow `>= 8` minimum if you prefer)
+- Hash with bcrypt (rounds: `12`)
+- Support OAuth-only users by allowing `passwordHash === null`
+- Provide `ensureSystemUser()` for backward compatibility
 
-export class UserService {
-  /**
-   * Create a new user with hashed password
-   */
-  async createUser(input: RegisterUserInput): Promise<PublicUser> {
-    const prisma = getPrisma();
+Methods:
 
-    // Check if email already exists
-    const existing = await prisma.user.findUnique({
-      where: { email: input.email.toLowerCase() },
-    });
+- `ensureSystemUser(): Promise<void>`
+- `createUser(input: RegisterUserInput): Promise<PublicUser>`
+- `authenticateUser(input: LoginWithEmailInput): Promise<PublicUser | null>`
+- `getPublicUserById(id: string): Promise<PublicUser | null>`
 
-    if (existing) {
-      throw new Error('Email already registered');
-    }
+### 6. Server: Auth + sessions (bind to users, keep file persistence)
 
-    // Hash password
-    const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
+**Modify**: `apps/server/src/lib/auth.ts`
 
-    // Create user
-    const user = await prisma.user.create({
-      data: {
-        email: input.email.toLowerCase(),
-        passwordHash,
-        name: input.name,
-      },
-    });
+#### 6.1 Session payload format (backward compatible)
 
-    return this.toPublicUser(user);
-  }
+Current persisted sessions are:
 
-  /**
-   * Authenticate user with email/password
-   */
-  async authenticateUser(email: string, password: string): Promise<PublicUser | null> {
-    const prisma = getPrisma();
-
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-    });
-
-    if (!user) return null;
-
-    const validPassword = await bcrypt.compare(password, user.passwordHash);
-    if (!validPassword) return null;
-
-    // Update last login time
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { lastLoginAt: new Date() },
-    });
-
-    return this.toPublicUser(user);
-  }
-
-  /**
-   * Get user by ID
-   */
-  async getUserById(id: string): Promise<PublicUser | null> {
-    const prisma = getPrisma();
-
-    const user = await prisma.user.findUnique({
-      where: { id },
-    });
-
-    return user ? this.toPublicUser(user) : null;
-  }
-
-  /**
-   * Get user by email
-   */
-  async getUserByEmail(email: string): Promise<PublicUser | null> {
-    const prisma = getPrisma();
-
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-    });
-
-    return user ? this.toPublicUser(user) : null;
-  }
-
-  /**
-   * Convert database user to public user (strip sensitive fields)
-   */
-  private toPublicUser(user: User & { passwordHash?: string }): PublicUser {
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-    };
-  }
-}
-
-// Singleton instance
-let userService: UserService | null = null;
-
-export function getUserService(): UserService {
-  if (!userService) {
-    userService = new UserService();
-  }
-  return userService;
-}
+```ts
+Map<string, { createdAt: number; expiresAt: number }>;
 ```
 
-### 5. Session Management Changes
+New persisted sessions become:
 
-**File to Modify**: `apps/server/src/lib/auth.ts`
-
-**Current Session Structure** (lines 33-37):
-
-```typescript
-// BEFORE
-const validSessions = new Map<string, { createdAt: number; expiresAt: number }>();
-```
-
-**New Session Structure**:
-
-```typescript
-// AFTER
+```ts
 interface SessionData {
   userId: string;
   createdAt: number;
   expiresAt: number;
 }
-
-const validSessions = new Map<string, SessionData>();
 ```
 
-**Changes to `createSession()`** (lines 211-220):
-
-```typescript
-// BEFORE
-export async function createSession(): Promise<string> {
-  const token = generateSessionToken();
-  const now = Date.now();
-  validSessions.set(token, {
-    createdAt: now,
-    expiresAt: now + SESSION_MAX_AGE_MS,
-  });
-  await saveSessions();
-  return token;
-}
-
-// AFTER
-export async function createSession(userId: string): Promise<string> {
-  const prisma = getPrisma();
-  const token = generateSessionToken();
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + SESSION_MAX_AGE_MS);
-
-  // Store in database
-  await prisma.session.create({
-    data: {
-      token,
-      userId,
-      createdAt: now,
-      expiresAt,
-    },
-  });
-
-  // Also cache in memory for fast validation
-  validSessions.set(token, {
-    userId,
-    createdAt: now.getTime(),
-    expiresAt: expiresAt.getTime(),
-  });
-
-  return token;
-}
-```
-
-**Changes to `validateSession()`** (lines 226-238):
-
-```typescript
-// AFTER
-export function validateSession(token: string): { valid: boolean; userId?: string } {
-  const session = validSessions.get(token);
-
-  if (!session) {
-    return { valid: false };
-  }
-
-  if (Date.now() > session.expiresAt) {
-    // Clean up expired session
-    validSessions.delete(token);
-    // Also delete from database (async, fire and forget)
-    getPrisma()
-      .session.delete({ where: { token } })
-      .catch(() => {});
-    return { valid: false };
-  }
-
-  return { valid: true, userId: session.userId };
-}
-```
-
-**Add `getUserFromSession()`**:
-
-```typescript
-export function getUserFromSession(token: string): string | undefined {
-  const result = validateSession(token);
-  return result.valid ? result.userId : undefined;
-}
-```
-
-### 6. Auth Middleware Changes
-
-**File to Modify**: `apps/server/src/lib/auth.ts`
-
-**Add to `checkAuthentication()` return type**:
-
-```typescript
-interface AuthResult {
-  authenticated: boolean;
-  userId?: string; // ADD THIS
-  errorType?: 'no_auth' | 'invalid_session' | 'expired_session' | 'invalid_api_key';
-}
-```
-
-**Update `authMiddleware()`** (lines 399-438):
-
-```typescript
-export function authMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
-  const result = checkAuthentication(req.headers, req.query, req.cookies);
-
-  if (!result.authenticated) {
-    res.status(401).json({ error: 'Unauthorized', type: result.errorType });
-    return;
-  }
-
-  // ATTACH USER CONTEXT TO REQUEST
-  if (result.userId) {
-    // Async lookup - but we have userId from session validation
-    req.user = { id: result.userId } as PublicUser;
-
-    // Optionally fetch full user (can be optimized with caching)
-    getUserService()
-      .getUserById(result.userId)
-      .then((user) => {
-        if (user) req.user = user;
-      });
-  }
-
-  next();
-}
-```
-
-### 7. Auth Routes Changes
-
-**File to Modify**: `apps/server/src/routes/auth/index.ts`
-
-**Add Registration Endpoint**:
-
-```typescript
-// POST /api/auth/register
-router.post('/register', async (req: Request, res: Response) => {
-  try {
-    const { email, password, name } = req.body;
-
-    // Validation
-    if (!email || !password || !name) {
-      return res.status(400).json({
-        success: false,
-        error: 'Email, password, and name are required',
-      });
-    }
-
-    if (password.length < 8) {
-      return res.status(400).json({
-        success: false,
-        error: 'Password must be at least 8 characters',
-      });
-    }
-
-    const userService = getUserService();
-    const user = await userService.createUser({ email, password, name });
-
-    // Auto-login after registration
-    const token = await createSession(user.id);
-
-    // Set cookie
-    res.cookie(SESSION_COOKIE_NAME, token, getSessionCookieOptions());
-
-    return res.json({
-      success: true,
-      user,
-      token,
-    });
-  } catch (error) {
-    if (error.message === 'Email already registered') {
-      return res.status(409).json({ success: false, error: error.message });
-    }
-    console.error('Registration error:', error);
-    return res.status(500).json({ success: false, error: 'Registration failed' });
-  }
-});
-```
-
-**Update Login Endpoint** (modify existing):
-
-```typescript
-// POST /api/auth/login
-router.post('/login', async (req: Request, res: Response) => {
-  const { email, password, apiKey } = req.body;
-
-  // Support both API key login (legacy) and email/password
-  if (apiKey) {
-    // Legacy API key login (for backward compatibility)
-    if (!validateApiKey(apiKey)) {
-      return res.status(401).json({ success: false, error: 'Invalid API key' });
-    }
-    // API key login doesn't bind to a user (system-level access)
-    const token = await createSession('system');
-    res.cookie(SESSION_COOKIE_NAME, token, getSessionCookieOptions());
-    return res.json({ success: true, token });
-  }
-
-  // Email/password login
-  if (!email || !password) {
-    return res.status(400).json({
-      success: false,
-      error: 'Email and password are required',
-    });
-  }
-
-  const userService = getUserService();
-  const user = await userService.authenticateUser(email, password);
-
-  if (!user) {
-    return res.status(401).json({ success: false, error: 'Invalid credentials' });
-  }
-
-  const token = await createSession(user.id);
-  res.cookie(SESSION_COOKIE_NAME, token, getSessionCookieOptions());
-
-  return res.json({ success: true, user, token });
-});
-```
-
-**Add Get Current User Endpoint**:
-
-```typescript
-// GET /api/auth/me
-router.get('/me', async (req: AuthenticatedRequest, res: Response) => {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-
-  // Fetch fresh user data
-  const userService = getUserService();
-  const user = await userService.getUserById(req.user.id);
-
-  if (!user) {
-    return res.status(404).json({ error: 'User not found' });
-  }
-
-  return res.json({ user });
-});
-```
-
-### 8. Server Initialization
-
-**File to Modify**: `apps/server/src/index.ts`
-
-**Add database initialization** (near startup):
-
-```typescript
-import { initializeDatabase, closeDatabase } from './lib/database';
-
-// In server startup
-async function startServer() {
-  // Initialize database FIRST
-  await initializeDatabase();
-  console.log('Database initialized');
-
-  // ... existing startup code ...
-}
-
-// In graceful shutdown
-async function shutdown() {
-  await closeDatabase();
-  // ... existing shutdown code ...
-}
-```
-
-### 9. Frontend Auth Store Changes
-
-**File to Modify**: `apps/ui/src/store/auth-store.ts`
-
-```typescript
-import { create } from 'zustand';
-import type { PublicUser } from '@automaker/types';
-
-interface AuthState {
-  authChecked: boolean;
-  isAuthenticated: boolean;
-  settingsLoaded: boolean;
-  user: PublicUser | null; // ADD
-
-  setAuthState: (state: Partial<AuthState>) => void;
-  setUser: (user: PublicUser | null) => void; // ADD
-  resetAuth: () => void;
-}
-
-export const useAuthStore = create<AuthState>((set) => ({
-  authChecked: false,
-  isAuthenticated: false,
-  settingsLoaded: false,
-  user: null,
-
-  setAuthState: (state) => set(state),
-
-  setUser: (user) => set({ user }),
-
-  resetAuth: () =>
-    set({
-      authChecked: false,
-      isAuthenticated: false,
-      settingsLoaded: false,
-      user: null,
-    }),
-}));
-```
-
-### 10. Frontend Login View Changes
-
-**File to Modify**: `apps/ui/src/components/views/login-view.tsx`
-
-**Add state for login mode**:
-
-```typescript
-type AuthMode = 'apiKey' | 'emailPassword';
-
-const [authMode, setAuthMode] = useState<AuthMode>('emailPassword');
-const [email, setEmail] = useState('');
-const [password, setPassword] = useState('');
-const [name, setName] = useState('');
-const [isRegistering, setIsRegistering] = useState(false);
-```
-
-**Add registration/login form** (simplified, actual implementation will be more detailed):
-
-```tsx
-{
-  authMode === 'emailPassword' && (
-    <form onSubmit={handleEmailPasswordSubmit}>
-      {isRegistering && (
-        <input
-          type="text"
-          placeholder="Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-      )}
-      <input
-        type="email"
-        placeholder="Email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-      />
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
-      <button type="submit">{isRegistering ? 'Register' : 'Login'}</button>
-      <button type="button" onClick={() => setIsRegistering(!isRegistering)}>
-        {isRegistering ? 'Already have an account?' : 'Create account'}
-      </button>
-    </form>
-  );
-}
-```
-
-### 11. HTTP API Client Updates
-
-**File to Modify**: `apps/ui/src/lib/http-api-client.ts`
-
-**Add registration function**:
-
-```typescript
-export async function register(
-  email: string,
-  password: string,
-  name: string
-): Promise<LoginResult> {
-  try {
-    const response = await fetch(`${getApiBase()}/api/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ email, password, name }),
-    });
-
-    const data = await response.json();
-
-    if (data.success && data.token) {
-      setSessionToken(data.token);
-    }
-
-    return data;
-  } catch (error) {
-    return { success: false, error: 'Registration failed' };
-  }
-}
-
-export async function loginWithEmail(email: string, password: string): Promise<LoginResult> {
-  try {
-    const response = await fetch(`${getApiBase()}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ email, password }),
-    });
-
-    const data = await response.json();
-
-    if (data.success && data.token) {
-      setSessionToken(data.token);
-    }
-
-    return data;
-  } catch (error) {
-    return { success: false, error: 'Login failed' };
-  }
-}
-
-export async function getCurrentUser(): Promise<{ user: PublicUser } | null> {
-  try {
-    const response = await fetch(`${getApiBase()}/api/auth/me`, {
-      headers: getAuthHeaders(),
-      credentials: 'include',
-    });
-
-    if (!response.ok) return null;
-
-    return await response.json();
-  } catch {
-    return null;
-  }
-}
-```
-
----
-
-## Package Dependencies
-
-**Add to `apps/server/package.json`**:
+Backward compatibility rule:
+
+- If an old session entry is loaded (no `userId`), treat it as `{ userId: 'system', ... }` and re-save in the new format.
+
+#### 6.2 Async-only auth initialization
+
+Replace module-load `ensureApiKey()` + `loadSessions()` with an explicit initializer:
+
+**Add**: `export const initializeAuth = async (): Promise<void> => { ... }`
+
+- Ensures API key exists (env → file → generate+write)
+- Loads sessions from `{DATA_DIR}/.sessions`
+- Must be called once during server bootstrap **before** `logAuthInfo()` and before listening.
+
+#### 6.3 Session creation + validation API (required for downstream phases)
+
+Update session APIs:
+
+- `createSession(userId: string): Promise<string>`
+- `validateSession(token: string): { valid: boolean; userId?: string; errorType?: 'invalid_session' | 'expired_session' }`
+- `invalidateSession(token: string): Promise<void>`
+
+#### 6.4 Auth context + middleware behavior
+
+Update `checkAuthentication(...)` to return:
+
+- `authenticated: true | false`
+- `method: 'api_key' | 'session' | 'none'`
+- `userId` when authenticated (`'system'` for API key auth; real userId for sessions)
+- `errorType` for failure reporting
+
+Update `authMiddleware` to:
+
+- Be `async`
+- On success:
+  - set `req.userId = userId`
+  - load `req.user` via `UserService.getPublicUserById(userId)` and **await** it
+  - if the user is missing (e.g., DB wiped), respond `401` and invalidate the session token if applicable
+
+### 7. Server: Auth routes (add register/email login; keep legacy API key login)
+
+**Modify**: `apps/server/src/routes/auth/index.ts`
+
+To keep unit tests consistent with existing route patterns, split into handler files:
+
+- **Create**:
+  - `apps/server/src/routes/auth/routes/register.ts`
+  - `apps/server/src/routes/auth/routes/login.ts`
+  - `apps/server/src/routes/auth/routes/me.ts`
+  - (optionally keep `status.ts`, `token.ts`, `logout.ts` as separate handlers too)
+
+#### 7.1 POST `/api/auth/register`
+
+Body: `{ email, password, name }`
+
+Behavior:
+
+- If `process.env.AUTOMAKER_ALLOW_SELF_SIGNUP !== 'true'` and `NODE_ENV === 'production'`:
+  - `403 { success:false, error:'Self-signup disabled' }`
+- Validate inputs; return `400` for missing/invalid
+- Create user (fails with `409` if email exists)
+- Create session bound to the new user
+- Set cookie (`automaker_session`) and return token for header-based auth
+
+Response (success):
 
 ```json
-{
-  "dependencies": {
-    "@prisma/client": "^5.x",
-    "bcrypt": "^5.x"
-  },
-  "devDependencies": {
-    "prisma": "^5.x",
-    "@types/bcrypt": "^5.x"
-  }
-}
+{ "success": true, "user": { "id": "...", "email": "...", "name": "..." }, "token": "..." }
 ```
 
----
+#### 7.2 POST `/api/auth/login`
 
-## Migration Script
+Support two mutually exclusive payloads:
 
-**File to Create**: `scripts/migrate-to-multi-user.ts`
+1. Legacy API key login (existing behavior):
 
-```typescript
-import { initializeDatabase, getPrisma } from '../apps/server/src/lib/database';
-
-async function migrate() {
-  await initializeDatabase();
-  const prisma = getPrisma();
-
-  console.log('Creating default system user...');
-
-  // Create a "system" user for backward compatibility
-  const systemUser = await prisma.user.upsert({
-    where: { email: 'system@automaker.local' },
-    update: {},
-    create: {
-      id: 'system',
-      email: 'system@automaker.local',
-      passwordHash: '', // Cannot login directly
-      name: 'System',
-    },
-  });
-
-  console.log('System user created:', systemUser.id);
-  console.log('Migration complete.');
-}
-
-migrate().catch(console.error);
+```json
+{ "apiKey": "..." }
 ```
 
----
+- Validate API key
+- Create session for `userId='system'`
+- Return `{ success:true, token }` (optionally also return `user` for system)
 
-## Testing Checklist
+2. Email/password login:
 
-### Unit Tests
+```json
+{ "email": "...", "password": "..." }
+```
 
-- [ ] `UserService.createUser()` creates user with hashed password
-- [ ] `UserService.createUser()` rejects duplicate email
-- [ ] `UserService.authenticateUser()` validates correct password
-- [ ] `UserService.authenticateUser()` rejects wrong password
-- [ ] `createSession(userId)` creates session with user binding
-- [ ] `validateSession()` returns userId for valid session
-- [ ] `validateSession()` rejects expired session
+- Authenticate
+- Create session for that user
+- Return `{ success:true, user, token }`
 
-### Integration Tests
+Rate limiting:
 
-- [ ] POST `/api/auth/register` creates user and returns session
-- [ ] POST `/api/auth/login` with email/password returns user
-- [ ] GET `/api/auth/me` returns current user
-- [ ] Authenticated request has `req.user` populated
-- [ ] Legacy API key login still works (backward compatibility)
+- Keep existing per-IP limiter, but apply to **both** API key and email/password login attempts (separately tracked counters recommended).
 
-### E2E Tests
+#### 7.3 GET `/api/auth/me`
 
-- [ ] User can register via UI
-- [ ] User can login via UI
-- [ ] User sees their name in header after login
-- [ ] Logout clears user state
+Implementation detail:
 
----
+- Because `/api/auth` is mounted before global auth middleware, the route must protect itself:
+  - `router.get('/me', authMiddleware, handler)`
+
+Response:
+
+```json
+{ "success": true, "user": { "id": "...", "email": "...", "name": "..." } }
+```
+
+### 8. Server bootstrap sequence (must be deterministic)
+
+**Modify**: `apps/server/src/index.ts`
+
+Required ordering:
+
+1. Load env (`dotenv/config`) (already)
+2. Set/normalize `DATA_DIR` (already)
+3. `await initializeAuth()` (new)
+4. `await initializeDatabase()` (new)
+5. `await userService.ensureSystemUser()` (new)
+6. `logAuthInfo()` (existing, but must run after initializeAuth)
+7. Start HTTP server listening
+
+Notes:
+
+- Agent service initialization and other non-auth critical services can still run in the background as today, but Phase 1 auth/user flows must not.
+
+### 9. UI: Auth store (add user)
+
+**Modify**: `apps/ui/src/store/auth-store.ts`
+
+- Add `user: PublicUser | null`
+- Add actions: `setUser(user)` and ensure `resetAuth()` clears user.
+
+### 10. UI: HTTP client (add register/email login/me)
+
+**Modify**: `apps/ui/src/lib/http-api-client.ts`
+
+- Add:
+  - `registerWithEmail(email, password, name): Promise<LoginResult>`
+  - `loginWithEmail(email, password): Promise<LoginResult>`
+  - `getCurrentUser(): Promise<{ success: true; user: PublicUser } | null>`
+- On successful login/register, call `setSessionToken(token)` (same behavior as API key login today).
+
+### 11. UI: Login view (support both modes)
+
+**Modify**: `apps/ui/src/components/views/login-view.tsx`
+
+Requirements:
+
+- Keep the existing reducer-based flow, but add a mode switch:
+  - **Email/Password** (default)
+  - **Legacy API key**
+- Email/password mode supports:
+  - Login and register (toggle)
+  - Shows validation errors inline
+- On success:
+  - `useAuthStore.setAuthState({ isAuthenticated:true, authChecked:true })`
+  - `useAuthStore.setUser(user)` (when available)
+
+### 12. UI: Bootstrap user hydration (persist across refresh)
+
+**Modify**: `apps/ui/src/routes/__root.tsx`
+
+- After a valid session is verified and settings are loaded, call `getCurrentUser()` and populate `useAuthStore.user`.
+
+### 13. UI: Show user info somewhere real (minimal Phase 1 UX)
+
+**Modify**: `apps/ui/src/components/views/settings-view/account/account-section.tsx`
+
+- Display the current user’s `name` + `email` (if present) above the logout button.
+- This satisfies “UI can display current user identity” without needing a new header design.
+
+## Dependencies / Commands (workspace-aligned)
+
+From repo root:
+
+- Install (pin exact versions; keep `prisma` and `@prisma/client` versions identical):
+  - `npm i -w apps/server prisma @prisma/client bcrypt`
+  - `npm i -D -w apps/server @types/bcrypt`
+- Initialize Prisma (run from `apps/server` so files land in the right workspace):
+  - `cd apps/server && npx prisma init --datasource-provider sqlite`
+  - Move/ensure schema path is `apps/server/prisma/schema.prisma`
+- Create migration:
+  - `cd apps/server && DATABASE_URL="file:./data/automaker.db" npx prisma migrate dev --name init_users`
+
+## Testing Checklist (aligned with existing vitest patterns)
+
+### Update existing tests
+
+- [ ] Update `apps/server/tests/unit/lib/auth.test.ts` for:
+  - `createSession(userId)`
+  - `validateSession()` return shape
+  - Backward-compatible `.sessions` load behavior (old format → system user)
+
+### New unit tests
+
+- [ ] `apps/server/tests/unit/services/user-service.test.ts`:
+  - create user (hash stored, public user returned)
+  - duplicate email rejected (409 path via route handler)
+  - authenticate success/failure
+  - OAuth-only user (`passwordHash=null`) cannot email/password login
+
+### Route handler tests (recommended structure)
+
+- [ ] `apps/server/tests/unit/routes/auth/register.test.ts`
+- [ ] `apps/server/tests/unit/routes/auth/login.test.ts`
+- [ ] `apps/server/tests/unit/routes/auth/me.test.ts`
+
+Test approach:
+
+- For **unit** route tests, mock `UserService` + auth/session helpers (same pattern as other route tests).
+- Add a small **integration** test later only if needed; keep Phase 1 fast and deterministic.
+
+### UI/E2E
+
+- [ ] User can register (dev) and then login
+- [ ] Two different browsers can be logged in as two different users
+- [ ] Settings > Account shows current user identity
+- [ ] Logout clears auth + user state
+- [ ] Legacy API key login still works (web mode compatibility)
 
 ## Rollback Plan
 
-1. **Remove Prisma schema**: Delete `prisma/` folder
-2. **Remove database file**: Delete `{DATA_DIR}/automaker.db`
-3. **Revert auth.ts**: Restore original session structure
-4. **Revert auth-store.ts**: Remove user field
-5. **Revert login-view.tsx**: Remove email/password form
-
----
+1. Remove Prisma artifacts:
+   - Delete `apps/server/prisma/`
+   - Remove Prisma dependencies from `apps/server/package.json`
+2. Delete DB file:
+   - Delete `{DATA_DIR}/automaker.db`
+3. Revert `apps/server/src/lib/auth.ts` session payload changes
+4. Revert UI changes:
+   - `apps/ui/src/store/auth-store.ts`
+   - `apps/ui/src/components/views/login-view.tsx`
+   - `apps/ui/src/lib/http-api-client.ts`
 
 ## Success Criteria
 
 Phase 1 is complete when:
 
-1. A new user can register with email/password
-2. A registered user can log in
-3. Authenticated requests include user context
-4. Frontend displays logged-in user's name
-5. All existing functionality still works (backward compatible)
-6. At least 2 users can be logged in simultaneously (different browsers)
-
----
+1. User can register (when allowed) and log in with email/password
+2. Existing API key login still works (and maps to `system` user)
+3. Sessions survive server restart and remain bound to a userId
+4. All authenticated API requests have `req.user` populated
+5. UI shows the current user identity (at least in Settings > Account)
+6. Two users can be logged in simultaneously in different browsers
 
 ## Notes for Downstream Phases
 
-### For Phase 2 (Per-User Credentials)
+### Phase 2 (Per-User Credentials)
 
-- Use `req.user.id` to scope credential storage
-- Session userId is available from `validateSession(token).userId`
+- Use `req.user.id` to scope per-user credential storage.
+- Treat `req.user.id === 'system'` as “global/system credentials”.
 
-### For Phase 3 (Knowledge Hub Sync)
+### Phase 3 (Knowledge Hub Sync)
 
-- Use `req.user.id` for `createdBy` attribution
-- User object available on WebSocket via session lookup
+- Use `req.user.id` for attribution fields (`createdBy`, `updatedBy`).
+- If WebSockets need identity, extend WS connection tokens to include `userId` (Phase 1 can store it; Phase 3 can consume it).
 
-### For Phase 4 (OAuth)
+### Phase 4 (OAuth)
 
-- OAuth users will also go through `createSession(userId)`
-- User may not have password (OAuth-only accounts)
+- OAuth users will have `passwordHash = null`.
+- OAuth login must create sessions via `createSession(userId)` just like email/password.

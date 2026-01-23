@@ -8,20 +8,20 @@
 ## Phase 1: User Foundation
 
 **Status**: [ ] Not Started / [ ] In Progress / [ ] Complete
-**Start Date**: ****\_\_\_****
-**End Date**: ****\_\_\_****
+**Start Date**: \***\*\_\_\_\*\***
+**End Date**: \***\*\_\_\_\*\***
 
 ### Backend
 
-- [ ] Create `prisma/schema.prisma` with User and Session models
+- [ ] Create `apps/server/prisma/schema.prisma` with User model (passwordHash nullable)
 - [ ] Create `libs/types/src/user.ts` with User types
 - [ ] Create `apps/server/src/lib/database.ts` - SQLite connection
 - [ ] Create `apps/server/src/services/user-service.ts` - User CRUD
-- [ ] Modify `apps/server/src/lib/auth.ts` - Add userId to sessions
+- [ ] Modify `apps/server/src/lib/auth.ts` - Bind sessions to userId (keep `.sessions` file persistence)
 - [ ] Add registration endpoint to `apps/server/src/routes/auth/index.ts`
 - [ ] Add `/api/auth/me` endpoint
 - [ ] Initialize database in `apps/server/src/index.ts`
-- [ ] Run `npx prisma migrate dev` to create database
+- [ ] Run Prisma migration (e.g. `npx prisma migrate dev --schema apps/server/prisma/schema.prisma`)
 
 ### Frontend
 
@@ -43,8 +43,8 @@
 ## Phase 2: Per-User Credentials
 
 **Status**: [ ] Not Started / [ ] In Progress / [ ] Complete
-**Start Date**: ****\_\_\_****
-**End Date**: ****\_\_\_****
+**Start Date**: \***\*\_\_\_\*\***
+**End Date**: \***\*\_\_\_\*\***
 
 ### Backend
 
@@ -81,8 +81,8 @@
 ## Phase 3: Knowledge Hub Sync
 
 **Status**: [ ] Not Started / [ ] In Progress / [ ] Complete
-**Start Date**: ****\_\_\_****
-**End Date**: ****\_\_\_****
+**Start Date**: \***\*\_\_\_\*\***
+**End Date**: \***\*\_\_\_\*\***
 
 ### Backend
 
@@ -114,8 +114,8 @@
 ## Phase 4: OAuth Authentication
 
 **Status**: [ ] Not Started / [ ] In Progress / [ ] Complete
-**Start Date**: ****\_\_\_****
-**End Date**: ****\_\_\_****
+**Start Date**: \***\*\_\_\_\*\***
+**End Date**: \***\*\_\_\_\*\***
 
 ### Backend
 
@@ -151,8 +151,8 @@
 ## Phase 5: Production Deployment
 
 **Status**: [ ] Not Started / [ ] In Progress / [ ] Complete
-**Start Date**: ****\_\_\_****
-**End Date**: ****\_\_\_****
+**Start Date**: \***\*\_\_\_\*\***
+**End Date**: \***\*\_\_\_\*\***
 
 ### Infrastructure
 
