@@ -95,3 +95,43 @@ data/.api-key
 data/credentials.json
 data/
 .codex/
+
+# ===========================================
+# Python (ai-library)
+# ===========================================
+
+# Bytecode / Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
+.python-version
+
+# Test caches
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Linters/formatters
+.ruff_cache/
+.mypy_cache/
+
+# Distribution / packaging
+*.egg-info/
+dist/
+*.whl
+
+# Jupyter
+.ipynb_checkpoints/
+
+# ai-library specific
+ai-library/data/
+ai-library/temp_uploads/*
+!ai-library/temp_uploads/.gitkeep
