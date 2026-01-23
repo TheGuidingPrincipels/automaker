@@ -56,6 +56,7 @@ import { createEnhancePromptRoutes } from './routes/enhance-prompt/index.js';
 import { createWorktreeRoutes } from './routes/worktree/index.js';
 import { createGitRoutes } from './routes/git/index.js';
 import { createSetupRoutes } from './routes/setup/index.js';
+import { loadApiKeysFromCredentials } from './routes/setup/common.js';
 import { createSuggestionsRoutes } from './routes/suggestions/index.js';
 import { createModelsRoutes } from './routes/models/index.js';
 import { createRunningAgentsRoutes } from './routes/running-agents/index.js';
@@ -112,6 +113,9 @@ const PORT = parseInt(process.env.PORT || '3008', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 const HOSTNAME = process.env.HOSTNAME || 'localhost';
 const DATA_DIR = process.env.DATA_DIR || './data';
+if (!process.env.DATA_DIR) {
+  process.env.DATA_DIR = DATA_DIR;
+}
 logger.info('[SERVER_STARTUP] process.env.DATA_DIR:', process.env.DATA_DIR);
 logger.info('[SERVER_STARTUP] Resolved DATA_DIR:', DATA_DIR);
 logger.info('[SERVER_STARTUP] process.cwd():', process.cwd());
@@ -324,6 +328,14 @@ eventHookService.initialize(events, settingsService, eventHistoryService, featur
     }
   } catch (err) {
     logger.warn('Failed to check for legacy settings migration:', err);
+  }
+
+  // Load API keys from credentials.json into memory cache
+  // This ensures keys stored via Settings UI are available after server restart
+  try {
+    await loadApiKeysFromCredentials(DATA_DIR);
+  } catch (err) {
+    logger.warn('Failed to load API keys from credentials.json:', err);
   }
 
   // Apply logging settings from saved settings

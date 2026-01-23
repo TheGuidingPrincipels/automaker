@@ -151,6 +151,7 @@ export type {
   ChatSessionRef,
   GlobalSettings,
   Credentials,
+  CredentialsUpdate,
   BoardBackgroundSettings,
   WorktreeInfo,
   ProjectSettings,

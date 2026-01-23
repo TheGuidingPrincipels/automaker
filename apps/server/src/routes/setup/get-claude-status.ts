@@ -102,6 +102,7 @@ export async function getClaudeStatus() {
 
   // Check if API key auth is disabled (OAuth-only mode)
   const apiKeyAuthDisabled = isApiKeyAuthDisabledSync();
+  const isAuthTokenMode = apiKeyAuthDisabled;
 
   // Check authentication - detect all possible auth methods
   // Note: apiKeys.anthropic_oauth_token stores OAuth tokens from subscription auth
@@ -130,15 +131,19 @@ export async function getClaudeStatus() {
   if (indicators.hasStatsCacheWithActivity) {
     auth.hasRecentActivity = true;
     auth.hasCliAuth = true;
-    auth.authenticated = true;
-    auth.method = 'cli_authenticated';
+    if (isAuthTokenMode) {
+      auth.authenticated = true;
+      auth.method = 'cli_authenticated';
+    }
   }
 
   // Check for settings + sessions (indicates CLI is set up)
   if (!auth.hasCliAuth && indicators.hasSettingsFile && indicators.hasProjectsSessions) {
     auth.hasCliAuth = true;
-    auth.authenticated = true;
-    auth.method = 'cli_authenticated';
+    if (isAuthTokenMode) {
+      auth.authenticated = true;
+      auth.method = 'cli_authenticated';
+    }
   }
 
   // Check credentials file
@@ -147,12 +152,16 @@ export async function getClaudeStatus() {
     if (indicators.credentials.hasOAuthToken) {
       auth.hasStoredOAuthToken = true;
       auth.oauthTokenValid = true;
-      auth.authenticated = true;
-      auth.method = 'oauth_token';
+      if (isAuthTokenMode) {
+        auth.authenticated = true;
+        auth.method = 'oauth_token';
+      }
     } else if (indicators.credentials.hasApiKey) {
       auth.apiKeyValid = true;
-      auth.authenticated = true;
-      auth.method = 'api_key';
+      if (!isAuthTokenMode) {
+        auth.authenticated = true;
+        auth.method = 'api_key';
+      }
     }
   }
 
@@ -165,7 +174,7 @@ export async function getClaudeStatus() {
   }
 
   // In-memory stored OAuth token (from setup wizard - subscription auth)
-  if (!auth.authenticated && getApiKey('anthropic_oauth_token')) {
+  if (isAuthTokenMode && !auth.authenticated && getApiKey('anthropic_oauth_token')) {
     auth.authenticated = true;
     auth.oauthTokenValid = true;
     auth.method = 'oauth_token';
