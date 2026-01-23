@@ -51,8 +51,13 @@ export function SidebarFooter({
   }, [navigate]);
 
   const handleFeedbackClick = useCallback(() => {
-    const api = getElectronAPI();
-    api.openExternalLink('https://github.com/AutoMaker-Org/automaker/issues');
+    try {
+      const api = getElectronAPI();
+      api.openExternalLink('https://github.com/AutoMaker-Org/automaker/issues');
+    } catch {
+      // Fallback for non-Electron environments (SSR, web browser)
+      window.open('https://github.com/AutoMaker-Org/automaker/issues', '_blank');
+    }
   }, []);
 
   // Collapsed state

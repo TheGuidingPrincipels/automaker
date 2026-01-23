@@ -97,13 +97,7 @@ export function SidebarNavigation({
   });
 
   return (
-    <nav
-      ref={navRef}
-      className={cn(
-        'flex-1 overflow-y-auto scrollbar-hide px-3 pb-2',
-        sidebarOpen ? 'mt-1' : 'mt-1'
-      )}
-    >
+    <nav ref={navRef} className={cn('flex-1 overflow-y-auto scrollbar-hide px-3 pb-2 mt-1')}>
       {/* Navigation sections */}
       {visibleSections.map((section, sectionIdx) => {
         const isCollapsed = section.label ? collapsedSections[section.label] : false;

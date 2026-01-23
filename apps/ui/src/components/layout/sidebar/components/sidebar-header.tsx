@@ -4,6 +4,7 @@ import { ChevronsUpDown, Folder, Plus, FolderOpen } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn, isMac } from '@/lib/utils';
+import { formatShortcut } from '@/store/app-store';
 import { isElectron, type Project } from '@/lib/electron';
 import { getAuthenticatedImageUrl } from '@/lib/api-fetch';
 import { useAppStore } from '@/store/app-store';
@@ -49,7 +50,7 @@ export function SidebarHeader({
   );
 
   const getIconComponent = (project: Project): LucideIcon => {
-    if (project?.icon && project.icon in LucideIcons) {
+    if (project.icon && project.icon in LucideIcons) {
       return (LucideIcons as unknown as Record<string, LucideIcon>)[project.icon];
     }
     return Folder;
@@ -200,7 +201,9 @@ export function SidebarHeader({
                         {project.name}
                       </span>
                       {hotkeyLabel && (
-                        <span className="text-xs text-muted-foreground">⌘{hotkeyLabel}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {formatShortcut(`Cmd+${hotkeyLabel}`, true)}
+                        </span>
                       )}
                     </DropdownMenuItem>
                   );
@@ -342,7 +345,9 @@ export function SidebarHeader({
                       {project.name}
                     </span>
                     {hotkeyLabel && (
-                      <span className="text-xs text-muted-foreground">⌘{hotkeyLabel}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {formatShortcut(`Cmd+${hotkeyLabel}`, true)}
+                      </span>
                     )}
                   </DropdownMenuItem>
                 );
