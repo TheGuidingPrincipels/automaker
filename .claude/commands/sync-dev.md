@@ -1,15 +1,34 @@
 # Sync Development Worktree
 
-Synchronize automaker (main) and automaker-dev (dev/improvements) to ensure both are aligned before starting new work.
+Synchronize automaker (main) and automaker-dev (dev/improvements) ensuring no work is lost.
 
 ## Purpose
 
-Ensures no commits are lost and both repositories are in sync before development.
+Commits all uncommitted changes, merges dev into main, pushes to remote, and syncs both repos.
 
 ```
-automaker (main) ←────────→ automaker-dev (dev/improvements)
-                  bidirectional sync
+automaker-dev (dev/improvements)
+        │
+        │ 1. Commit uncommitted changes
+        │ 2. Merge to main
+        ▼
+automaker (main)
+        │
+        │ 3. Push to remote
+        │ 4. Sync dev back
+        ▼
+Both repos synced at same commit
 ```
+
+## Default Workflow
+
+This command ALWAYS:
+
+1. Commits any uncommitted changes in dev (never leaves work behind)
+2. Commits any uncommitted changes in main
+3. Merges dev/improvements into main
+4. Pushes main to remote
+5. Syncs dev back from main
 
 ## Instructions
 
@@ -20,187 +39,180 @@ echo "=== Main Repo (automaker) ==="
 cd /Users/ruben/Documents/GitHub/automaker
 git fetch origin
 git status --short
-MAIN_COMMIT=$(git rev-parse HEAD)
-MAIN_BRANCH=$(git branch --show-current)
-echo "Branch: $MAIN_BRANCH"
-echo "Commit: $MAIN_COMMIT"
+echo "Branch: $(git branch --show-current)"
+echo "Commit: $(git rev-parse --short HEAD)"
 echo "Message: $(git log --oneline -1)"
 
 echo ""
 echo "=== Dev Worktree (automaker-dev) ==="
 cd /Users/ruben/Documents/GitHub/automaker-dev
+git fetch origin
 git status --short
-DEV_COMMIT=$(git rev-parse HEAD)
-DEV_BRANCH=$(git branch --show-current)
-echo "Branch: $DEV_BRANCH"
-echo "Commit: $DEV_COMMIT"
+echo "Branch: $(git branch --show-current)"
+echo "Commit: $(git rev-parse --short HEAD)"
 echo "Message: $(git log --oneline -1)"
 ```
 
-### Step 2: Check for Uncommitted Changes
+### Step 2: Commit Uncommitted Changes in Main
 
-**If either repo has uncommitted changes**, stop and ask the user:
+If main repo has uncommitted changes:
 
-Present options:
-
-1. **Commit the changes** - Create a commit with the uncommitted work
-2. **Stash the changes** - Temporarily save for later
-3. **Discard the changes** - Only if user confirms (dangerous)
-
-Do NOT proceed with sync until both repos have clean working directories.
-
-### Step 3: Compare Commits
-
-Check if repos are in sync:
+1. Review the changes with `git diff`
+2. Create an appropriate commit message based on the changes
+3. Commit:
 
 ```bash
 cd /Users/ruben/Documents/GitHub/automaker
+git add -A
+git commit -m "commit message here
 
-# Check if dev is ahead of main
-DEV_AHEAD=$(git rev-list --count main..dev/improvements 2>/dev/null || echo "0")
-
-# Check if main is ahead of dev
-MAIN_AHEAD=$(git rev-list --count dev/improvements..main 2>/dev/null || echo "0")
-
-echo "Dev is $DEV_AHEAD commits ahead of main"
-echo "Main is $MAIN_AHEAD commits ahead of dev"
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
 ```
 
-### Step 4: Sync Based on State
+### Step 3: Commit Uncommitted Changes in Dev
 
-**Case A: Both in sync (DEV_AHEAD=0, MAIN_AHEAD=0)**
+If dev worktree has uncommitted changes:
 
+1. Review the changes with `git diff --stat` and examine key files
+2. Create an appropriate commit message describing the work
+3. Commit:
+
+```bash
+cd /Users/ruben/Documents/GitHub/automaker-dev
+git add -A
+git commit -m "commit message here
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
 ```
-✅ Both repositories are already in sync.
-No action needed.
+
+**Important:** Always commit dev changes - never stash or discard. The goal is to preserve all work.
+
+### Step 4: Sync Main from Remote (if behind)
+
+Check if main is behind origin:
+
+```bash
+cd /Users/ruben/Documents/GitHub/automaker
+git fetch origin
+BEHIND=$(git rev-list --count HEAD..origin/main 2>/dev/null || echo "0")
+if [ "$BEHIND" -gt 0 ]; then
+  echo "Main is $BEHIND commits behind origin, pulling..."
+  git pull origin main
+fi
 ```
 
-**Case B: Dev is ahead of main (DEV_AHEAD > 0, MAIN_AHEAD = 0)**
+### Step 5: Merge Dev into Main
 
-Ask user: "Dev has X commits not in main. What would you like to do?"
+```bash
+cd /Users/ruben/Documents/GitHub/automaker
+git merge dev/improvements
+```
 
-Options:
+If there are merge conflicts:
 
-1. **Merge dev into main** - Bring main up to date with dev's changes
+1. Show the conflicting files
+2. Resolve conflicts (prefer dev changes unless there's a reason not to)
+3. Complete the merge
 
-   ```bash
-   cd /Users/ruben/Documents/GitHub/automaker
-   git merge dev/improvements
-   git push origin main
-   ```
+### Step 6: Push Main to Remote
 
-2. **Keep them separate** - Dev is ahead intentionally (work in progress)
+```bash
+cd /Users/ruben/Documents/GitHub/automaker
+git push origin main
+```
 
-**Case C: Main is ahead of dev (MAIN_AHEAD > 0, DEV_AHEAD = 0)**
-
-Ask user: "Main has X commits not in dev. Update dev?"
-
-Action:
+### Step 7: Sync Dev Back from Main
 
 ```bash
 cd /Users/ruben/Documents/GitHub/automaker-dev
 git merge origin/main
-npm install
-npm run build:packages
 ```
 
-**Case D: Both have unique commits (diverged)**
-
-This is the critical case - both have commits the other doesn't.
-
-Show the commits:
-
-```bash
-echo "=== Commits in dev not in main ==="
-git log --oneline main..dev/improvements
-
-echo "=== Commits in main not in dev ==="
-git log --oneline dev/improvements..main
-```
-
-Ask user which approach:
-
-1. **Merge dev into main first, then sync dev** (recommended)
-
-   ```bash
-   cd /Users/ruben/Documents/GitHub/automaker
-   git merge dev/improvements
-   git push origin main
-   cd /Users/ruben/Documents/GitHub/automaker-dev
-   git merge origin/main
-   ```
-
-2. **Merge main into dev first, then merge back**
-   ```bash
-   cd /Users/ruben/Documents/GitHub/automaker-dev
-   git merge origin/main
-   # Resolve any conflicts, test
-   cd /Users/ruben/Documents/GitHub/automaker
-   git merge dev/improvements
-   git push origin main
-   ```
-
-### Step 5: Rebuild Dev if Updated
-
-If dev received new commits:
-
-```bash
-cd /Users/ruben/Documents/GitHub/automaker-dev
-npm install
-npm run build:packages
-```
-
-### Step 6: Final Verification
+### Step 8: Final Verification
 
 ```bash
 echo "=== Final Sync Status ==="
 cd /Users/ruben/Documents/GitHub/automaker
-
 MAIN_COMMIT=$(git rev-parse HEAD)
+MAIN_SHORT=$(git rev-parse --short HEAD)
+MAIN_MSG=$(git log --oneline -1)
+
 cd /Users/ruben/Documents/GitHub/automaker-dev
 DEV_COMMIT=$(git rev-parse HEAD)
+DEV_SHORT=$(git rev-parse --short HEAD)
+DEV_MSG=$(git log --oneline -1)
 
 if [ "$MAIN_COMMIT" = "$DEV_COMMIT" ]; then
-  echo "✅ SYNCED: Both repos at commit $MAIN_COMMIT"
+  echo "✅ SYNCED: Both repos at commit $MAIN_SHORT"
 else
-  echo "⚠️  Repos are at different commits:"
-  echo "   Main: $MAIN_COMMIT"
-  echo "   Dev:  $DEV_COMMIT"
-  echo "   This may be intentional if dev has work in progress."
+  echo "⚠️ Repos at different commits:"
+  echo "   Main: $MAIN_SHORT"
+  echo "   Dev:  $DEV_SHORT"
 fi
 ```
 
-### Step 7: Report to User
+### Step 9: Report to User
+
+Provide a summary table:
 
 ```
 Sync Complete
 =============
-Main (automaker):     [commit] [message]
-Dev (automaker-dev):  [commit] [message]
-Status:               ✅ Synced / ⚠️ Dev is X commits ahead (WIP)
+| Repo                 | Commit     | Message              |
+|----------------------|------------|----------------------|
+| Main (automaker)     | [commit]   | [message]            |
+| Dev (automaker-dev)  | [commit]   | [message]            |
 
-Ready for development.
+Status: ✅ Synced
+
+Actions taken:
+1. [List commits created]
+2. [List merges performed]
+3. Pushed main to origin
+4. Synced dev from main
+
+Both repositories are ready for development.
 ```
 
-## Quick Sync Commands
+## Edge Cases
 
-For manual use:
+### Main Has Commits Dev Doesn't
+
+If main was updated directly (not through this workflow):
 
 ```bash
-# Update dev from main (most common)
 cd /Users/ruben/Documents/GitHub/automaker-dev
 git merge origin/main
-npm install && npm run build:packages
-
-# Merge dev work to main
-cd /Users/ruben/Documents/GitHub/automaker
-git merge dev/improvements
-git push origin main
+# Then continue with normal workflow
 ```
 
-## Safety Checks
+### Merge Conflicts
 
-- Never sync with uncommitted changes
-- Always show what will be merged before merging
-- Rebuild packages after receiving new commits
-- Verify sync state at the end
+If conflicts occur during merge:
+
+1. List conflicting files
+2. For each file, examine both versions
+3. Resolve preferring the most complete/recent work
+4. Stage resolved files and complete merge
+5. Continue with push and sync
+
+### Dev Has No Changes
+
+If dev has no uncommitted changes and is already synced with main:
+
+- Report "Already synced, no action needed"
+- Still verify both repos are at same commit
+
+## Safety Guarantees
+
+- ✅ All uncommitted work is committed (never lost)
+- ✅ All commits are pushed to remote (backed up)
+- ✅ Both repos end at the same commit (synced)
+- ✅ Dev branch always has all main changes
+
+## Quick Reference
+
+```
+/sync-dev workflow:
+1. Commit dev changes → 2. Commit main changes → 3. Merge dev→main → 4. Push → 5. Sync dev
+```
