@@ -1003,7 +1003,7 @@ After this session, the OpenAPI docs at `/docs` should show:
 
 ```bash
 # Create session
-curl -X POST "http://localhost:8000/api/sessions" \
+curl -X POST "http://localhost:8001/api/sessions" \
   -H "Content-Type: application/json" \
   -d '{
     "document_id": "uuid-here",
@@ -1013,7 +1013,7 @@ curl -X POST "http://localhost:8000/api/sessions" \
   }'
 
 # Update progress
-curl -X PATCH "http://localhost:8000/api/sessions/session-uuid/progress" \
+curl -X PATCH "http://localhost:8001/api/sessions/session-uuid/progress" \
   -H "Content-Type: application/json" \
   -d '{
     "current_word_index": 250,
@@ -1021,7 +1021,7 @@ curl -X PATCH "http://localhost:8000/api/sessions/session-uuid/progress" \
   }'
 
 # Resolve start position
-curl -X POST "http://localhost:8000/api/documents/doc-uuid/resolve-start" \
+curl -X POST "http://localhost:8001/api/documents/doc-uuid/resolve-start" \
   -H "Content-Type: application/json" \
   -d '{
     "approx_word_index": 100,

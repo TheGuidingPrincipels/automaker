@@ -6,7 +6,7 @@ An RSVP (Rapid Serial Visual Presentation) speed reading application integrated 
 
 ## v1 Scope (Web-only)
 
-- **Inputs**: paste text, upload `.md` (read in the browser and sent as text JSON)
+- **Inputs**: paste text (Copy/Paste/Paste+), upload `.md` (read in the browser and sent as text JSON)
 - **PDF upload**: deferred (see `4.Speed Reading System/docs/FUTURE-PDF-UPLOAD.md`)
 
 ---

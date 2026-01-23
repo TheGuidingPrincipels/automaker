@@ -16,15 +16,15 @@
 
 ## Deliverables
 
-| #   | Component        | Description                           |
-| --- | ---------------- | ------------------------------------- |
-| 1   | ImportForm       | Tabs for paste text / upload file     |
-| 2   | TextInput        | Textarea with word count validation   |
-| 3   | FileUpload       | Upload `.md` file (PDF deferred)      |
-| 4   | LanguageSelect   | EN/DE radio buttons                   |
-| 5   | PreviewText      | Virtualized text with clickable words |
-| 6   | ProgressScrubber | Slider to jump to % position          |
-| 7   | StartControls    | WPM settings + Start Reading button   |
+| #   | Component        | Description                                  |
+| --- | ---------------- | -------------------------------------------- |
+| 1   | ImportForm       | Tabs for paste text / upload file            |
+| 2   | TextInput        | Textarea with word count + Copy/Paste/Paste+ |
+| 3   | FileUpload       | Upload `.md` file (PDF deferred)             |
+| 4   | LanguageSelect   | EN/DE radio buttons                          |
+| 5   | PreviewText      | Virtualized text with clickable words        |
+| 6   | ProgressScrubber | Slider to jump to % position                 |
+| 7   | StartControls    | WPM settings + Start Reading button          |
 
 ---
 
@@ -86,6 +86,7 @@ export function SpeedReadingImport() {
         text,
         language,
         title,
+        source_type: 'paste',
       });
 
       toast.success('Document imported', {
@@ -111,6 +112,8 @@ export function SpeedReadingImport() {
         text,
         language,
         title: inferredTitle,
+        source_type: 'md',
+        original_filename: file.name,
       });
 
       toast.success('Document imported', {
@@ -197,6 +200,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { toast } from 'sonner';
 import { FileUpload } from './file-upload';
 import type { Language } from '@/lib/speed-reading/types';
 
@@ -223,6 +227,56 @@ export function ImportForm({ mode, onSubmit, onSubmitFile, isLoading }: ImportFo
   const handleSubmitText = () => {
     if (canSubmitText && onSubmit) {
       onSubmit(text, language, title || undefined);
+    }
+  };
+
+  const handleCopy = async () => {
+    try {
+      if (!text.trim()) {
+        toast.error('Nothing to copy');
+        return;
+      }
+      await navigator.clipboard.writeText(text);
+      toast.success('Copied');
+    } catch (error) {
+      toast.error('Copy failed', {
+        description: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  };
+
+  const handlePaste = async () => {
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      if (!clipboardText.trim()) {
+        toast.error('Nothing to paste');
+        return;
+      }
+      setText(clipboardText);
+    } catch (error) {
+      toast.error('Paste failed', {
+        description: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  };
+
+  // Paste+ = append clipboard text to the current input (trimmed)
+  const handlePastePlus = async () => {
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      if (!clipboardText.trim()) {
+        toast.error('Nothing to paste');
+        return;
+      }
+      setText((prev) => {
+        const base = prev.trimEnd();
+        const add = clipboardText.trim();
+        return base ? `${base}\n\n${add}` : add;
+      });
+    } catch (error) {
+      toast.error('Paste+ failed', {
+        description: error instanceof Error ? error.message : 'Unknown error',
+      });
     }
   };
 
@@ -272,11 +326,22 @@ export function ImportForm({ mode, onSubmit, onSubmitFile, isLoading }: ImportFo
 
           {/* Text Input */}
           <div className="space-y-2">
-            <div className="flex justify-between">
+            <div className="flex items-center justify-between gap-3">
               <Label htmlFor="text">Text Content</Label>
-              <span className={`text-sm ${isOverLimit ? 'text-destructive' : 'text-muted-foreground'}`}>
-                {wordCount.toLocaleString()} / {MAX_WORDS.toLocaleString()} words
-              </span>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={handleCopy} disabled={isLoading}>
+                  Copy
+                </Button>
+                <Button variant="outline" size="sm" onClick={handlePaste} disabled={isLoading}>
+                  Paste
+                </Button>
+                <Button variant="outline" size="sm" onClick={handlePastePlus} disabled={isLoading}>
+                  Paste+
+                </Button>
+                <span className={`text-sm ${isOverLimit ? 'text-destructive' : 'text-muted-foreground'}`}>
+                  {wordCount.toLocaleString()} / {MAX_WORDS.toLocaleString()} words
+                </span>
+              </div>
             </div>
             <Textarea
               id="text"
@@ -733,7 +798,13 @@ export function useImportDocument() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (input: { text: string; language: Language; title?: string }) => {
+    mutationFn: async (input: {
+      text: string;
+      language: Language;
+      title?: string;
+      source_type?: 'paste' | 'md';
+      original_filename?: string;
+    }) => {
       if (!input.text.trim()) {
         throw new Error('Text is required');
       }
@@ -741,6 +812,8 @@ export function useImportDocument() {
         text: input.text,
         language: input.language,
         title: input.title,
+        source_type: input.source_type,
+        original_filename: input.original_filename,
       });
     },
     onSuccess: () => {
@@ -759,6 +832,7 @@ export function useImportDocument() {
 - [ ] Tab switching between paste/upload works
 - [ ] Language selection persists
 - [ ] Word count displays and validates
+- [ ] Copy/Paste/Paste+ clipboard buttons work
 - [ ] File drag-drop works
 - [ ] File removal works
 - [ ] Processing shows loading state

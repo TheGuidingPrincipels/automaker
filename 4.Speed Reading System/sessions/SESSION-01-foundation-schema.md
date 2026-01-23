@@ -5,14 +5,14 @@
 **Duration**: ~3-4 hours
 **Goal**: Establish project foundation with monorepo structure, FastAPI backend skeleton, database schema, and local development environment.
 
-**Deliverable**: A running FastAPI server with health endpoint, database migrations, and Docker Compose for local Postgres.
+**Deliverable**: A running FastAPI server with health endpoint, database migrations, and a SQLite-backed local dev setup (Postgres is optional later).
 
 ---
 
 ## Prerequisites
 
 - Python 3.11+ installed
-- Node.js 20+ installed (for future frontend)
+- Node.js 22+ installed (for Automaker integration)
 - Docker & Docker Compose installed
 - Git initialized
 
@@ -20,14 +20,14 @@
 
 ## Objectives & Acceptance Criteria
 
-| #   | Objective          | Acceptance Criteria                                                                                                                            |
-| --- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Monorepo structure | `backend/` and `frontend/` directories with independent package management                                                                     |
-| 2   | FastAPI skeleton   | Server starts; `GET /api/health` returns `200` with `{status, database, version}` (status is `"ok"` when DB reachable, otherwise `"degraded"`) |
-| 3   | Database schema    | All tables created via Alembic migration                                                                                                       |
-| 4   | Pydantic models    | DTOs defined for all API contracts                                                                                                             |
-| 5   | Docker Compose     | `docker-compose up` starts Postgres, backend connects                                                                                          |
-| 6   | Multi-user ready   | `user_id` columns present (nullable for v1)                                                                                                    |
+| #   | Objective         | Acceptance Criteria                                                                                                                            |
+| --- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Backend structure | `backend/` directory with FastAPI app + migrations + tests                                                                                     |
+| 2   | FastAPI skeleton  | Server starts; `GET /api/health` returns `200` with `{status, database, version}` (status is `"ok"` when DB reachable, otherwise `"degraded"`) |
+| 3   | Database schema   | All tables created via Alembic migration                                                                                                       |
+| 4   | Pydantic models   | DTOs defined for all API contracts                                                                                                             |
+| 5   | Docker Compose    | `docker-compose up` starts backend (SQLite)                                                                                                    |
+| 6   | Multi-user ready  | `user_id` columns present (nullable for v1)                                                                                                    |
 
 ---
 
@@ -61,8 +61,6 @@ Speed Reading/
 │   ├── pyproject.toml
 │   ├── requirements.txt            # Optional (avoid drift; prefer pyproject as source-of-truth)
 │   └── Dockerfile
-├── frontend/                        # Placeholder for Session 5
-│   └── .gitkeep
 ├── docker-compose.yml
 ├── docker-compose.prod.yml          # Placeholder
 ├── .env.example
@@ -73,6 +71,22 @@ Speed Reading/
 ---
 
 ## Implementation Details
+
+### 0. Initial Setup (Execution Start)
+
+> **Context**: The `4.Speed Reading System/backend/` directory does not exist yet. You must create it.
+
+```bash
+# Create correct folder structure
+mkdir -p "4.Speed Reading System/backend/app/models"
+mkdir -p "4.Speed Reading System/backend/app/schemas"
+mkdir -p "4.Speed Reading System/backend/app/services"
+mkdir -p "4.Speed Reading System/backend/app/api"
+mkdir -p "4.Speed Reading System/backend/tests"
+mkdir -p "4.Speed Reading System/backend/data"
+
+cd "4.Speed Reading System/backend"
+```
 
 ### 1. Backend Package Setup (`pyproject.toml`)
 
@@ -90,10 +104,8 @@ dependencies = [
     "uvicorn[standard]>=0.32.0",
     "sqlalchemy>=2.0.0",
     "alembic>=1.14.0",
-    "psycopg2-binary>=2.9.0",
     "pydantic>=2.10.0",
     "pydantic-settings>=2.6.0",
-    "python-multipart>=0.0.18",
 ]
 
 [project.optional-dependencies]
@@ -118,7 +130,7 @@ class Settings(BaseSettings):
     )
 
     # Database
-    database_url: str = "postgresql://deepread:deepread@localhost:5432/deepread"
+    database_url: str = "sqlite:///./data/deepread.db"
 
     # App
     app_name: str = "DeepRead"
@@ -143,7 +155,6 @@ def get_settings() -> Settings:
 
 ```python
 from sqlalchemy import Column, String, Text, Integer, DateTime, Enum as SAEnum
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime, UTC
 import uuid
@@ -163,8 +174,8 @@ class Language(str, enum.Enum):
 class Document(Base):
     __tablename__ = "documents"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), nullable=True, index=True)  # Multi-user ready
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), nullable=True, index=True)  # Multi-user ready
 
     title = Column(String(500), nullable=False)
     source_type = Column(SAEnum(SourceType), nullable=False)
@@ -187,7 +198,6 @@ class Document(Base):
 
 ```python
 from sqlalchemy import Column, String, Integer, Float, Boolean, ForeignKey, Enum as SAEnum
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import enum
 
@@ -200,7 +210,7 @@ class BreakType(str, enum.Enum):
 class Token(Base):
     __tablename__ = "tokens"
 
-    document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True)
+    document_id = Column(String(36), ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True)
     word_index = Column(Integer, primary_key=True)
 
     display_text = Column(String(500), nullable=False)  # With punctuation
@@ -224,7 +234,6 @@ class Token(Base):
 
 ```python
 from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime, timedelta, UTC
 import uuid
@@ -235,9 +244,9 @@ from app.config import get_settings
 class ReadingSession(Base):
     __tablename__ = "sessions"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
-    user_id = Column(UUID(as_uuid=True), nullable=True, index=True)  # Multi-user ready
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    document_id = Column(String(36), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(String(36), nullable=True, index=True)  # Multi-user ready
 
     # WPM settings
     target_wpm = Column(Integer, nullable=False, default=300)
@@ -284,6 +293,8 @@ class Language(str, Enum):
 class DocumentFromTextRequest(BaseModel):
     title: str | None = Field(None, max_length=500)
     language: Language
+    source_type: SourceType = SourceType.PASTE
+    original_filename: str | None = Field(None, max_length=255)
     text: str = Field(..., min_length=1)
 
 class DocumentFromFileRequest(BaseModel):
@@ -505,42 +516,20 @@ def health_check(db: Session = Depends(get_db)):
 version: '3.9'
 
 services:
-  db:
-    image: postgres:16-alpine
-    container_name: deepread-db
-    environment:
-      POSTGRES_USER: deepread
-      POSTGRES_PASSWORD: deepread
-      POSTGRES_DB: deepread
-    ports:
-      - '5432:5432'
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U deepread']
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: deepread-backend
     ports:
-      - '8000:8000'
+      - '8001:8001'
     environment:
-      DATABASE_URL: postgresql://deepread:deepread@db:5432/deepread
+      DATABASE_URL: sqlite:////app/data/deepread.db
       DEBUG: 'true'
-    depends_on:
-      db:
-        condition: service_healthy
     volumes:
       - ./backend:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
-volumes:
-  postgres_data:
+      - ./backend/data:/app/data
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
 ### 9. Backend Dockerfile (`backend/Dockerfile`)
@@ -553,7 +542,6 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
-    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy application
@@ -563,14 +551,14 @@ COPY . .
 RUN pip install --no-cache-dir .
 
 # Run
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
 ```
 
 ### 10. Environment Example (`.env.example`)
 
 ```env
 # Database
-DATABASE_URL=postgresql://deepread:deepread@localhost:5432/deepread
+DATABASE_URL=sqlite:///./data/deepread.db
 
 # App
 DEBUG=true
@@ -658,7 +646,7 @@ def test_models_import():
 
 ## Verification Checklist
 
-- [ ] `docker-compose up` starts Postgres and backend
+- [ ] `docker-compose up` starts backend (SQLite)
 - [ ] `GET /api/health` returns `{"status": "ok", "database": "connected", ...}` (or `"degraded"`/`"unavailable"` if DB is down)
 - [ ] Alembic migration creates all 3 tables
 - [ ] Tables have correct columns including nullable `user_id`
@@ -671,8 +659,8 @@ def test_models_import():
 
 **What exists after Session 1:**
 
-- Running FastAPI server at `http://localhost:8000`
-- Postgres database with `documents`, `tokens`, `sessions` tables
+- Running FastAPI server at `http://localhost:8001`
+- SQLite database with `documents`, `tokens`, `sessions` tables
 - All Pydantic DTOs defined for the full API contract
 - Docker Compose for local development
 

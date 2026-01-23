@@ -142,6 +142,11 @@ class DocumentService:
         except ValueError as e:
             raise InvalidSourceTypeError(f"Unsupported source type: {source_type}") from e
 
+        if source_type_enum == SourceType.PDF:
+            raise InvalidSourceTypeError(
+                "PDF ingestion is deferred in v1. Use source_type='paste' or source_type='md'."
+            )
+
         # Validate and tokenize
         normalized_text, tokens = tokenize_text(
             text,
@@ -584,30 +589,30 @@ class TestCreateFromText:
         assert response.status_code == 413
         assert "20,000" in response.json()["detail"]
 
-class TestCreateFromFile:
-    def test_create_from_markdown(self):
-        md_content = b"# Heading\n\nThis is **markdown** content."
-
-        response = client.post(
-            "/api/documents/from-file",
-            data={"language": "en"},
-            files={"file": ("test.md", md_content, "text/markdown")},
-        )
+class TestMarkdownViaFromText:
+    def test_create_markdown_document(self):
+        response = client.post("/api/documents/from-text", json={
+            "language": "en",
+            "source_type": "md",
+            "original_filename": "test.md",
+            "text": "# Heading\n\nThis is **markdown** content.",
+        })
 
         assert response.status_code == 201
         data = response.json()
         assert data["warnings"] == []
         assert data["document"]["source_type"] == "md"
+        assert data["document"]["title"] == "test"
 
-    def test_invalid_file_type_rejected(self):
-        response = client.post(
-            "/api/documents/from-file",
-            data={"language": "en"},
-            files={"file": ("test.txt", b"Hello", "text/plain")},
-        )
+    def test_pdf_source_type_rejected(self):
+        response = client.post("/api/documents/from-text", json={
+            "language": "en",
+            "source_type": "pdf",
+            "text": "This is plain text but marked as PDF.",
+        })
 
         assert response.status_code == 400
-        assert "only .md and .pdf" in response.json()["detail"].lower()
+        assert "deferred" in response.json()["detail"].lower()
 
 class TestGetDocument:
     def test_get_existing_document(self, created_document_id):
@@ -656,56 +661,9 @@ def created_document_id():
     return response.json()["document"]["id"]
 ```
 
-### Test: PDF Extraction
+### (Deferred) PDF Extraction Tests
 
-```python
-# tests/services/test_pdf_extractor.py
-import pytest
-from app.services.pdf_extractor import extract_text_from_pdf, PDFExtractionError
-
-class TestPDFExtraction:
-    def test_extract_simple_pdf(self, sample_pdf_bytes):
-        """Test extraction from a valid PDF."""
-        result = extract_text_from_pdf(sample_pdf_bytes)
-
-        assert result.text
-        assert result.page_count > 0
-        assert isinstance(result.warnings, list)
-
-    def test_invalid_pdf_raises_error(self):
-        """Test that invalid data raises appropriate error."""
-        with pytest.raises(PDFExtractionError):
-            extract_text_from_pdf(b"not a pdf")
-
-    def test_empty_pdf_raises_error(self, empty_pdf_bytes):
-        """Test that PDF with no text raises error."""
-        with pytest.raises(PDFExtractionError) as exc:
-            extract_text_from_pdf(empty_pdf_bytes)
-
-        assert "no text" in str(exc.value).lower()
-
-# You'll need to create test PDF files or generate them programmatically
-@pytest.fixture
-def sample_pdf_bytes():
-    """Generate a simple test PDF."""
-    import fitz
-    doc = fitz.open()
-    page = doc.new_page()
-    page.insert_text((50, 50), "Hello World. This is a test PDF.")
-    pdf_bytes = doc.tobytes()
-    doc.close()
-    return pdf_bytes
-
-@pytest.fixture
-def empty_pdf_bytes():
-    """Generate a PDF with no text (image only would be similar)."""
-    import fitz
-    doc = fitz.open()
-    doc.new_page()  # Empty page
-    pdf_bytes = doc.tobytes()
-    doc.close()
-    return pdf_bytes
-```
+PDF upload is deferred; see `../docs/FUTURE-PDF-UPLOAD.md`.
 
 ---
 
@@ -715,7 +673,7 @@ def empty_pdf_bytes():
 #!/bin/bash
 # tests/integration/test_document_flow.sh
 
-BASE_URL="http://localhost:8000/api"
+BASE_URL="http://localhost:8001/api"
 
 echo "=== Testing Document API ==="
 
@@ -755,11 +713,8 @@ echo -e "\n=== All tests complete ==="
 
 - [ ] `POST /api/documents/from-text` creates document and returns metadata
 - [ ] `POST /api/documents/from-text` returns `warnings: []`
-- [ ] `POST /api/documents/from-file` accepts .md files
-- [ ] `POST /api/documents/from-file` accepts .pdf files
-- [ ] `POST /api/documents/from-file` returns PDF extraction warnings (if any)
-- [ ] PDF extraction handles multi-page documents
-- [ ] PDF extraction returns warnings for problematic pages
+- [ ] `POST /api/documents/from-text` accepts `source_type: "md"` + `original_filename: "*.md"`
+- [ ] `POST /api/documents/from-text` rejects `source_type: "pdf"` (PDF deferred)
 - [ ] Documents >20,000 words are rejected with 413
 - [ ] Empty/whitespace-only content is rejected with 400
 - [ ] `GET /api/documents/{id}` returns correct metadata
@@ -776,7 +731,6 @@ echo -e "\n=== All tests complete ==="
 **What exists after Session 3:**
 
 - Complete document ingestion pipeline
-- PDF extraction with PyMuPDF
 - Token storage in database
 - API endpoints for documents and tokens
 

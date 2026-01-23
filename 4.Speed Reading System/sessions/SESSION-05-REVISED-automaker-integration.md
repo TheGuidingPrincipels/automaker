@@ -516,6 +516,8 @@ export interface SessionListItem {
 export interface CreateDocumentFromTextRequest {
   title?: string;
   language: Language;
+  source_type?: SourceType;
+  original_filename?: string;
   text: string;
 }
 
@@ -726,7 +728,7 @@ export function createDeepreadRoutes(): Router {
       const data = await response.json();
       res.json({ success: true, backend: data });
     } catch (error) {
-      logger.error('DeepRead backend health check failed:', error);
+      logger.error(`DeepRead backend health check failed at ${DEEPREAD_BACKEND_URL}/api/health:`, error);
       res.status(503).json({
         success: false,
         error: 'DeepRead backend unavailable',

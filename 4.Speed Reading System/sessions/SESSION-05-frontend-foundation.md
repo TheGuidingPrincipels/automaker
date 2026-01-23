@@ -1,5 +1,7 @@
 # Session 5: Frontend Foundation
 
+> ⚠️ **Legacy (Standalone) Plan**: This session describes building a standalone frontend app. For Automaker integration, use `SESSION-05-REVISED-automaker-integration.md`.
+
 ## Overview
 
 **Duration**: ~3-4 hours

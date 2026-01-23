@@ -1,5 +1,7 @@
 # Session 10: Integration, Polish & Deployment
 
+> ⚠️ **Deployment Note**: v1 is **web-only** and integrated into Automaker. This session is mainly for standalone deployment hardening; treat it as **deferred** for the Automaker-integrated rollout.
+
 ## Overview
 
 **Duration**: ~4 hours
@@ -179,60 +181,35 @@ export function getUserFriendlyMessage(error: unknown): string {
 ### 3. Update App with Error Boundary (`src/App.tsx`)
 
 ```typescript
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { setupGlobalErrorHandler, getUserFriendlyMessage } from '@/lib/errorHandler'
-import { routeTree } from './routeTree.gen'
+import { router } from './utils/router'
 import { useEffect } from 'react'
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 1000 * 60,
-      retry: (failureCount, error) => {
-        // Don't retry on 4xx errors
-        if (error instanceof Error && /4\d{2}/.test(error.message)) {
-          return false
-        }
-        return failureCount < 2
-      },
-    },
-    mutations: {
-      onError: (error) => {
-        console.error('Mutation error:', getUserFriendlyMessage(error))
-      },
-    },
-  },
-})
-
-const router = createRouter({
-  routeTree,
-  context: { queryClient },
-  defaultErrorComponent: ({ error }) => (
-    <div className="p-8 text-center">
-      <h2 className="text-xl font-bold text-destructive mb-2">Page Error</h2>
-      <p className="text-muted-foreground">{getUserFriendlyMessage(error)}</p>
-    </div>
-  ),
-})
-
-declare module '@tanstack/react-router' {
-  interface Register {
-    router: typeof router
-  }
-}
+import { SplashScreen } from './components/splash-screen'
+import { useState } from 'react'
 
 export function App() {
+  const [showSplash, setShowSplash] = useState(() => {
+    if (sessionStorage.getItem('automaker-splash-shown')) {
+      return false
+    }
+    return true
+  })
+
   useEffect(() => {
     setupGlobalErrorHandler()
   }, [])
 
+  const handleSplashComplete = () => {
+    sessionStorage.setItem('automaker-splash-shown', 'true')
+    setShowSplash(false)
+  }
+
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
+      <RouterProvider router={router} />
+      {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
     </ErrorBoundary>
   )
 }
@@ -281,7 +258,7 @@ USER appuser
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/api/health')"
 
 # Run
 EXPOSE 8000
@@ -345,7 +322,7 @@ server {
 
     # API proxy (when running standalone, proxy to backend)
     location /api {
-        proxy_pass http://backend:8000;
+        proxy_pass http://backend:8001;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -404,7 +381,7 @@ services:
           'CMD',
           'python',
           '-c',
-          "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8001/api/health')",
         ]
       interval: 30s
       timeout: 10s
@@ -493,7 +470,7 @@ server {
 
     # API routes
     location /api {
-        proxy_pass http://backend:8000;
+        proxy_pass http://backend:8001;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -904,7 +881,7 @@ Run through this checklist before considering the project complete:
 
 - [ ] Paste text creates document
 - [ ] Upload .md creates document
-- [ ] Upload .pdf creates document
+- [ ] (Deferred) Upload .pdf creates document (see `../docs/FUTURE-PDF-UPLOAD.md`)
 - [ ] Preview shows full text
 - [ ] Word click sets start position
 - [ ] Progress scrubber works
@@ -933,10 +910,10 @@ Run through this checklist before considering the project complete:
 
 You now have a fully functional RSVP speed-reading application with:
 
-- **Backend**: FastAPI + PostgreSQL
+- **Backend**: FastAPI + SQLite (v1) / PostgreSQL (optional later)
 - **Frontend**: React 19 + TanStack Router/Query + Tailwind
 - **Features**:
-  - Text/MD/PDF import
+  - Text/MD import (PDF deferred)
   - ORP-aligned RSVP display
   - Ramp/build-up mode
   - Time-based rewind

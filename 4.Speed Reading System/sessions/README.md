@@ -147,7 +147,7 @@ Sessions:
 
 From the original plan:
 
-1. ✅ Paste or upload `.md` with EN/DE selection → document created (**PDF deferred**)
+1. ✅ Paste (Copy/Paste/Paste+) or upload `.md` with EN/DE selection → document created (**PDF deferred**)
 2. ✅ Preview shows full text; click word to set start
 3. ✅ Reader mode blacks out interface; ORP-aligned RSVP works with rhythm pauses
 4. ✅ Play/Pause is instant
