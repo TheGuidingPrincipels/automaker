@@ -1,6 +1,6 @@
-# Sub-Plan F-2: API Client & Types Integration
+# Sub-Plan F-2: API Client & Types Integration (Knowledge Library)
 
-> **Prerequisites**: Sub-Plan F-1 (Backend Setup) complete
+> **Prerequisites**: Sub-Plan F-1 (Backend Setup) complete, including the “Upload-first session” and “New file Overview metadata” backend contract updates.
 > **Execution Location**: Automaker repository (`/Users/ruben/Documents/GitHub/automaker/`)
 > **AI-Library Location**: `2.ai-library/` within automaker repository
 > **Effort**: Medium (2-4 hours)
@@ -8,80 +8,153 @@
 
 ---
 
+## Scope (V1)
+
+Implement the **upload-only** ingestion workflow (one markdown file per session). Pasted content / append-to-session is deferred to a later plan to avoid breaking changes.
+
+**Important**: This plan assumes Sub-Plan F-1 has implemented the required backend contract updates (upload-first sessions, persisted uploads, create-file Title+Overview metadata, and library file validation fields).
+
+---
+
 ## Goal
 
-Create TypeScript types, API client, TanStack Query hooks, and Zustand store for the Automaker frontend to communicate with the AI-Library backend.
+Create:
+
+1. Shared TypeScript types for the Knowledge Library API
+2. A typed API client for the UI
+3. TanStack Query hooks for server state
+4. A small Zustand store for UI-only state
+
+This must be compatible with Sub-Plan F-3’s UI requirements:
+
+- Upload-first session flow (drag/drop or file picker)
+- Explicit cleanup approvals (checkbox decisions)
+- Explicit routing approvals (after all blocks resolved)
+- Create-file UX requires **Title** + **`## Overview` (exact, case-sensitive)** with **50–250 chars** (trimmed, whitespace-normalized)
+- Library files missing valid `## Overview` show red badge + errors (but routing into them is allowed)
+- If Knowledge Library API is offline, show “Knowledge Library disconnected” (non-fatal)
+- Input Mode includes a chat transcript + user “guidance” messages to influence planning (not ingestion)
+  - Guidance is required for routing, optional for cleanup (easy to include in both)
+  - Claude “questions” are supported via WS `question` events + user `answer` commands
 
 ---
 
-## Step 1: Add Environment Variable
+## Step 1: Environment Variables & Typings
 
-Add to `apps/ui/.env` (create if doesn't exist):
+### 1.1 Add env var (local)
+
+Add to `apps/ui/.env` (create if needed):
 
 ```bash
 VITE_KNOWLEDGE_LIBRARY_API=http://localhost:8001
 ```
 
-Update `apps/ui/.env.example`:
+### 1.2 Add env var typings (required)
 
-```bash
-# AI-Library (Knowledge Library) API
-VITE_KNOWLEDGE_LIBRARY_API=http://localhost:8001
-```
+Update `apps/ui/src/vite-env.d.ts` to include:
+
+- `VITE_KNOWLEDGE_LIBRARY_API?: string`
+
+### 1.3 Decide on `.env.example`
+
+If you want `apps/ui/.env.example` committed, update `apps/ui/.gitignore` to allow it (currently `.env*` is ignored).
 
 ---
 
-## Step 2: Create Types
+## Step 2: Create Shared Types (Mirror Backend Schemas)
 
-Create `libs/types/src/knowledge-library.ts`:
+Create `libs/types/src/knowledge-library.ts` with shapes matching `2.ai-library/src/api/schemas.py` and the additional create-file metadata rules.
 
-```typescript
+**Note:** this repo uses NodeNext-style `.js` specifiers in exports (see `libs/types/src/index.ts`). Keep the export style consistent.
+
+```ts
 // libs/types/src/knowledge-library.ts
-// Types for AI-Library (Knowledge Library) API integration
 
-// ============== Enums ==============
-
+// ============== Core ==============
 export type ContentMode = 'strict' | 'refinement';
+export type CleanupDisposition = 'keep' | 'discard';
+export type BlockStatus = 'pending' | 'selected' | 'rejected';
+
 export type SessionPhase =
-  | 'created'
-  | 'source_uploaded'
+  | 'initialized'
   | 'parsing'
   | 'cleanup_plan_ready'
   | 'routing_plan_ready'
+  | 'awaiting_approval'
   | 'ready_to_execute'
   | 'executing'
   | 'verifying'
   | 'completed'
-  | 'failed';
+  | 'error';
 
-export type CleanupDisposition = 'keep' | 'discard';
-export type BlockStatus = 'pending' | 'selected' | 'rejected';
+export interface KLSuccessResponse {
+  success: boolean;
+  message?: string | null;
+}
 
-// ============== Session ==============
+// ============== Sessions ==============
 
-export interface KLSession {
+export interface KLCreateSessionRequest {
+  // V1: upload-only. Create empty session for upload-first flow.
+  library_path?: string | null;
+  content_mode?: ContentMode | null;
+
+  // Optional (server-local). Kept for backwards compatibility if used.
+  source_path?: string | null;
+}
+
+export interface KLSessionResponse {
   id: string;
   phase: SessionPhase;
-  content_mode: ContentMode;
   created_at: string;
   updated_at: string;
+  content_mode: ContentMode;
+  library_path: string;
   source_file: string | null;
+
   total_blocks: number;
-  resolved_blocks: number;
+  kept_blocks: number;
+  discarded_blocks: number;
+
+  has_cleanup_plan: boolean;
+  has_routing_plan: boolean;
   cleanup_approved: boolean;
-  cleanup_pending: number;
-  routing_pending: number;
+  routing_approved: boolean;
   can_execute: boolean;
+
+  errors: string[];
 }
 
 export interface KLSessionListResponse {
-  sessions: KLSession[];
+  sessions: KLSessionResponse[];
   total: number;
 }
 
-// ============== Cleanup Plan ==============
+// ============== Blocks ==============
 
-export interface KLCleanupItem {
+export interface KLBlockResponse {
+  id: string;
+  block_type: string;
+  content: string;
+  content_preview: string;
+  heading_path: string[];
+  source_file: string;
+  source_line_start: number;
+  source_line_end: number;
+  checksum_exact: string;
+  checksum_canonical: string;
+  is_executed: boolean;
+  integrity_verified: boolean;
+}
+
+export interface KLBlockListResponse {
+  blocks: KLBlockResponse[];
+  total: number;
+}
+
+// ============== Cleanup ==============
+
+export interface KLCleanupItemResponse {
   block_id: string;
   heading_path: string[];
   content_preview: string;
@@ -90,40 +163,60 @@ export interface KLCleanupItem {
   final_disposition: CleanupDisposition | null;
 }
 
-export interface KLCleanupPlan {
+export interface KLCleanupPlanResponse {
   session_id: string;
   source_file: string;
-  items: KLCleanupItem[];
-  pending_count: number;
+  created_at: string;
+  items: KLCleanupItemResponse[];
   all_decided: boolean;
   approved: boolean;
+  approved_at: string | null;
+  pending_count: number;
+  total_count: number;
 }
 
-// ============== Routing Plan ==============
+export interface KLCleanupDecisionRequest {
+  disposition: CleanupDisposition;
+}
 
-export interface KLDestinationOption {
+// ============== Routing ==============
+
+export interface KLDestinationOptionResponse {
   destination_file: string;
   destination_section: string | null;
   action: string;
   confidence: number;
   reasoning: string;
-  proposed_file_title?: string | null;
+
+  // Create-section
   proposed_section_title?: string | null;
+
+  // Create-file (REQUIRED when action === "create_file")
+  proposed_file_title?: string | null;
+  proposed_file_overview?: string | null; // 50–250 chars (trim+normalize)
 }
 
-export interface KLBlockRouting {
+export interface KLBlockRoutingItemResponse {
   block_id: string;
   heading_path: string[];
   content_preview: string;
-  options: KLDestinationOption[];
+  options: KLDestinationOptionResponse[];
   selected_option_index: number | null;
   custom_destination_file: string | null;
   custom_destination_section: string | null;
   custom_action: string | null;
   status: BlockStatus;
+
+  // If a create-file option was selected, allow UI to override metadata:
+  override_file_title?: string | null;
+  override_file_overview?: string | null;
+
+  // If user chose custom create-file:
+  custom_file_title?: string | null;
+  custom_file_overview?: string | null;
 }
 
-export interface KLMergePreview {
+export interface KLMergePreviewResponse {
   merge_id: string;
   block_id: string;
   existing_content: string;
@@ -133,7 +226,7 @@ export interface KLMergePreview {
   merge_reasoning: string;
 }
 
-export interface KLPlanSummary {
+export interface KLPlanSummaryResponse {
   total_blocks: number;
   blocks_to_new_files: number;
   blocks_to_existing_files: number;
@@ -141,792 +234,393 @@ export interface KLPlanSummary {
   estimated_actions: number;
 }
 
-export interface KLRoutingPlan {
+export interface KLRoutingPlanResponse {
   session_id: string;
-  content_mode: ContentMode;
   source_file: string;
-  blocks: KLBlockRouting[];
-  merge_previews: KLMergePreview[];
-  summary: KLPlanSummary;
+  content_mode: ContentMode;
+  created_at: string;
+  blocks: KLBlockRoutingItemResponse[];
+  merge_previews: KLMergePreviewResponse[];
+  summary: KLPlanSummaryResponse | null;
+  all_blocks_resolved: boolean;
+  approved: boolean;
+  approved_at: string | null;
   pending_count: number;
   accepted_count: number;
-  all_resolved: boolean;
+}
+
+export interface KLSelectDestinationRequest {
+  option_index?: number | null;
+  custom_file?: string | null;
+  custom_section?: string | null;
+  custom_action?: string | null;
+
+  // REQUIRED when selecting a create_file option (UI editable fields)
+  override_file_title?: string | null;
+  override_file_overview?: string | null;
+
+  // REQUIRED when custom_action === "create_file"
+  custom_file_title?: string | null;
+  custom_file_overview?: string | null;
+}
+
+export interface KLSetModeRequest {
+  mode: ContentMode;
 }
 
 // ============== Execution ==============
 
-export interface KLExecuteResponse {
+export interface KLWriteResultResponse {
+  block_id: string;
+  destination_file: string;
   success: boolean;
+  checksum_verified: boolean;
+  error?: string | null;
+}
+
+export interface KLExecuteResponse {
+  session_id: string;
+  success: boolean;
+  total_blocks: number;
   blocks_written: number;
-  blocks_verified: number;
-  checksums_matched: number;
-  refinements_applied: number;
-  log: string[];
-  source_deleted: boolean;
+  blocks_failed: number;
+  all_verified: boolean;
+  results: KLWriteResultResponse[];
   errors: string[];
 }
 
 // ============== Library ==============
 
-export interface KLLibraryFile {
+export interface KLLibraryFileResponse {
   path: string;
   category: string;
   title: string;
   sections: string[];
   last_modified: string;
   block_count: number;
+
+  // Overview metadata
+  overview: string | null;
+  is_valid: boolean;
+  validation_errors: string[];
 }
 
-export interface KLLibraryCategory {
+export interface KLLibraryCategoryResponse {
   name: string;
   path: string;
   description: string;
-  files: KLLibraryFile[];
-  subcategories: KLLibraryCategory[];
+  files: KLLibraryFileResponse[];
+  subcategories: KLLibraryCategoryResponse[];
 }
 
-export interface KLLibraryStructure {
-  root_path: string;
-  categories: KLLibraryCategory[];
+export interface KLLibraryStructureResponse {
+  categories: KLLibraryCategoryResponse[];
   total_files: number;
-  total_blocks: number;
+  total_sections: number;
 }
 
-export interface KLSearchResult {
+export interface KLLibraryFileContentResponse {
+  content: string;
+  path: string;
+}
+
+export interface KLLibrarySearchResult {
+  file_path: string;
+  file_title: string;
+  section: string;
+  category: string;
+}
+
+export interface KLLibrarySearchResponse {
+  results: KLLibrarySearchResult[];
+  query: string;
+  total: number;
+}
+
+export interface KLIndexResponse {
+  status: string;
+  files_indexed: number;
+  details?: string[] | null;
+}
+
+// ============== Query (RAG + Semantic) ==============
+
+export interface KLSemanticSearchRequest {
+  query: string;
+  n_results?: number;
+  min_similarity?: number;
+  filter_taxonomy?: string | null;
+  filter_content_type?: string | null;
+}
+
+export interface KLSemanticSearchResult {
   content: string;
   file_path: string;
   section: string;
   similarity: number;
   chunk_id: string;
+  taxonomy_path?: string | null;
+  content_type?: string | null;
 }
 
-export interface KLSearchResponse {
+export interface KLSemanticSearchResponse {
+  results: KLSemanticSearchResult[];
   query: string;
-  results: KLSearchResult[];
   total: number;
 }
 
-// ============== Query (RAG) ==============
-
-export interface KLSourceInfo {
-  file: string;
-  section: string;
-  excerpt: string;
+export interface KLAskRequest {
+  question: string;
+  max_sources?: number;
+  conversation_id?: string | null;
 }
 
-export interface KLQueryResponse {
+export interface KLAskSourceInfo {
+  file_path: string;
+  section?: string | null;
+  similarity?: number | null;
+}
+
+export interface KLAskResponse {
   answer: string;
-  sources: KLSourceInfo[];
+  sources: KLAskSourceInfo[];
   confidence: number;
-  conversation_id: string;
+  conversation_id?: string | null;
   related_topics: string[];
 }
 
 export interface KLConversationTurn {
-  question: string;
-  answer: string;
-  sources: KLSourceInfo[];
+  role: string;
+  content: string;
   timestamp: string;
+  sources: string[];
 }
 
 export interface KLConversation {
   id: string;
+  title?: string | null;
   created_at: string;
+  updated_at: string;
   turns: KLConversationTurn[];
 }
 
-// ============== Request Types ==============
-
-export interface KLCreateSessionInput {
-  library_path?: string;
+export interface KLConversationListResponse {
+  conversations: KLConversation[];
+  total: number;
 }
 
-export interface KLCleanupDecisionInput {
-  disposition: CleanupDisposition;
+// ============== Streaming (WebSocket) ==============
+
+export type KLStreamEventType =
+  | 'connected'
+  | 'pong'
+  | 'progress'
+  | 'cleanup_started'
+  | 'cleanup_ready'
+  | 'routing_started'
+  | 'routing_ready'
+  | 'candidate_search'
+  | 'user_message'
+  | 'question'
+  | 'error'
+  | string; // forward-compatible
+
+export interface KLStreamEvent {
+  event_type: KLStreamEventType;
+  session_id: string;
+  data: {
+    // Human-readable text suitable for the Input Mode “chat transcript”
+    message?: string;
+
+    // Optional progress indicator (backend currently sends null)
+    progress?: number | null;
+
+    // Event payload (e.g., cleanup_plan / routing_plan model_dump)
+    data?: unknown;
+
+    // Optional initial connect info
+    phase?: string;
+
+    // Optional (future) question flow
+    question_id?: string;
+  };
+
+  // Preferred: include timestamp (ISO string). Current backend messages may omit this until F-1 is applied.
+  timestamp?: string;
 }
 
-export interface KLSelectDestinationInput {
-  option_index?: number;
-  custom_destination_file?: string;
-  custom_destination_section?: string | null;
-  custom_action?: string;
-}
+export type KLStreamCommand =
+  | 'generate_cleanup'
+  | 'generate_routing'
+  | 'ping'
+  | 'user_message'
+  | 'answer';
 
-export interface KLSetModeInput {
-  mode: ContentMode;
-}
+export interface KLStreamCommandRequest {
+  command: KLStreamCommand;
 
-export interface KLQueryInput {
-  question: string;
-  conversation_id?: string;
-  n_chunks?: number;
-  min_similarity?: number;
-}
+  // user_message
+  message?: string;
 
-export interface KLExecuteInput {
-  delete_source?: boolean;
+  // answer (future)
+  question_id?: string;
 }
 ```
 
-Export from `libs/types/src/index.ts`:
+Export from `libs/types/src/index.ts` using the same style as the file (NodeNext `.js` specifiers). Example:
 
-```typescript
-// Add to existing exports
-export * from './knowledge-library';
+```ts
+export * from './knowledge-library.js';
 ```
 
 ---
 
 ## Step 3: Create API Client
 
-Create `apps/ui/src/lib/knowledge-library-api.ts`:
+Create `apps/ui/src/lib/knowledge-library-api.ts`.
 
-```typescript
-// apps/ui/src/lib/knowledge-library-api.ts
+### 3.1 Non-fatal “disconnected” behavior (required)
 
-import type {
-  KLSession,
-  KLSessionListResponse,
-  KLCleanupPlan,
-  KLRoutingPlan,
-  KLExecuteResponse,
-  KLLibraryStructure,
-  KLSearchResponse,
-  KLQueryResponse,
-  KLConversation,
-  KLCreateSessionInput,
-  KLCleanupDecisionInput,
-  KLSelectDestinationInput,
-  KLSetModeInput,
-  KLQueryInput,
-  KLExecuteInput,
-} from '@automaker/types';
+When `fetch()` throws a connection error (TypeError / failed to fetch), throw a Knowledge-Library-specific error so the app does **not** treat it as “Automaker server offline”.
 
-const API_BASE = import.meta.env.VITE_KNOWLEDGE_LIBRARY_API || 'http://localhost:8001';
+### 3.2 Endpoints (must match backend)
 
-class KnowledgeLibraryAPI {
-  private baseUrl: string;
+- Health: `GET /health`
+- Sessions:
+  - `GET /api/sessions`
+  - `POST /api/sessions` (create empty session; upload-first)
+  - `POST /api/sessions/{id}/upload`
+  - `GET /api/sessions/{id}`
+  - `DELETE /api/sessions/{id}`
+  - `GET /api/sessions/{id}/blocks`
+  - Cleanup:
+    - `POST /api/sessions/{id}/cleanup/generate?use_ai=true`
+    - `GET /api/sessions/{id}/cleanup`
+    - `POST /api/sessions/{id}/cleanup/decide/{block_id}`
+    - `POST /api/sessions/{id}/cleanup/approve`
+  - Routing:
+    - `POST /api/sessions/{id}/plan/generate?use_ai=true&use_candidate_finder=true`
+    - `GET /api/sessions/{id}/plan`
+    - `POST /api/sessions/{id}/plan/select/{block_id}` (includes create-file title+overview overrides)
+    - `POST /api/sessions/{id}/plan/reject-block/{block_id}`
+    - `POST /api/sessions/{id}/plan/approve` (required before execute)
+  - Mode:
+    - `POST /api/sessions/{id}/mode`
+  - Execute:
+    - `POST /api/sessions/{id}/execute`
+  - WebSocket:
+    - `WS /api/sessions/{id}/stream`
+- Library:
+  - `GET /api/library`
+  - `GET /api/library/files/{file_path:path}` (metadata)
+  - `GET /api/library/files/{file_path:path}/content` (content)
+  - `GET /api/library/search?query=...` (keyword)
+  - `POST /api/library/index` and `GET /api/library/index/stats`
+- Query:
+  - `POST /api/query/search` (semantic, JSON body)
+  - `POST /api/query/ask`
+  - `GET /api/query/conversations` (returns `{ conversations, total }`)
+  - `GET /api/query/conversations/{id}`
+  - `DELETE /api/query/conversations/{id}`
 
-  constructor(baseUrl: string = API_BASE) {
-    this.baseUrl = baseUrl;
-  }
+**Important**: for `{file_path:path}` routes, do NOT `encodeURIComponent()` the entire path (it encodes `/`). Encode per path-segment:
 
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
-
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.detail || `API error: ${response.status}`);
-    }
-
-    return response.json();
-  }
-
-  // ============== Health ==============
-
-  async healthCheck(): Promise<{ status: string }> {
-    return this.request('/health');
-  }
-
-  // ============== Sessions ==============
-
-  async listSessions(limit = 20): Promise<KLSessionListResponse> {
-    return this.request(`/api/sessions?limit=${limit}`);
-  }
-
-  async getSession(sessionId: string): Promise<KLSession> {
-    return this.request(`/api/sessions/${sessionId}`);
-  }
-
-  async createSession(input?: KLCreateSessionInput): Promise<KLSession> {
-    return this.request('/api/sessions', {
-      method: 'POST',
-      body: JSON.stringify(input || {}),
-    });
-  }
-
-  async deleteSession(sessionId: string): Promise<void> {
-    await this.request(`/api/sessions/${sessionId}`, { method: 'DELETE' });
-  }
-
-  async uploadSource(sessionId: string, file: File): Promise<KLSession> {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const response = await fetch(`${this.baseUrl}/api/sessions/${sessionId}/upload`, {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      throw new Error('Upload failed');
-    }
-    return response.json();
-  }
-
-  // ============== Cleanup Plan ==============
-
-  async generateCleanupPlan(sessionId: string): Promise<KLCleanupPlan> {
-    return this.request(`/api/sessions/${sessionId}/cleanup/generate`, {
-      method: 'POST',
-    });
-  }
-
-  async getCleanupPlan(sessionId: string): Promise<KLCleanupPlan> {
-    return this.request(`/api/sessions/${sessionId}/cleanup`);
-  }
-
-  async decideCleanupItem(
-    sessionId: string,
-    blockId: string,
-    input: KLCleanupDecisionInput
-  ): Promise<void> {
-    await this.request(`/api/sessions/${sessionId}/cleanup/decide/${blockId}`, {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
-  }
-
-  async approveCleanupPlan(sessionId: string): Promise<void> {
-    await this.request(`/api/sessions/${sessionId}/cleanup/approve`, {
-      method: 'POST',
-    });
-  }
-
-  // ============== Routing Plan ==============
-
-  async generateRoutingPlan(sessionId: string): Promise<KLRoutingPlan> {
-    return this.request(`/api/sessions/${sessionId}/plan/generate`, {
-      method: 'POST',
-    });
-  }
-
-  async getRoutingPlan(sessionId: string): Promise<KLRoutingPlan> {
-    return this.request(`/api/sessions/${sessionId}/plan`);
-  }
-
-  async selectBlockDestination(
-    sessionId: string,
-    blockId: string,
-    input: KLSelectDestinationInput
-  ): Promise<void> {
-    await this.request(`/api/sessions/${sessionId}/plan/select/${blockId}`, {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
-  }
-
-  async rejectBlock(sessionId: string, blockId: string): Promise<void> {
-    await this.request(`/api/sessions/${sessionId}/plan/reject-block/${blockId}`, {
-      method: 'POST',
-    });
-  }
-
-  async setContentMode(sessionId: string, input: KLSetModeInput): Promise<void> {
-    await this.request(`/api/sessions/${sessionId}/mode`, {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
-  }
-
-  // ============== Execution ==============
-
-  async executeSession(sessionId: string, input?: KLExecuteInput): Promise<KLExecuteResponse> {
-    return this.request(`/api/sessions/${sessionId}/execute`, {
-      method: 'POST',
-      body: JSON.stringify(input || {}),
-    });
-  }
-
-  // ============== Library ==============
-
-  async getLibraryStructure(): Promise<KLLibraryStructure> {
-    return this.request('/api/library');
-  }
-
-  async getFile(path: string): Promise<{ content: string; metadata: any }> {
-    return this.request(`/api/library/files/${encodeURIComponent(path)}`);
-  }
-
-  async searchLibrary(query: string, limit = 10): Promise<KLSearchResponse> {
-    return this.request(`/api/library/search?q=${encodeURIComponent(query)}&limit=${limit}`);
-  }
-
-  async triggerIndex(): Promise<{ status: string }> {
-    return this.request('/api/library/index', { method: 'POST' });
-  }
-
-  // ============== Query (RAG) ==============
-
-  async queryLibrary(input: KLQueryInput): Promise<KLQueryResponse> {
-    return this.request('/api/query/ask', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
-  }
-
-  async semanticSearch(query: string, limit = 10): Promise<KLSearchResponse> {
-    return this.request(`/api/query/search?query=${encodeURIComponent(query)}&limit=${limit}`, {
-      method: 'POST',
-    });
-  }
-
-  async listConversations(limit = 20): Promise<KLConversation[]> {
-    return this.request(`/api/query/conversations?limit=${limit}`);
-  }
-
-  async getConversation(conversationId: string): Promise<KLConversation> {
-    return this.request(`/api/query/conversations/${conversationId}`);
-  }
-
-  async deleteConversation(conversationId: string): Promise<void> {
-    await this.request(`/api/query/conversations/${conversationId}`, {
-      method: 'DELETE',
-    });
-  }
-
-  // ============== WebSocket ==============
-
-  connectToSession(sessionId: string): WebSocket {
-    const wsUrl = this.baseUrl.replace('http', 'ws');
-    return new WebSocket(`${wsUrl}/api/sessions/${sessionId}/stream`);
-  }
-}
-
-export const knowledgeLibraryApi = new KnowledgeLibraryAPI();
-export default knowledgeLibraryApi;
+```ts
+const encodePath = (p: string) => p.split('/').map(encodeURIComponent).join('/');
 ```
+
+### 3.3 WebSocket helpers (required for Input Mode transcript)
+
+Add a small helper in `knowledgeLibraryApi`:
+
+- `getSessionStreamUrl(sessionId)`:
+  - Convert base URL `http(s)://...` → `ws(s)://...`
+  - Append `/api/sessions/{id}/stream`
+- `openSessionStream(sessionId, handlers)`:
+  - Creates a `WebSocket`
+  - Parses messages as `KLStreamEvent`
+  - Never triggers Automaker global “server offline” UX; treat failures as Knowledge Library disconnected
+
+Also add a small helper for chat guidance messages:
+
+- `sendUserMessage(ws, message)`:
+  - sends `{ command: "user_message", message }`
+  - UI should also append the user message locally to the transcript immediately (optimistic)
 
 ---
 
 ## Step 4: Create TanStack Query Hooks
 
-Create `apps/ui/src/hooks/queries/use-knowledge-library.ts`:
+Create `apps/ui/src/hooks/queries/use-knowledge-library.ts`.
 
-```typescript
-// apps/ui/src/hooks/queries/use-knowledge-library.ts
+Required hooks for F-3:
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { knowledgeLibraryApi } from '@/lib/knowledge-library-api';
-import type {
-  KLCleanupDecisionInput,
-  KLSelectDestinationInput,
-  KLSetModeInput,
-  KLQueryInput,
-  ContentMode,
-} from '@automaker/types';
+- `useKLHealth()`
+- `useKLSessions()`, `useKLSession(id)`
+- `useKLCreateSession()`, `useKLUploadSource(sessionId)`
+- `useKLBlocks(sessionId)`
+- `useKLGenerateCleanupPlan(sessionId)`, `useKLCleanupPlan(sessionId)`, `useKLDecideCleanupItem(sessionId)`, `useKLApproveCleanupPlan(sessionId)`
+- `useKLGenerateRoutingPlan(sessionId)`, `useKLRoutingPlan(sessionId)`
+- `useKLSelectDestination(sessionId)`, `useKLRejectBlock(sessionId)`, `useKLApproveRoutingPlan(sessionId)`
+- `useKLExecuteSession(sessionId)`
+- Library:
+  - `useKLLibrary()`
+  - `useKLFileMetadata(path)`
+  - `useKLFileContent(path)`
+  - `useKLLibraryKeywordSearch(query)`
+- Semantic:
+  - `useKLSemanticSearch()` (mutation) and/or query hook
 
-// ============== Query Keys ==============
+Streaming (WebSocket) is not a TanStack Query concern. Add a dedicated hook:
 
-export const klKeys = {
-  all: ['knowledge-library'] as const,
-  health: () => [...klKeys.all, 'health'] as const,
-  sessions: () => [...klKeys.all, 'sessions'] as const,
-  session: (id: string) => [...klKeys.all, 'session', id] as const,
-  cleanup: (id: string) => [...klKeys.all, 'cleanup', id] as const,
-  plan: (id: string) => [...klKeys.all, 'plan', id] as const,
-  library: () => [...klKeys.all, 'library'] as const,
-  file: (path: string) => [...klKeys.all, 'file', path] as const,
-  search: (query: string) => [...klKeys.all, 'search', query] as const,
-  conversations: () => [...klKeys.all, 'conversations'] as const,
-  conversation: (id: string) => [...klKeys.all, 'conversation', id] as const,
-};
+- `useKLSessionStream(sessionId)` (new file recommended: `apps/ui/src/hooks/streams/use-kl-session-stream.ts`)
+  - Manages `WebSocket` lifecycle + reconnection strategy
+  - Exposes `events` (for transcript), `isConnected`, and `send(command)`
+  - Exposes `pendingQuestions` (derived from one or more `question` events) so the UI can render an “Answer” affordance
 
-// ============== Health ==============
-
-export function useKLHealth() {
-  return useQuery({
-    queryKey: klKeys.health(),
-    queryFn: () => knowledgeLibraryApi.healthCheck(),
-    retry: 1,
-    staleTime: 30000,
-  });
-}
-
-// ============== Sessions ==============
-
-export function useKLSessions(limit = 20) {
-  return useQuery({
-    queryKey: klKeys.sessions(),
-    queryFn: () => knowledgeLibraryApi.listSessions(limit),
-  });
-}
-
-export function useKLSession(sessionId: string | undefined) {
-  return useQuery({
-    queryKey: klKeys.session(sessionId!),
-    queryFn: () => knowledgeLibraryApi.getSession(sessionId!),
-    enabled: !!sessionId,
-    refetchInterval: 2000, // Poll for updates during active sessions
-  });
-}
-
-export function useKLCreateSession() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (libraryPath?: string) =>
-      knowledgeLibraryApi.createSession({ library_path: libraryPath }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: klKeys.sessions() });
-    },
-  });
-}
-
-export function useKLDeleteSession() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (sessionId: string) => knowledgeLibraryApi.deleteSession(sessionId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: klKeys.sessions() });
-    },
-  });
-}
-
-export function useKLUploadSource(sessionId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (file: File) => knowledgeLibraryApi.uploadSource(sessionId, file),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: klKeys.session(sessionId) });
-    },
-  });
-}
-
-// ============== Cleanup Plan ==============
-
-export function useKLCleanupPlan(sessionId: string | undefined) {
-  return useQuery({
-    queryKey: klKeys.cleanup(sessionId!),
-    queryFn: () => knowledgeLibraryApi.getCleanupPlan(sessionId!),
-    enabled: !!sessionId,
-  });
-}
-
-export function useKLGenerateCleanupPlan(sessionId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => knowledgeLibraryApi.generateCleanupPlan(sessionId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: klKeys.cleanup(sessionId) });
-      queryClient.invalidateQueries({ queryKey: klKeys.session(sessionId) });
-    },
-  });
-}
-
-export function useKLDecideCleanupItem(sessionId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ blockId, disposition }: { blockId: string; disposition: 'keep' | 'discard' }) =>
-      knowledgeLibraryApi.decideCleanupItem(sessionId, blockId, { disposition }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: klKeys.cleanup(sessionId) });
-    },
-  });
-}
-
-export function useKLApproveCleanupPlan(sessionId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => knowledgeLibraryApi.approveCleanupPlan(sessionId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: klKeys.cleanup(sessionId) });
-      queryClient.invalidateQueries({ queryKey: klKeys.session(sessionId) });
-    },
-  });
-}
-
-// ============== Routing Plan ==============
-
-export function useKLRoutingPlan(sessionId: string | undefined) {
-  return useQuery({
-    queryKey: klKeys.plan(sessionId!),
-    queryFn: () => knowledgeLibraryApi.getRoutingPlan(sessionId!),
-    enabled: !!sessionId,
-    refetchInterval: 2000,
-  });
-}
-
-export function useKLGenerateRoutingPlan(sessionId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => knowledgeLibraryApi.generateRoutingPlan(sessionId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: klKeys.plan(sessionId) });
-      queryClient.invalidateQueries({ queryKey: klKeys.session(sessionId) });
-    },
-  });
-}
-
-export function useKLSelectDestination(sessionId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ blockId, ...input }: { blockId: string } & KLSelectDestinationInput) =>
-      knowledgeLibraryApi.selectBlockDestination(sessionId, blockId, input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: klKeys.plan(sessionId) });
-    },
-  });
-}
-
-export function useKLRejectBlock(sessionId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (blockId: string) => knowledgeLibraryApi.rejectBlock(sessionId, blockId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: klKeys.plan(sessionId) });
-    },
-  });
-}
-
-export function useKLSetContentMode(sessionId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (mode: ContentMode) => knowledgeLibraryApi.setContentMode(sessionId, { mode }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: klKeys.plan(sessionId) });
-      queryClient.invalidateQueries({ queryKey: klKeys.session(sessionId) });
-    },
-  });
-}
-
-// ============== Execution ==============
-
-export function useKLExecuteSession(sessionId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (deleteSource = false) =>
-      knowledgeLibraryApi.executeSession(sessionId, { delete_source: deleteSource }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: klKeys.session(sessionId) });
-      queryClient.invalidateQueries({ queryKey: klKeys.library() });
-    },
-  });
-}
-
-// ============== Library ==============
-
-export function useKLLibrary() {
-  return useQuery({
-    queryKey: klKeys.library(),
-    queryFn: () => knowledgeLibraryApi.getLibraryStructure(),
-  });
-}
-
-export function useKLFile(path: string | undefined) {
-  return useQuery({
-    queryKey: klKeys.file(path!),
-    queryFn: () => knowledgeLibraryApi.getFile(path!),
-    enabled: !!path,
-  });
-}
-
-export function useKLSearch(query: string, enabled = true) {
-  return useQuery({
-    queryKey: klKeys.search(query),
-    queryFn: () => knowledgeLibraryApi.searchLibrary(query),
-    enabled: enabled && query.length > 2,
-  });
-}
-
-// ============== Query (RAG) ==============
-
-export function useKLQueryLibrary() {
-  return useMutation({
-    mutationFn: (input: KLQueryInput) => knowledgeLibraryApi.queryLibrary(input),
-  });
-}
-
-export function useKLConversations(limit = 20) {
-  return useQuery({
-    queryKey: klKeys.conversations(),
-    queryFn: () => knowledgeLibraryApi.listConversations(limit),
-  });
-}
-
-export function useKLConversation(conversationId: string | undefined) {
-  return useQuery({
-    queryKey: klKeys.conversation(conversationId!),
-    queryFn: () => knowledgeLibraryApi.getConversation(conversationId!),
-    enabled: !!conversationId,
-  });
-}
-
-export function useKLDeleteConversation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (conversationId: string) => knowledgeLibraryApi.deleteConversation(conversationId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: klKeys.conversations() });
-    },
-  });
-}
-```
+Query keys must include parameters (e.g. `limit`, `path`, `query`) to avoid cache collisions.
 
 ---
 
-## Step 5: Create Zustand Store
+## Step 5: Create Zustand Store (UI-only State)
 
-Create `apps/ui/src/store/knowledge-library-store.ts`:
+Create `apps/ui/src/store/knowledge-library-store.ts`.
 
-```typescript
-// apps/ui/src/store/knowledge-library-store.ts
+Required UI state for the upload-first workflow:
 
-import { create } from 'zustand';
-import { devtools, persist } from 'zustand/middleware';
-import type { KLMergePreview, KLQueryResponse } from '@automaker/types';
+- `activeView` (if using tabs)
+- `currentSessionId`
+- `stagedUpload: { file: File; fileName: string } | null` (do NOT persist File objects)
+- `selectedBlockId`
+- `proposedNewFiles: Record<string, { title: string; overview: string; isValid: boolean; errors: string[] }>`
+- `sessionTranscript: Array<{ id: string; role: 'system' | 'assistant' | 'user'; content: string; timestamp?: string; level?: 'info' | 'error' }>`
+- `draftUserMessage: string` (Input Mode “chat” input value)
+- `activeRoutingGroupKey: string | null` (for grouping blocks by proposed destination file)
 
-// ============== Types ==============
-
-type KLView = 'input' | 'library' | 'query';
-
-interface KnowledgeLibraryState {
-  // Active view
-  activeView: KLView;
-  setActiveView: (view: KLView) => void;
-
-  // Current session (for input mode)
-  currentSessionId: string | null;
-  setCurrentSession: (sessionId: string | null) => void;
-
-  // Block selection
-  selectedBlockId: string | null;
-  selectBlock: (blockId: string | null) => void;
-
-  // Merge dialog
-  mergeDialogOpen: boolean;
-  selectedMerge: KLMergePreview | null;
-  openMergeDialog: (merge: KLMergePreview) => void;
-  closeMergeDialog: () => void;
-
-  // Library browser
-  selectedFilePath: string | null;
-  setSelectedFile: (path: string | null) => void;
-
-  // Query mode
-  currentConversationId: string | null;
-  queryHistory: KLQueryResponse[];
-  setConversation: (conversationId: string | null) => void;
-  addQueryResult: (result: KLQueryResponse) => void;
-  clearQueryHistory: () => void;
-
-  // Search
-  searchQuery: string;
-  setSearchQuery: (query: string) => void;
-}
-
-// ============== Store ==============
-
-export const useKnowledgeLibraryStore = create<KnowledgeLibraryState>()(
-  devtools(
-    persist(
-      (set) => ({
-        // Active view
-        activeView: 'library',
-        setActiveView: (view) => set({ activeView: view }),
-
-        // Current session
-        currentSessionId: null,
-        setCurrentSession: (sessionId) => set({ currentSessionId: sessionId }),
-
-        // Block selection
-        selectedBlockId: null,
-        selectBlock: (blockId) => set({ selectedBlockId: blockId }),
-
-        // Merge dialog
-        mergeDialogOpen: false,
-        selectedMerge: null,
-        openMergeDialog: (merge) => set({ mergeDialogOpen: true, selectedMerge: merge }),
-        closeMergeDialog: () => set({ mergeDialogOpen: false, selectedMerge: null }),
-
-        // Library browser
-        selectedFilePath: null,
-        setSelectedFile: (path) => set({ selectedFilePath: path }),
-
-        // Query mode
-        currentConversationId: null,
-        queryHistory: [],
-        setConversation: (conversationId) => set({ currentConversationId: conversationId }),
-        addQueryResult: (result) =>
-          set((state) => ({
-            queryHistory: [...state.queryHistory, result],
-            currentConversationId: result.conversation_id,
-          })),
-        clearQueryHistory: () => set({ queryHistory: [], currentConversationId: null }),
-
-        // Search
-        searchQuery: '',
-        setSearchQuery: (query) => set({ searchQuery: query }),
-      }),
-      {
-        name: 'knowledge-library-storage',
-        partialize: (state) => ({
-          currentSessionId: state.currentSessionId,
-          currentConversationId: state.currentConversationId,
-          activeView: state.activeView,
-        }),
-      }
-    ),
-    { name: 'KnowledgeLibraryStore' }
-  )
-);
-```
+Persist only stable primitives (`activeView`, `currentSessionId`) as needed.
 
 ---
 
 ## Acceptance Criteria
 
-- [ ] Environment variable `VITE_KNOWLEDGE_LIBRARY_API` configured
-- [ ] TypeScript types created in `libs/types/src/knowledge-library.ts`
-- [ ] Types exported from `libs/types/src/index.ts`
-- [ ] API client created in `apps/ui/src/lib/knowledge-library-api.ts`
-- [ ] TanStack Query hooks created
-- [ ] Zustand store created
-- [ ] Health check hook works: `useKLHealth()` returns `{ status: 'healthy' }`
-- [ ] Sessions can be listed: `useKLSessions()` returns sessions array
-
----
-
-## Testing the Integration
-
-After implementing, test the connection:
-
-```typescript
-// In a React component or test file
-import { useKLHealth, useKLLibrary } from '@/hooks/queries/use-knowledge-library';
-
-function TestConnection() {
-  const health = useKLHealth();
-  const library = useKLLibrary();
-
-  if (health.isLoading) return <div>Checking API connection...</div>;
-  if (health.error) return <div>API not available: {health.error.message}</div>;
-
-  return (
-    <div>
-      <p>API Status: {health.data?.status}</p>
-      <p>Library Files: {library.data?.total_files ?? 'Loading...'}</p>
-    </div>
-  );
-}
-```
+- [ ] `VITE_KNOWLEDGE_LIBRARY_API` works and is typed in `apps/ui/src/vite-env.d.ts`
+- [ ] Types match backend schemas and include create-file `title + overview` metadata
+- [ ] Client hits the correct endpoints and supports upload-first session flow
+- [ ] `create_file` selections enforce required `Title` + `## Overview` (50–250 chars)
+- [ ] Hooks cover blocks + cleanup + routing approval + execution
+- [ ] WebSocket stream can drive an Input Mode transcript/log (`connected`, progress, ready, error)
+- [ ] WebSocket supports user guidance + question/answer (`user_message`, `question`, `answer`)
+- [ ] Knowledge Library offline shows “disconnected” (non-fatal), not global “server offline”
 
 ---
 
 ## Notes for Sub-Plan F-3
 
-The UI components will use:
+F-3’s “Proposed New Files” panel depends on:
 
-- `useKnowledgeLibraryStore()` for local UI state
-- `useKL*` hooks for server state
-- Types from `@automaker/types` for type safety
+- Routing plan options including `proposed_file_title` + `proposed_file_overview`
+- `plan/select/{block_id}` accepting `override_file_title/overview` and `custom_file_title/overview`
+- Library file metadata including `overview`, `is_valid`, and `validation_errors` for red badges
 
 ---
 

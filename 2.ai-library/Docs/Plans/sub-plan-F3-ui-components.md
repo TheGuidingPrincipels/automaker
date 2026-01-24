@@ -15,6 +15,15 @@ Replace the "Blueprints" section in Knowledge Hub with the AI-Library "Knowledge
 2. **Library Browser** - Browse and search the library
 3. **Query Mode** - Ask questions with RAG
 
+### V1 Scope (Non-Negotiable)
+
+- **Upload-first ingestion only** (one markdown file per session). Paste-ingestion is deferred to avoid breaking changes.
+- Create-file destinations must require **Title + Overview**:
+  - Length **50–250 chars** after trim + internal whitespace normalization
+  - Stored in the file as a **case-sensitive** `## Overview` section
+- Existing library files missing a valid `## Overview` show a **red badge + errors** (but routing into them is allowed).
+- If Knowledge Library API is offline, show **“Knowledge Library disconnected”** (non-fatal).
+
 ---
 
 ## Architecture Overview
@@ -83,13 +92,17 @@ apps/ui/src/components/views/knowledge-library/
 │   │
 │   ├── input-mode/
 │   │   ├── index.tsx                # Input mode container
-│   │   ├── session-list.tsx         # List of extraction sessions
-│   │   ├── new-session-dialog.tsx   # Create session + upload
+│   │   ├── session-list.tsx         # (Optional) list/select previous sessions
+│   │   ├── control-dock.tsx         # Bottom dock: Start | transcript/chat | uploads
+│   │   ├── session-transcript.tsx   # Displays WS stream events as a chat-like log
+│   │   ├── dropzone-overlay.tsx     # Full-page drag/drop support
+│   │   ├── staged-upload.tsx        # Shows selected file + clear/replace actions
 │   │   ├── plan-review/
 │   │   │   ├── index.tsx            # Plan review screen
 │   │   │   ├── cleanup-phase.tsx    # Keep/discard decisions
 │   │   │   ├── routing-phase.tsx    # Destination selection
 │   │   │   ├── block-card.tsx       # Single block with options
+│   │   │   ├── proposed-new-files.tsx # Deduped create_file proposals (Title + Overview required)
 │   │   │   ├── mode-toggle.tsx      # Strict/Refinement toggle
 │   │   │   └── execution-status.tsx # Execute + verification results
 │   │   └── merge-dialog.tsx         # Triple-view merge preview
@@ -99,7 +112,7 @@ apps/ui/src/components/views/knowledge-library/
 │   │   ├── category-tree.tsx        # Folder/category navigation
 │   │   ├── file-list.tsx            # Files in current category
 │   │   ├── file-viewer.tsx          # Markdown file preview
-│   │   └── search-bar.tsx           # Keyword search
+│   │   └── search-bar.tsx           # Keyword + semantic search toggle
 │   │
 │   └── query-mode/
 │       ├── index.tsx                # Query mode container
@@ -178,33 +191,88 @@ export function KnowledgeLibrary() {
 
 ## Step 4: Input Mode Components
 
-### 4.1 Session List
+### 4.1 Layout: Top Review + Bottom Dock (matches required UX)
 
-Shows existing sessions and allows creating new ones:
+The Input Mode UI should feel like a single workflow screen:
+
+- **Top area**: up to 3 columns of block review / decisions (only visible when user input is needed)
+- **Bottom dock**: always visible; contains:
+  - Left: **Start New Session** (enabled only when a file is staged)
+  - Center: **chat transcript** (system progress + AI messages) + **guidance input** (user → Claude context)
+  - Right: upload area (drag/drop + file picker)
+
+### 4.2 Staged Upload + Start Button (upload-first)
+
+The user flow is:
+
+1. Drag/drop or pick a markdown file (staged in UI, not uploaded yet)
+2. Click **Start New Session** → UI calls:
+   - `POST /api/sessions` (create empty session)
+   - `POST /api/sessions/{id}/upload` (uploads + parses)
+3. UI opens `WS /api/sessions/{id}/stream` and displays events in the transcript
+4. UI sends `{ "command": "generate_cleanup" }` to start AI cleanup generation (streamed)
+5. On `cleanup_ready`, UI fetches `GET /api/sessions/{id}/cleanup` and transitions into cleanup decisions
+6. After cleanup approval, UI sends `{ "command": "generate_routing" }` (streamed) and then loads `GET /api/sessions/{id}/plan` on `routing_ready`
+7. After routing approval, UI executes via `POST /api/sessions/{id}/execute`
+
+#### 4.2.2 Guidance Messages (Required)
+
+The user can send short guidance messages that influence AI planning (not ingestion). Examples:
+
+- “These blocks should go into `docs/auth.md`”
+- “Avoid creating new files unless necessary”
+
+Implementation:
+
+- The ControlDock “Send” button sends a WebSocket command:
+  - `{ "command": "user_message", "message": "<text>" }`
+- The UI appends the user message to the transcript immediately (optimistic).
+- The backend includes these messages as “User guidance” in subsequent cleanup/routing prompts.
+
+#### 4.2.3 Claude Questions (Required)
+
+Sometimes Claude needs more context. When that happens:
+
+- Backend emits `event_type: "question"` with `data: { question_id, message }`
+- UI shows the question in the transcript and switches the input into “Answer” mode
+- User sends `{ "command": "answer", "question_id": "...", "message": "<answer>" }`
+- Multiple questions can be asked; the UI should allow answering each pending `question_id`.
+- After all pending questions are answered, the UI triggers the relevant generation command again:
+  - if the session is waiting on cleanup: `generate_cleanup`
+  - if the session is waiting on routing: `generate_routing`
+
+#### 4.2.1 Full-Page Drag & Drop (Required)
+
+Support drag/drop in two ways:
+
+- A **visible upload area** on the right side of the bottom dock
+- A **full-page dropzone overlay** (so dropping anywhere on the page stages the file)
+
+Rules:
+
+- Only 1 markdown file can be staged at a time (replace/clear actions)
+- No auto-start on drop; user must explicitly click **Start New Session**
 
 ```typescript
-// input-mode/index.tsx
+// input-mode/index.tsx (conceptual layout)
 export function InputMode() {
-  const { currentSessionId, setCurrentSession } = useKnowledgeLibraryStore();
-  const sessions = useKLSessions();
-
-  if (currentSessionId) {
-    return <PlanReview sessionId={currentSessionId} onBack={() => setCurrentSession(null)} />;
-  }
+  const { currentSessionId } = useKnowledgeLibraryStore();
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold">Extraction Sessions</h2>
-        <NewSessionDialog />
+    <div className="h-full flex flex-col">
+      {/* Top: review columns (only when session active) */}
+      <div className="flex-1 overflow-hidden">
+        {currentSessionId ? <PlanReview sessionId={currentSessionId} /> : <EmptyState />}
       </div>
-      <SessionList sessions={sessions.data?.sessions ?? []} />
+
+      {/* Bottom: always-visible dock */}
+      <ControlDock />
     </div>
   );
 }
 ```
 
-### 4.2 Plan Review (Core UI)
+### 4.3 Plan Review (Core UI)
 
 The plan review screen shows all blocks at once with cleanup → routing → execute workflow:
 
@@ -243,7 +311,50 @@ export function PlanReview({ sessionId, onBack }) {
 }
 ```
 
-### 4.3 Block Card
+### 4.4 Routing Phase: Blocks + Proposed New Files Panel
+
+Routing must include a deduped list of `create_file` proposals across all blocks.
+
+Rules:
+
+- If the selected destination action is `create_file`, **Title + Overview are required**
+- Overview must be 50–250 chars after trim + whitespace normalization
+- The UI must allow editing AI-suggested Title/Overview before plan approval
+- The UI should show a warning if the chosen destination file is invalid (missing valid `## Overview`)
+- Title/Overview are decided **once per new destination file** (shared across all blocks creating that file)
+
+#### Grouping Requirement (User Experience)
+
+Blocks should be presented **grouped by proposed destination file** so the user can review related placements together.
+
+Recommended grouping key (initial): `block.options[0]?.destination_file` (top suggestion), falling back to “Ungrouped”.
+
+UI behavior:
+
+- Show a “Destination Groups” selector/list (file path + count).
+- When a group is selected, render up to 3 blocks from that group as the visible columns.
+- When a block’s selection changes to a different destination file, it moves groups accordingly.
+- If a group has more than 3 blocks, provide next/prev controls within the group.
+
+Suggested layout in RoutingPhase:
+
+- Left/center: 1–3 block columns (BlockCards)
+- Right: `ProposedNewFiles` panel listing all new files to be created (path + Title input + Overview textarea)
+- Bottom: “Approve Routing Plan” button (disabled until all blocks resolved AND all proposed new files are valid)
+
+Recommended bulk actions (optional but high-value):
+
+- “Select best for all pending” (select option_index=0 for all pending blocks)
+- “Reject all pending” (mark as rejected)
+
+Manual override controls (required for edge cases):
+
+- Choose a custom destination file path
+- Choose / type a destination section
+- Choose an action (append / create_section / create_file / insert_before / insert_after)
+- If custom action is `create_file`, require Title + Overview inputs
+
+### 4.5 Block Card
 
 Each block shows content preview and destination options:
 
@@ -275,7 +386,11 @@ export function BlockCard({ block, sessionId, hasMerge, onViewMerge }) {
             <button
               key={idx}
               className="w-full text-left border rounded p-3 hover:bg-muted"
-              onClick={() => selectDestination.mutate({ blockId: block.block_id, option_index: idx })}
+              onClick={() => selectDestination.mutate({
+                blockId: block.block_id,
+                option_index: idx,
+                // If opt.action === "create_file", the UI must also send override_file_title + override_file_overview
+              })}
             >
               <div className="flex justify-between">
                 <span className="font-medium">{opt.destination_file}</span>
@@ -347,22 +462,47 @@ Renders markdown content with syntax highlighting:
 ```typescript
 // library-browser/file-viewer.tsx
 export function FileViewer({ path }) {
-  const file = useKLFile(path);
+  const meta = useKLFileMetadata(path);
+  const content = useKLFileContent(path);
 
-  if (file.isLoading) return <Skeleton />;
-  if (file.error) return <Alert variant="destructive">Failed to load file</Alert>;
+  if (meta.isLoading || content.isLoading) return <Skeleton />;
+  if (meta.error || content.error) return <Alert variant="destructive">Failed to load file</Alert>;
 
   return (
     <div className="prose prose-sm max-w-none dark:prose-invert">
       <div className="flex justify-between items-center mb-4">
         <h2>{path}</h2>
-        <Badge variant="outline">{file.data?.metadata?.block_count} blocks</Badge>
+        <div className="flex items-center gap-2">
+          {meta.data?.is_valid === false && (
+            <Badge variant="destructive">Invalid</Badge>
+          )}
+          <Badge variant="outline">{meta.data?.block_count} blocks</Badge>
+        </div>
       </div>
-      <ReactMarkdown>{file.data?.content}</ReactMarkdown>
+      {meta.data?.is_valid === false && (
+        <Alert variant="destructive">
+          <div className="font-medium">File validation failed</div>
+          <ul>
+            {(meta.data?.validation_errors ?? []).map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+        </Alert>
+      )}
+      <ReactMarkdown>{content.data?.content}</ReactMarkdown>
     </div>
   );
 }
 ```
+
+### 5.3 Invalid File Badges (Required)
+
+When rendering file lists, show:
+
+- A red “Invalid” badge if the file metadata indicates missing/invalid `## Overview`
+- Inline validation errors (e.g., “Missing ## Overview”, “Overview must be 50–250 chars”)
+
+Routing into invalid files is allowed, but the routing UI must show a warning.
 
 ---
 

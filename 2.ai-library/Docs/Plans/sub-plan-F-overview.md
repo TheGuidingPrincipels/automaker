@@ -90,21 +90,29 @@ Sub-Plan F integrates the AI-Library backend into the Automaker frontend, replac
 - Startup script for AI-Library API
 - API endpoint documentation
 - Health check verification
+- Backend contract updates required for the UI:
+  - Upload-first sessions (create empty session, then upload)
+  - Persistent uploads (source file must remain accessible to the system)
+  - Library file validation + `## Overview` metadata
 
 ### F-2: API Client & Types
 
-- TypeScript types matching AI-Library API (`KLSession`, `KLRoutingPlan`, etc.)
+- TypeScript types matching AI-Library API schemas
 - API client class (`knowledgeLibraryApi`)
 - TanStack Query hooks (`useKLSession`, `useKLLibrary`, etc.)
 - Zustand store for UI state
+- Non-fatal offline behavior (“Knowledge Library disconnected”)
 
 ### F-3: UI Components
 
 - Main container with tab navigation (Input / Library / Query)
-- Input Mode: Session list, plan review, block cards, execution
-- Library Browser: Category tree, file viewer, search
+- Input Mode (V1): upload-first ingestion (one markdown file per session), plan review, block cards, execution
+- Library Browser: Category tree, file viewer, keyword + semantic search, invalid file badges
 - Query Mode: Chat interface, answer cards with citations
 - Integration with existing Automaker UI patterns
+- New file creation requires:
+  - `# Title`
+  - case-sensitive `## Overview` (50–250 chars after trim + whitespace normalization)
 
 ---
 
