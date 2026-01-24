@@ -2,33 +2,43 @@
 
 Synchronize automaker (main) and automaker-dev (dev/improvements) ensuring no work is lost.
 
+## Modes
+
+| Command        | Mode         | Final Action                          |
+| -------------- | ------------ | ------------------------------------- |
+| `/sync-dev`    | Standard     | Push directly to main branch          |
+| `/sync-dev:pr` | Pull Request | Create a PR for review before merging |
+
+**Check the argument**: If `$ARGUMENTS` contains `pr` or `:pr`, use **PR Mode**. Otherwise, use **Standard Mode**.
+
 ## Purpose
 
-Commits all uncommitted changes, merges dev into main, pushes to remote, and syncs both repos.
+Commits all uncommitted changes, merges dev into main (or creates PR), and syncs repos.
 
 ```
 automaker-dev (dev/improvements)
         │
         │ 1. Commit uncommitted changes
-        │ 2. Merge to main
+        │ 2. Merge to main (Standard) OR Create PR (PR Mode)
         ▼
 automaker (main)
         │
-        │ 3. Push to remote
+        │ 3. Push to remote / PR created
         │ 4. Sync dev back
         ▼
 Both repos synced at same commit
 ```
 
-## Default Workflow
+## Workflow Summary
 
-This command ALWAYS:
+**Both modes do steps 1-5, then diverge:**
 
 1. Commits any uncommitted changes in dev (never leaves work behind)
 2. Commits any uncommitted changes in main
-3. Merges dev/improvements into main
-4. Pushes main to remote
-5. Syncs dev back from main
+3. Syncs main from remote (if behind)
+4. Pushes dev branch to remote (backup)
+5. **Standard Mode**: Merge dev→main, push main, sync dev back
+6. **PR Mode**: Create a PR from dev/improvements → main with summary
 
 ## Instructions
 
@@ -115,11 +125,139 @@ if [ "$BEHIND" -gt 0 ]; then
 fi
 ```
 
-### Step 5: Merge Dev into Main
+### Step 5: Push Dev Branch to Remote (Both Modes)
+
+Push dev branch as backup before any merge operations:
+
+```bash
+cd /Users/ruben/Documents/GitHub/automaker-dev
+git push origin dev/improvements
+```
+
+**Why push dev first?** If something goes wrong during merge, the dev commits are already safely on the remote.
+
+---
+
+## ⚡ MODE SPLIT: Check `$ARGUMENTS` now
+
+- If `$ARGUMENTS` contains `pr` → Go to **Step 6A (PR Mode)**
+- Otherwise → Go to **Step 6B (Standard Mode)**
+
+---
+
+### Step 6A: PR Mode - Create Pull Request
+
+**Skip the direct merge.** Instead, create a well-formatted PR.
+
+#### 6A.1: Gather Commit Information
+
+```bash
+cd /Users/ruben/Documents/GitHub/automaker
+
+echo "=== Commits to include in PR ==="
+git log main..dev/improvements --oneline
+
+echo ""
+echo "=== Detailed changes ==="
+git log main..dev/improvements --pretty=format:"### %s%n%n%b%n---" --no-merges
+
+echo ""
+echo "=== Files changed ==="
+git diff main...dev/improvements --stat
+```
+
+#### 6A.2: Analyze and Summarize
+
+Based on the commit history and changes, create a summary that:
+
+- Groups related commits into logical features/improvements
+- Uses simple, non-technical language where possible
+- Highlights user-facing changes prominently
+- Mentions technical changes briefly
+
+#### 6A.3: Create the Pull Request
+
+```bash
+cd /Users/ruben/Documents/GitHub/automaker-dev
+
+gh pr create \
+  --repo TheGuidingPrincipels/automaker \
+  --base main \
+  --head dev/improvements \
+  --title "[title based on main theme of changes]" \
+  --body "$(cat <<'EOF'
+## Summary
+
+[2-3 sentence overview of what this PR accomplishes]
+
+## What's New
+
+[Bulleted list of features/improvements, grouped logically]
+
+### Features
+- [Feature 1: brief description]
+- [Feature 2: brief description]
+
+### Improvements
+- [Improvement 1]
+- [Improvement 2]
+
+### Fixes
+- [Fix 1]
+- [Fix 2]
+
+## Technical Details
+
+[Optional: Brief notes on implementation approach if relevant]
+
+## Files Changed
+
+[Summary of areas affected: e.g., "UI components, server routes, shared types"]
+
+---
+🤖 Synced from dev/improvements via `/sync-dev:pr`
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+EOF
+)"
+```
+
+**Important:** Customize the title and body based on actual changes. The template above is a guide.
+
+#### 6A.4: Report PR to User
+
+```
+Pull Request Created
+====================
+URL: [PR URL from gh pr create output]
+From: dev/improvements → main
+
+Summary:
+[Brief 1-2 line summary]
+
+Changes included:
+- [Key change 1]
+- [Key change 2]
+- [Key change 3]
+
+Next steps:
+1. Review the PR at the URL above
+2. Merge when ready
+3. Run /sync-dev after merging to sync dev back
+```
+
+**PR Mode complete.** The dev branch is pushed and PR is created. Skip to Step 7 for final status report.
+
+---
+
+### Step 6B: Standard Mode - Merge and Push
+
+Merge dev into main and push:
 
 ```bash
 cd /Users/ruben/Documents/GitHub/automaker
 git merge dev/improvements
+git push origin main
 ```
 
 If there are merge conflicts:
@@ -127,31 +265,18 @@ If there are merge conflicts:
 1. Show the conflicting files
 2. Resolve conflicts (prefer dev changes unless there's a reason not to)
 3. Complete the merge
+4. Push main
 
-### Step 6: Push Both Branches to Remote
-
-Push dev FIRST (backup), then main:
-
-```bash
-# Push dev branch as backup (in case merge fails later)
-cd /Users/ruben/Documents/GitHub/automaker-dev
-git push origin dev/improvements
-
-# Push main
-cd /Users/ruben/Documents/GitHub/automaker
-git push origin main
-```
-
-**Why push dev first?** If something goes wrong after merging but before pushing main, the dev commits are already safely on the remote.
-
-### Step 7: Sync Dev Back from Main
+#### 6B.1: Sync Dev Back from Main
 
 ```bash
 cd /Users/ruben/Documents/GitHub/automaker-dev
 git merge origin/main
 ```
 
-### Step 8: Final Verification
+### Step 7: Final Verification (Standard Mode Only)
+
+**Note:** In PR Mode, skip this step - repos won't be fully synced until PR is merged.
 
 Run comprehensive verification to ensure NO commits were left behind:
 
@@ -211,9 +336,9 @@ fi
 
 **CRITICAL**: If ANY of these checks show warnings, DO NOT proceed. Investigate and resolve before considering the sync complete.
 
-### Step 9: Report to User
+### Step 8: Report to User
 
-Provide a summary table:
+#### Standard Mode Report
 
 ```
 Sync Complete
@@ -232,6 +357,31 @@ Actions taken:
 4. Synced dev from main
 
 Both repositories are ready for development.
+```
+
+#### PR Mode Report
+
+```
+Pull Request Created
+====================
+URL: [PR URL]
+From: dev/improvements → main
+
+Summary:
+[Brief description of changes]
+
+What's included:
+- [Feature/improvement 1]
+- [Feature/improvement 2]
+- [etc.]
+
+Next steps:
+1. Review the PR: [URL]
+2. Merge when ready
+3. Run `/sync-dev` after merging to sync dev back
+
+Dev branch: pushed ✅
+PR: created ✅
 ```
 
 ## Edge Cases
@@ -265,23 +415,38 @@ If dev has no uncommitted changes and is already synced with main:
 
 ## Safety Guarantees
 
+### Both Modes
+
 - ✅ All uncommitted work is committed (never lost)
-- ✅ All commits are pushed to remote (backed up)
+- ✅ Dev branch pushed to remote (backed up)
+- ✅ Pre-sync orphan check prevents silent commit loss
+- ✅ Stash check warns about potentially forgotten work
+
+### Standard Mode
+
 - ✅ Both repos end at the same commit (synced)
 - ✅ Dev branch always has all main changes
-- ✅ Dev branch pushed BEFORE main merge (double backup)
-- ✅ Pre-sync orphan check prevents silent commit loss
 - ✅ Post-sync verification confirms zero orphaned commits
-- ✅ Stash check warns about potentially forgotten work
+
+### PR Mode
+
+- ✅ Changes reviewed before merging to main
+- ✅ Clear summary of all work in PR description
+- ✅ Merge happens through GitHub (audit trail)
 
 ## Quick Reference
 
 ```
-/sync-dev workflow:
-1. Pre-check (orphans, stashes) → 2. Commit dev → 3. Commit main → 4. Merge dev→main → 5. Push dev+main → 6. Sync dev → 7. Verify (zero orphans)
+/sync-dev (Standard Mode):
+1. Pre-check → 2. Commit main → 3. Commit dev → 4. Sync main from remote → 5. Push dev → 6B. Merge dev→main, push main, sync dev → 7. Verify → 8. Report
+
+/sync-dev:pr (PR Mode):
+1. Pre-check → 2. Commit main → 3. Commit dev → 4. Sync main from remote → 5. Push dev → 6A. Create PR → 8. Report
 ```
 
-## Never Leave Commits Behind Checklist
+## Completion Checklists
+
+### Standard Mode Checklist
 
 Before marking sync complete, ALL must be true:
 
@@ -293,3 +458,13 @@ Before marking sync complete, ALL must be true:
 - [ ] Dev ahead of origin: 0
 - [ ] No uncommitted changes in either repo
 - [ ] Stashes reviewed (if any exist)
+
+### PR Mode Checklist
+
+Before marking PR creation complete:
+
+- [ ] Dev branch pushed to origin
+- [ ] No uncommitted changes in dev repo
+- [ ] PR created successfully
+- [ ] PR URL provided to user
+- [ ] PR body summarizes all changes clearly
