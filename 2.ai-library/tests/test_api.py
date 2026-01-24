@@ -4,6 +4,7 @@
 import pytest
 from unittest.mock import AsyncMock, patch
 from datetime import datetime
+from pathlib import Path
 
 from httpx import AsyncClient, ASGITransport
 
@@ -16,13 +17,15 @@ from src.api.dependencies import (
     get_config,
     get_vector_store,
 )
-from src.config import Config, APIConfig
+from src.config import Config, APIConfig, LibraryConfig, SessionsConfig
 from src.models.session import ExtractionSession, SessionPhase
 from src.models.content import SourceDocument, ContentBlock, BlockType
 from src.models.content_mode import ContentMode
 from src.models.cleanup_plan import CleanupPlan, CleanupItem, CleanupDisposition
 from src.models.library import LibraryFile, LibraryCategory
 from src.models.routing_plan import RoutingPlan, BlockRoutingItem, BlockDestination
+from src.session.manager import SessionManager
+from src.session.storage import SessionStorage
 from src.query.engine import QueryResult
 from src.query.retriever import RetrievedChunk
 from src.extraction.checksums import generate_checksums
@@ -105,8 +108,13 @@ def mock_session_manager(mock_session):
     manager.approve_plan = AsyncMock(return_value=True)
     manager.select_destination = AsyncMock()
     manager.storage = AsyncMock()
+    manager.storage.sessions_path = "./sessions"
+    manager.storage.upload_dir = lambda session_id: (
+        Path(manager.storage.sessions_path) / "uploads" / session_id
+    )
     manager.storage.save = AsyncMock()
     manager.storage.delete = AsyncMock()
+    manager.storage.delete_uploads = AsyncMock()
     return manager
 
 
@@ -243,6 +251,52 @@ async def client(
 
 
 @pytest.fixture
+async def client_with_real_session_manager(
+    tmp_path,
+    mock_library_scanner,
+    mock_semantic_search,
+    mock_vector_store,
+):
+    """Create test client with real session manager + temp storage."""
+    sessions_path = tmp_path / "sessions"
+    library_path = tmp_path / "library"
+    config = Config(
+        library=LibraryConfig(path=str(library_path)),
+        sessions=SessionsConfig(path=str(sessions_path)),
+    )
+    storage = SessionStorage(str(sessions_path))
+    manager = SessionManager(storage, str(library_path))
+    app = create_app()
+
+    async def override_get_config():
+        return config
+
+    async def override_get_session_manager(config: Config = None):
+        return manager
+
+    async def override_get_library_scanner(config: Config = None):
+        return mock_library_scanner
+
+    async def override_get_vector_store(config: Config = None):
+        return mock_vector_store
+
+    async def override_get_semantic_search(config: Config = None, vector_store=None):
+        return mock_semantic_search
+
+    app.dependency_overrides[get_config] = override_get_config
+    app.dependency_overrides[get_session_manager] = override_get_session_manager
+    app.dependency_overrides[get_library_scanner] = override_get_library_scanner
+    app.dependency_overrides[get_vector_store] = override_get_vector_store
+    app.dependency_overrides[get_semantic_search] = override_get_semantic_search
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client, sessions_path
+
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
 async def client_with_query_engine(
     mock_config,
     mock_session_manager,
@@ -363,6 +417,35 @@ async def test_create_session_invalid_content_mode(client, mock_session_manager)
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("payload", [{}, {"content_mode": "strict"}])
+async def test_create_session_allows_empty_source_path(
+    client,
+    mock_session_manager,
+    payload,
+):
+    """Create session with no source_path for upload-first flow."""
+    session = ExtractionSession(
+        id="sess_empty",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        phase=SessionPhase.INITIALIZED,
+        source=None,
+        library_path="./library",
+        content_mode=ContentMode.STRICT,
+    )
+    mock_session_manager.create_session = AsyncMock(return_value=session)
+
+    response = await client.post("/api/sessions", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["source_file"] is None
+    assert data["total_blocks"] == 0
+    for call in mock_session_manager.create_session.call_args_list:
+        assert call.kwargs.get("source_path") is None
+
+
+@pytest.mark.asyncio
 async def test_upload_source_sanitizes_filename(client, mock_session_manager):
     """Uploaded filenames should be sanitized to prevent path traversal writes."""
     from datetime import datetime
@@ -381,7 +464,7 @@ async def test_upload_source_sanitizes_filename(client, mock_session_manager):
     )
     mock_session_manager.get_session = AsyncMock(return_value=session)
 
-    # Patch parser to avoid real parsing and capture the temp path used
+    # Patch parser to avoid real parsing and capture the persisted path used
     source_doc = SourceDocument(
         file_path="upload.md",
         checksum_exact="abcdef0123456789",
@@ -401,7 +484,51 @@ async def test_upload_source_sanitizes_filename(client, mock_session_manager):
     assert response.status_code == 200
     called_path = mock_parse.call_args[0][0]
     resolved_parent = Path(called_path).resolve().parent
-    assert resolved_parent == Path("./temp_uploads").resolve()
+    expected_parent = (
+        Path(mock_session_manager.storage.sessions_path).resolve()
+        / "uploads"
+        / "sess_upload"
+    )
+    assert resolved_parent == expected_parent
+
+
+@pytest.mark.asyncio
+async def test_upload_persists_file_and_delete_cleans_up(
+    client_with_real_session_manager,
+):
+    """Uploaded files persist for session lifetime and are cleaned on delete."""
+    client, sessions_path = client_with_real_session_manager
+
+    create_response = await client.post("/api/sessions", json={})
+    assert create_response.status_code == 200
+    session_id = create_response.json()["id"]
+
+    upload_response = await client.post(
+        f"/api/sessions/{session_id}/upload",
+        files={
+            "file": (
+                "source.md",
+                b"# Title\n\n## Overview\nThis is a short overview used for tests.",
+                "text/markdown",
+            )
+        },
+    )
+    assert upload_response.status_code == 200
+
+    upload_dir = anyio.Path(sessions_path) / "uploads" / session_id
+    assert await upload_dir.exists()
+
+    uploaded_files = []
+    async for item in upload_dir.iterdir():
+        if await item.is_file():
+            uploaded_files.append(item)
+
+    assert len(uploaded_files) == 1
+    assert await uploaded_files[0].exists()
+
+    delete_response = await client.delete(f"/api/sessions/{session_id}")
+    assert delete_response.status_code == 200
+    assert not await uploaded_files[0].exists()
 
 
 @pytest.mark.asyncio
@@ -440,6 +567,10 @@ async def test_execute_plan_supports_create_file_action(client, mock_session_man
         confidence=0.9,
         reasoning="test",
         proposed_file_title="New File",
+        proposed_file_overview=(
+            "This overview describes the purpose of the new file and "
+            "meets the required length for validation."
+        ),
     )
     item = BlockRoutingItem(
         block_id="block_001",
@@ -484,8 +615,92 @@ async def test_execute_plan_supports_create_file_action(client, mock_session_man
     file_path = anyio.Path(library_path) / "tech" / "new_file.md"
     text = await file_path.read_text()
     assert "# New File" in text
+    assert "## Overview" in text
+    assert "overview describes the purpose" in text
     assert "BLOCK_START" in text
     assert SessionPhase.VERIFYING in phases
+
+
+@pytest.mark.asyncio
+async def test_execute_plan_requires_overview_for_create_file(
+    client,
+    mock_session_manager,
+    tmp_path,
+):
+    """execute_plan should require proposed_file_overview for create_file."""
+    from datetime import datetime
+    from unittest.mock import AsyncMock
+
+    library_path = str(tmp_path / "library")
+
+    block_content = "Block content"
+    exact, canonical = generate_checksums(block_content, is_code=False)
+    block = ContentBlock(
+        id="block_002",
+        block_type=BlockType.PARAGRAPH,
+        content=block_content,
+        content_canonical=block_content,
+        source_file="source.md",
+        source_line_start=1,
+        source_line_end=1,
+        heading_path=["Heading"],
+        checksum_exact=exact,
+        checksum_canonical=canonical,
+    )
+    source = SourceDocument(
+        file_path="source.md",
+        checksum_exact="abcdef0123456789",
+        total_blocks=1,
+        blocks=[block],
+    )
+
+    dest = BlockDestination(
+        destination_file="tech/new_file.md",
+        destination_section=None,
+        action="create_file",
+        confidence=0.9,
+        reasoning="test",
+        proposed_file_title="New File",
+        proposed_file_overview=None,
+    )
+    item = BlockRoutingItem(
+        block_id="block_002",
+        heading_path=["Heading"],
+        content_preview=block_content[:200],
+        options=[dest],
+        selected_option_index=0,
+        status="selected",
+    )
+    routing_plan = RoutingPlan(
+        session_id="sess_exec_create_file_missing_overview",
+        source_file="source.md",
+        content_mode="strict",
+        blocks=[item],
+        approved=True,
+    )
+
+    session = ExtractionSession(
+        id="sess_exec_create_file_missing_overview",
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+        phase=SessionPhase.READY_TO_EXECUTE,
+        source=source,
+        library_path=library_path,
+        content_mode=ContentMode.STRICT,
+        routing_plan=routing_plan,
+    )
+
+    mock_session_manager.get_session = AsyncMock(return_value=session)
+    mock_session_manager.storage.save = AsyncMock()
+
+    response = await client.post("/api/sessions/sess_exec_create_file_missing_overview/execute")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is False
+    assert any("proposed_file_overview" in err for err in data["errors"])
+
+    file_path = anyio.Path(library_path) / "tech" / "new_file.md"
+    assert not await file_path.exists()
 
 
 @pytest.mark.asyncio
@@ -700,6 +915,45 @@ async def test_get_library_structure(client, mock_library_scanner):
 
 
 @pytest.mark.asyncio
+async def test_get_library_structure_includes_validation_fields(client, mock_library_scanner):
+    """Library response includes validation fields for files."""
+    invalid_file = LibraryFile(
+        path="tech/invalid.md",
+        category="tech",
+        title="Invalid File",
+        overview=None,
+        sections=[],
+        last_modified="2024-01-01T00:00:00",
+        block_count=0,
+        is_valid=False,
+        validation_errors=["Missing ## Overview section"],
+    )
+    mock_library_scanner.scan = AsyncMock(
+        return_value={
+            "categories": [
+                LibraryCategory(
+                    name="tech",
+                    path="tech",
+                    description="Technology",
+                    files=[invalid_file],
+                    subcategories=[],
+                )
+            ],
+            "total_files": 1,
+            "total_sections": 0,
+        }
+    )
+
+    response = await client.get("/api/library")
+    assert response.status_code == 200
+    data = response.json()
+    file_data = data["categories"][0]["files"][0]
+    assert file_data["is_valid"] is False
+    assert "validation_errors" in file_data
+    assert "Missing ## Overview section" in file_data["validation_errors"]
+
+
+@pytest.mark.asyncio
 async def test_get_categories(client, mock_library_scanner):
     """Test getting categories."""
     response = await client.get("/api/library/categories")
@@ -787,3 +1041,164 @@ async def test_ask_respects_max_sources(client_with_query_engine):
     assert response.status_code == 200
     data = response.json()
     assert len(data["sources"]) == 7
+
+
+@pytest.mark.asyncio
+async def test_ask_returns_required_fields(client_with_query_engine):
+    """Ask endpoint returns all required response fields."""
+    response = await client_with_query_engine.post(
+        "/api/query/ask",
+        json={"question": "How does authentication work?"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify all required fields are present
+    assert "answer" in data
+    assert "sources" in data
+    assert "confidence" in data
+    assert "conversation_id" in data
+    assert "related_topics" in data
+
+    # Verify types
+    assert isinstance(data["answer"], str)
+    assert isinstance(data["sources"], list)
+    assert isinstance(data["confidence"], (int, float))
+    assert isinstance(data["related_topics"], list)
+
+
+@pytest.mark.asyncio
+async def test_ask_with_conversation_id(client_with_query_engine, mock_query_engine):
+    """Ask endpoint respects conversation_id for multi-turn conversations."""
+    import uuid
+    conversation_id = str(uuid.uuid4())
+
+    response = await client_with_query_engine.post(
+        "/api/query/ask",
+        json={
+            "question": "What is OAuth?",
+            "conversation_id": conversation_id,
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify conversation_id is passed through
+    mock_query_engine.query.assert_called_once()
+    call_kwargs = mock_query_engine.query.call_args.kwargs
+    assert call_kwargs.get("conversation_id") == conversation_id
+
+
+@pytest.mark.asyncio
+async def test_ask_with_invalid_conversation_id(client_with_query_engine):
+    """Ask endpoint rejects invalid conversation_id format."""
+    response = await client_with_query_engine.post(
+        "/api/query/ask",
+        json={
+            "question": "What is OAuth?",
+            "conversation_id": "invalid-uuid-format",
+        },
+    )
+    # Should fail validation due to invalid UUID format
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_ask_missing_question(client_with_query_engine):
+    """Ask endpoint requires a question field."""
+    response = await client_with_query_engine.post(
+        "/api/query/ask",
+        json={},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_ask_source_info_structure(client_with_query_engine):
+    """Ask endpoint returns properly structured source information."""
+    response = await client_with_query_engine.post(
+        "/api/query/ask",
+        json={"question": "Explain authentication", "max_sources": 3},
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify source structure
+    assert len(data["sources"]) == 3
+    for source in data["sources"]:
+        assert "file_path" in source
+        assert "section" in source
+        assert "similarity" in source
+        assert isinstance(source["file_path"], str)
+        assert isinstance(source["similarity"], (int, float, type(None)))
+
+
+@pytest.mark.asyncio
+async def test_ask_default_max_sources(client_with_query_engine, mock_query_engine):
+    """Ask endpoint uses default max_sources of 10 if not specified."""
+    response = await client_with_query_engine.post(
+        "/api/query/ask",
+        json={"question": "What is JWT?"},
+    )
+    assert response.status_code == 200
+
+    # Verify default top_k=10 was used
+    mock_query_engine.query.assert_called_once()
+    call_kwargs = mock_query_engine.query.call_args.kwargs
+    assert call_kwargs.get("top_k") == 10
+
+
+@pytest.mark.asyncio
+async def test_ask_confidence_range(client_with_query_engine):
+    """Ask endpoint returns confidence score in valid range."""
+    response = await client_with_query_engine.post(
+        "/api/query/ask",
+        json={"question": "What is OAuth?"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    # Confidence should be between 0 and 1
+    assert 0.0 <= data["confidence"] <= 1.0
+
+
+@pytest.mark.asyncio
+async def test_ask_conversation_not_found(client_with_query_engine, mock_query_engine):
+    """Ask endpoint returns 404 when conversation ID doesn't exist."""
+    import uuid
+    from src.query.engine import ConversationNotFoundError
+
+    conversation_id = str(uuid.uuid4())
+
+    # Mock the query engine to raise ConversationNotFoundError
+    mock_query_engine.query = AsyncMock(
+        side_effect=ConversationNotFoundError(f"Conversation not found: {conversation_id}")
+    )
+
+    response = await client_with_query_engine.post(
+        "/api/query/ask",
+        json={
+            "question": "Follow-up question",
+            "conversation_id": conversation_id,
+        },
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_ask_internal_error_handling(client_with_query_engine, mock_query_engine):
+    """Ask endpoint handles internal errors gracefully."""
+    # Mock the query engine to raise a generic exception
+    mock_query_engine.query = AsyncMock(
+        side_effect=RuntimeError("Database connection failed")
+    )
+
+    response = await client_with_query_engine.post(
+        "/api/query/ask",
+        json={"question": "Test question"},
+    )
+    assert response.status_code == 500
+    data = response.json()
+    # API error responses contain 'detail' field
+    assert "detail" in data
+    assert "Ask failed" in data["detail"]

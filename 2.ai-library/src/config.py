@@ -60,9 +60,19 @@ class SourceConfig(BaseModel):
 # Phase D: REST API Configuration
 class APIConfig(BaseModel):
     """Configuration for REST API server."""
-    host: str = "127.0.0.1"
-    port: int = 8000
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000", "http://localhost:5173"])
+    host: str = "0.0.0.0"
+    port: int = 8001
+    # Both localhost and 127.0.0.1 variants are needed because browsers treat them
+    # as different origins - some browsers resolve 'localhost' to the hostname while
+    # others resolve it to the IP address 127.0.0.1. CORS requires exact origin match.
+    cors_origins: list[str] = Field(default_factory=lambda: [
+        "http://localhost:3007",   # Automaker Vite dev server (hostname)
+        "http://localhost:3008",   # Automaker backend (self, for swagger etc)
+        "http://localhost:5173",   # Vite alternate port
+        "http://localhost:5174",   # Vite alt port
+        "http://127.0.0.1:3007",   # Automaker Vite dev server (IP variant)
+        "http://127.0.0.1:3008",   # Automaker backend (IP variant)
+    ])
     cors_methods: list[str] = Field(default_factory=lambda: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
     cors_headers: list[str] = Field(default_factory=lambda: ["Content-Type", "Authorization", "X-Request-ID"])
     debug: bool = False
@@ -145,6 +155,44 @@ class Config(BaseModel):
         return self.library.path
 
 
+def _get_env_value(name: str) -> Optional[str]:
+    """Get environment variable value, treating empty as unset."""
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return None
+    return value.strip()
+
+
+def _get_env_int(name: str) -> Optional[int]:
+    value = _get_env_value(name)
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except ValueError as e:
+        raise ValueError(f"{name} must be an integer") from e
+
+
+def _apply_env_overrides(config: Config) -> Config:
+    api_host = _get_env_value("API_HOST")
+    if api_host is not None:
+        config.api.host = api_host
+
+    api_port = _get_env_int("API_PORT")
+    if api_port is not None:
+        config.api.port = api_port
+
+    library_path = _get_env_value("LIBRARY_PATH")
+    if library_path is not None:
+        config.library.path = library_path
+
+    sessions_path = _get_env_value("SESSIONS_PATH")
+    if sessions_path is not None:
+        config.sessions.path = sessions_path
+
+    return config
+
+
 async def load_config(config_path: Optional[str] = None) -> Config:
     """Load configuration from YAML file (async)."""
     path = anyio.Path(config_path or "configs/settings.yaml")
@@ -152,9 +200,10 @@ async def load_config(config_path: Optional[str] = None) -> Config:
         text = await path.read_text()
         # Run YAML parsing in a thread to avoid blocking the event loop
         data = await anyio.to_thread.run_sync(yaml.safe_load, text)
-        return Config(**data) if data else Config()
+        config = Config(**data) if data else Config()
+        return _apply_env_overrides(config)
 
-    return Config()
+    return _apply_env_overrides(Config())
 
 
 async def get_config() -> Config:

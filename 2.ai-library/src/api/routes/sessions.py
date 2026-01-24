@@ -38,8 +38,9 @@ from ..schemas import (
     ErrorResponse,
     StreamEvent,
 )
-from ...models.session import ExtractionSession, SessionPhase
+from ...models.session import ExtractionSession, SessionPhase, ConversationTurn, PendingQuestion
 from ...models.content_mode import ContentMode
+from ...models.routing_plan import validate_overview_text
 from ...models.cleanup_plan import CleanupDisposition
 from ...execution.writer import ContentWriter
 
@@ -123,6 +124,14 @@ async def delete_session(
             detail=f"Session not found: {session_id}",
         )
 
+    try:
+        await manager.storage.delete_uploads(session)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Upload cleanup failed: {e}",
+        ) from e
+
     # Delete from storage
     await manager.storage.delete(session_id)
     return SuccessResponse(message=f"Session {session_id} deleted")
@@ -157,23 +166,20 @@ async def upload_source(
             detail=f"File too large. Maximum size is {MAX_UPLOAD_SIZE // (1024 * 1024)} MB",
         )
 
-    # Save uploaded file temporarily
-    temp_dir = anyio.Path("./temp_uploads")
-    await temp_dir.mkdir(parents=True, exist_ok=True)
-
     safe_name = _sanitize_upload_filename(file.filename)
 
-    # Ensure strict containment in temp_dir
-    temp_dir_abs = Path(str(temp_dir)).resolve()
-    target_path = (temp_dir_abs / f"{session_id}_{safe_name}").resolve()
+    uploads_dir = Path(manager.storage.upload_dir(session_id)).resolve()
+    uploads_dir_async = anyio.Path(uploads_dir)
+    await uploads_dir_async.mkdir(parents=True, exist_ok=True)
 
-    if not str(target_path).startswith(str(temp_dir_abs)):
+    target_path = (uploads_dir / safe_name).resolve()
+    if not target_path.is_relative_to(uploads_dir):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid filename",
         )
 
-    temp_path = anyio.Path(target_path)
+    upload_path = anyio.Path(target_path)
     content = await file.read()
 
     # Double-check size after reading (in case file.size was not available)
@@ -183,24 +189,19 @@ async def upload_source(
             detail=f"File too large. Maximum size is {MAX_UPLOAD_SIZE // (1024 * 1024)} MB",
         )
 
-    await temp_path.write_bytes(content)
+    await upload_path.write_bytes(content)
 
-    try:
-        # Parse the file
-        from ...extraction.parser import parse_markdown_file
+    # Parse the file
+    from ...extraction.parser import parse_markdown_file
 
-        source_doc = await parse_markdown_file(str(temp_path))
-        session.source = source_doc
-        session.execution_log.append(
-            f"Uploaded and parsed {source_doc.total_blocks} blocks from {file.filename}"
-        )
-        await manager.storage.save(session)
+    source_doc = await parse_markdown_file(str(target_path))
+    session.source = source_doc
+    session.execution_log.append(
+        f"Uploaded and parsed {source_doc.total_blocks} blocks from {file.filename}"
+    )
+    await manager.storage.save(session)
 
-        return SessionResponse.from_session(session)
-    finally:
-        # Clean up temp file
-        if await temp_path.exists():
-            await temp_path.unlink()
+    return SessionResponse.from_session(session)
 
 
 def _sanitize_upload_filename(filename: Optional[str]) -> str:
@@ -211,8 +212,43 @@ def _sanitize_upload_filename(filename: Optional[str]) -> str:
     name = PurePath(filename).name
     name = name.replace("\x00", "")
     name = re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("._-")
+    name = name.lstrip(".")  # Prevent hidden files
 
     return name[:120] if name else "upload"
+
+
+def _pop_pending_question(
+    session: ExtractionSession,
+    question_id: Optional[str],
+) -> PendingQuestion:
+    """Pop a pending question by id (or FIFO)."""
+    if not session.pending_questions:
+        raise ValueError("No pending questions")
+
+    if question_id:
+        for index, question in enumerate(session.pending_questions):
+            if question.id == question_id:
+                return session.pending_questions.pop(index)
+        raise ValueError(f"Pending question not found: {question_id}")
+
+    return session.pending_questions.pop(0)
+
+
+async def _send_stream_event(
+    websocket: WebSocket,
+    event_type: str,
+    session_id: str,
+    data: dict,
+    timestamp: Optional[datetime] = None,
+) -> None:
+    """Send a StreamEvent payload with timestamp."""
+    event = StreamEvent(
+        event_type=event_type,
+        session_id=session_id,
+        data=data,
+        timestamp=timestamp or datetime.now(),
+    )
+    await websocket.send_json(event.model_dump(mode="json"))
 
 
 # =============================================================================
@@ -432,6 +468,8 @@ async def select_destination(
             custom_file=request.custom_file,
             custom_section=request.custom_section,
             custom_action=request.custom_action,
+            proposed_file_title=request.proposed_file_title,
+            proposed_file_overview=request.proposed_file_overview,
         )
         return SuccessResponse(message=f"Destination selected for block {block_id}")
     except ValueError as e:
@@ -624,6 +662,7 @@ async def execute_plan(
 
             # Get destination from selected option or custom
             proposed_file_title = None
+            proposed_file_overview = None
             proposed_section_title = None
             if item.selected_option_index is not None:
                 dest = item.options[item.selected_option_index]
@@ -631,11 +670,14 @@ async def execute_plan(
                 dest_section = dest.destination_section
                 action = dest.action
                 proposed_file_title = dest.proposed_file_title
+                proposed_file_overview = dest.proposed_file_overview
                 proposed_section_title = dest.proposed_section_title
             else:
                 dest_file = item.custom_destination_file
                 dest_section = item.custom_destination_section
                 action = item.custom_action or "append"
+                proposed_file_title = item.custom_proposed_file_title
+                proposed_file_overview = item.custom_proposed_file_overview
 
             if not dest_file:
                 error = f"Block {item.block_id}: No destination specified"
@@ -685,10 +727,36 @@ async def execute_plan(
                             error=error,
                         ))
                         continue
+                    if not proposed_file_overview:
+                        error = f"Block {block.id}: create_file requires proposed_file_overview"
+                        errors.append(error)
+                        results.append(WriteResultResponse(
+                            block_id=block.id,
+                            destination_file=dest_file,
+                            success=False,
+                            checksum_verified=False,
+                            error=error,
+                        ))
+                        continue
+
+                    try:
+                        normalized_overview = validate_overview_text(proposed_file_overview)
+                    except ValueError as e:
+                        error = f"Block {block.id}: {str(e)}"
+                        errors.append(error)
+                        results.append(WriteResultResponse(
+                            block_id=block.id,
+                            destination_file=dest_file,
+                            success=False,
+                            checksum_verified=False,
+                            error=error,
+                        ))
+                        continue
 
                     create_result = await writer.create_file(
                         destination=dest_file,
                         title=proposed_file_title,
+                        overview=normalized_overview,
                     )
 
                     if not create_result.success:
@@ -858,69 +926,159 @@ async def session_stream(
     try:
         session = await manager.get_session(session_id)
         if not session:
-            await websocket.send_json({
-                "event_type": "error",
-                "session_id": session_id,
-                "data": {"message": f"Session not found: {session_id}"},
-            })
+            await _send_stream_event(
+                websocket,
+                "error",
+                session_id,
+                {"message": f"Session not found: {session_id}"},
+            )
             await websocket.close()
             return
 
         # Send initial status
-        await websocket.send_json({
-            "event_type": "connected",
-            "session_id": session_id,
-            "data": {
+        await _send_stream_event(
+            websocket,
+            "connected",
+            session_id,
+            {
                 "phase": session.phase.value,
                 "message": "Connected to session stream",
             },
-        })
+        )
 
         # Listen for commands
         while True:
             try:
                 message = await websocket.receive_json()
                 command = message.get("command")
+                session = await manager.get_session(session_id)
+                if not session:
+                    await _send_stream_event(
+                        websocket,
+                        "error",
+                        session_id,
+                        {"message": f"Session not found: {session_id}"},
+                    )
+                    break
 
                 if command == "generate_cleanup":
+                    if session.pending_questions:
+                        question = session.pending_questions[0]
+                        await _send_stream_event(
+                            websocket,
+                            "question",
+                            session_id,
+                            question.model_dump(mode="json"),
+                            timestamp=question.created_at,
+                        )
+                        continue
+
                     # Stream cleanup plan generation
                     async for event in manager.generate_cleanup_plan_with_ai(session_id):
-                        await websocket.send_json({
-                            "event_type": event.type.value if hasattr(event.type, 'value') else str(event.type),
-                            "session_id": session_id,
-                            "data": {
+                        await _send_stream_event(
+                            websocket,
+                            event.type.value if hasattr(event.type, "value") else str(event.type),
+                            session_id,
+                            {
                                 "message": event.message,
-                                "progress": event.progress if hasattr(event, 'progress') else None,
+                                "progress": event.progress if hasattr(event, "progress") else None,
                                 "data": event.data,
                             },
-                        })
+                            timestamp=getattr(event, "timestamp", None),
+                        )
 
                 elif command == "generate_routing":
+                    if session.pending_questions:
+                        question = session.pending_questions[0]
+                        await _send_stream_event(
+                            websocket,
+                            "question",
+                            session_id,
+                            question.model_dump(mode="json"),
+                            timestamp=question.created_at,
+                        )
+                        continue
+
                     # Stream routing plan generation
                     async for event in manager.generate_routing_plan_with_ai(session_id):
-                        await websocket.send_json({
-                            "event_type": event.type.value if hasattr(event.type, 'value') else str(event.type),
-                            "session_id": session_id,
-                            "data": {
+                        await _send_stream_event(
+                            websocket,
+                            event.type.value if hasattr(event.type, "value") else str(event.type),
+                            session_id,
+                            {
                                 "message": event.message,
-                                "progress": event.progress if hasattr(event, 'progress') else None,
+                                "progress": event.progress if hasattr(event, "progress") else None,
                                 "data": event.data,
                             },
-                        })
+                            timestamp=getattr(event, "timestamp", None),
+                        )
+
+                elif command == "user_message":
+                    text = message.get("message")
+                    if not text:
+                        await _send_stream_event(
+                            websocket,
+                            "error",
+                            session_id,
+                            {"message": "user_message requires message"},
+                        )
+                        continue
+
+                    turn = ConversationTurn(role="user", content=text)
+                    session.conversation_history.append(turn)
+                    await manager.storage.save(session)
+                    await _send_stream_event(
+                        websocket,
+                        "user_message",
+                        session_id,
+                        turn.model_dump(mode="json"),
+                        timestamp=turn.timestamp,
+                    )
+
+                elif command == "answer":
+                    answer_text = message.get("answer")
+                    if not answer_text:
+                        await _send_stream_event(
+                            websocket,
+                            "error",
+                            session_id,
+                            {"message": "answer requires answer"},
+                        )
+                        continue
+
+                    try:
+                        _pop_pending_question(session, message.get("question_id"))
+                        await manager.storage.save(session)  # Save immediately after mutation
+                    except ValueError as e:
+                        await _send_stream_event(
+                            websocket,
+                            "error",
+                            session_id,
+                            {"message": str(e)},
+                        )
+                        continue
+
+                    turn = ConversationTurn(role="user", content=answer_text)
+                    session.conversation_history.append(turn)
+                    await manager.storage.save(session)
+                    await _send_stream_event(
+                        websocket,
+                        "user_message",
+                        session_id,
+                        turn.model_dump(mode="json"),
+                        timestamp=turn.timestamp,
+                    )
 
                 elif command == "ping":
-                    await websocket.send_json({
-                        "event_type": "pong",
-                        "session_id": session_id,
-                        "data": {},
-                    })
+                    await _send_stream_event(websocket, "pong", session_id, {})
 
                 else:
-                    await websocket.send_json({
-                        "event_type": "error",
-                        "session_id": session_id,
-                        "data": {"message": f"Unknown command: {command}"},
-                    })
+                    await _send_stream_event(
+                        websocket,
+                        "error",
+                        session_id,
+                        {"message": f"Unknown command: {command}"},
+                    )
 
             except WebSocketDisconnect:
                 break
@@ -928,11 +1086,12 @@ async def session_stream(
     except Exception as e:
         logger.exception("WebSocket error for session %s", session_id)
         try:
-            await websocket.send_json({
-                "event_type": "error",
-                "session_id": session_id,
-                "data": {"message": str(e)},
-            })
+            await _send_stream_event(
+                websocket,
+                "error",
+                session_id,
+                {"message": str(e)},
+            )
         except Exception:
             logger.debug("Failed to send error message to WebSocket client")
         await websocket.close()

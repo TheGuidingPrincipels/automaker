@@ -2,6 +2,7 @@
 """Tests for model imports and basic model functionality."""
 
 import pytest
+from pydantic import ValidationError
 from datetime import datetime
 
 
@@ -356,6 +357,20 @@ class TestRoutingModels:
         assert dest.action == "append"
         assert dest.confidence == 0.85
         assert dest.destination_section is None
+
+    def test_block_destination_rejects_short_overview(self):
+        """BlockDestination enforces overview length."""
+        from src.models import BlockDestination
+
+        with pytest.raises(ValidationError):
+            BlockDestination(
+                destination_file="library/tech/auth.md",
+                action="create_file",
+                confidence=0.5,
+                reasoning="Test",
+                proposed_file_title="Auth File",
+                proposed_file_overview="Too short.",
+            )
 
     def test_routing_plan_pending_count(self):
         """Test RoutingPlan.pending_count property."""
