@@ -41,7 +41,47 @@ Then automatically fixes any issues found.
    git diff --name-only HEAD
    ```
 
-3. **Understand the tech stack** (for validation):
+3. **Get untracked files** (new files not yet added to git)
+
+   ```bash
+   git ls-files --others --exclude-standard
+   ```
+
+   This captures NEW files that `git diff` misses.
+
+4. **Read full content of untracked files**
+
+   For each untracked file from step 3, read the FULL file content (no diff exists for new files).
+
+   Format each untracked file as:
+
+   ```
+   ### NEW FILE: path/to/file.ts (UNTRACKED)
+   Lines: <line count>
+
+   <full file content>
+   ```
+
+5. **Categorize all changes**
+
+   Create a summary table:
+
+   | Category           | Count | Files         |
+   | ------------------ | ----- | ------------- |
+   | Modified (tracked) | X     | list files... |
+   | Staged             | X     | list files... |
+   | Untracked (new)    | X     | list files... |
+   | **Total**          | X     |               |
+
+6. **Find related files** (import/export dependencies)
+
+   For changed/untracked files, use grep to find:
+   - Files that import from the changed files
+   - Files that the changed files import from
+
+   This provides context for architectural review.
+
+7. **Understand the tech stack** (for validation):
    - **Node.js**: >=22.0.0 <23.0.0
    - **TypeScript**: 5.9.3
    - **React**: 19.2.3
@@ -54,6 +94,20 @@ Then automatically fixes any issues found.
 ### Phase 2: Deep Dive Analysis (5 Agents)
 
 Launch 5 separate deep dive agents, each with a specific focus area. Each agent should be invoked with the `@deepdive` agent and given the git diff along with their specific instructions.
+
+**IMPORTANT: Input Format for All Agents**
+
+Provide each agent with:
+
+1. **Git Diff** - Changes to tracked files (from `git diff HEAD`)
+2. **Full File Content** - For NEW untracked files (entire file, no diff markers)
+3. **Related Files** - Files that import from / are imported by changed files
+
+Each agent must understand:
+
+- Untracked files have NO diff markers (`+`/`-`) - review the FULL content
+- New files need complete analysis, not just incremental review
+- Consider how new files integrate with existing codebase
 
 #### Agent 1: Tech Stack Validation (HIGHEST PRIORITY)
 
@@ -97,11 +151,18 @@ Analyze the git diff for invalid code based on the tech stack:
    - Verify version compatibility between dependencies
    - Check for circular dependencies
 
+7. **Untracked (New) Files** - CRITICAL
+   - Verify new file exports are correctly structured
+   - Check import paths work from existing files
+   - Verify new files follow project module patterns
+   - Ensure new files integrate with existing codebase
+
 Provide a detailed report with:
 - File paths and line numbers of invalid code
 - Specific error description (what's wrong and why)
 - Expected vs actual behavior
 - Priority level (CRITICAL for build-breaking issues)
+- **Mark issues in untracked files with [UNTRACKED]**
 ```
 
 #### Agent 2: Security Vulnerability Scanner
@@ -148,11 +209,19 @@ Analyze the git diff for security vulnerabilities:
    - Insecure preload scripts
    - Missing CSP headers
 
+7. **Untracked (New) Files** - FULL REVIEW REQUIRED
+   - Review ENTIRE file for secrets, tokens, API keys
+   - Check for hardcoded credentials in test fixtures
+   - Scan for new attack surfaces introduced
+   - Verify new files don't expose internal APIs unsafely
+   - Check .env.example files for sensitive defaults
+
 Provide a detailed report with:
 - Vulnerability type and severity (CRITICAL, HIGH, MEDIUM, LOW)
 - File paths and line numbers
 - Attack vector description
 - Recommended fix approach
+- **Mark issues in untracked files with [UNTRACKED]**
 ```
 
 #### Agent 3: Code Quality & Clean Code
@@ -199,12 +268,19 @@ Analyze the git diff for code quality issues:
    - Unnecessary useState/useEffect
    - Prop drilling issues
 
+6. **Untracked (New) Files** - FULL REVIEW REQUIRED
+   - Check if new file patterns match codebase conventions
+   - Verify naming conventions followed
+   - Check for code duplication with existing files
+   - Ensure consistent coding style with project
+
 Provide a detailed report with:
 - Issue type and severity
 - File paths and line numbers
 - Description of the problem
 - Impact on maintainability/performance
 - Recommended refactoring approach
+- **Mark issues in untracked files with [UNTRACKED]**
 ```
 
 #### Agent 4: Implementation Correctness
@@ -247,12 +323,20 @@ Analyze the git diff for implementation correctness:
    - Tests don't cover edge cases
    - Tests are incorrect
 
+6. **Untracked (New) Files** - COMPLETE LOGIC REVIEW
+   - Review ENTIRE file logic (no diff to compare)
+   - Check all function implementations for correctness
+   - Verify all edge cases handled in new code
+   - Check test files have valid assertions
+   - Verify new fixtures are correctly structured
+
 Provide a detailed report with:
 - Issue description
 - File paths and line numbers
 - Expected vs actual behavior
 - Steps to reproduce (if applicable)
 - Recommended fix
+- **Mark issues in untracked files with [UNTRACKED]**
 ```
 
 #### Agent 5: Architecture & Design Patterns
@@ -292,11 +376,19 @@ Analyze the git diff for architectural and design issues:
    - Missing state normalization
    - Inefficient state updates
 
+6. **Untracked (New) Files** - VERIFY PLACEMENT & LAYERING
+   - Verify new files are in correct directory locations
+   - Check new files follow feature-first architecture
+   - Ensure proper layer separation (routes, services, etc.)
+   - Verify new files don't create incorrect dependencies
+   - Check if new exports are properly organized in index files
+
 Provide a detailed report with:
 - Architectural issue description
 - File paths and affected areas
 - Impact on system design
 - Recommended architectural changes
+- **Mark issues in untracked files with [UNTRACKED]**
 ```
 
 ### Phase 3: Consolidate Findings
@@ -311,11 +403,46 @@ After all 5 deep dive agents complete their analysis:
    - LOW: Minor code smells, style issues
 
 3. **Group by file** to understand impact per file
-4. **Create a master report** summarizing all findings
+4. **Separate untracked file issues**:
+   - List all issues marked with [UNTRACKED]
+   - Note dependencies between tracked and untracked files
+   - Flag untracked files that may need `git add` before commit
+5. **Create a master report** summarizing all findings:
+
+   | Source             | Files Reviewed | Issues Found |
+   | ------------------ | -------------- | ------------ |
+   | Modified (tracked) | X              | Y            |
+   | Staged             | X              | Y            |
+   | Untracked (new)    | X              | Y            |
+   | **Total**          | X              | Y            |
 
 ### Phase 4: Deepcode Fixes (5 Agents)
 
 Launch 5 deepcode agents to fix the issues found. Each agent should be invoked with the `@deepcode` agent.
+
+**IMPORTANT: Untracked Files Context**
+
+When fixing issues in untracked files:
+
+- Edit the files normally using the Edit tool
+- Untracked files can be modified just like tracked files
+- After all fixes are complete, recommend `git add <file>` for untracked files
+- Issues marked [UNTRACKED] require reading the full file, not diff
+
+**IMPORTANT: Issue Handling Strategy**
+
+1. **Fix immediately** - Issues where Claude is confident in the fix
+2. **Defer to user** - Issues that are BOTH:
+   - Very severe (system-breaking, security vulnerabilities, significant impact)
+   - Claude is uncertain how to fix correctly
+
+   For deferred issues, STOP and present to user:
+   - **Issue**: What is wrong
+   - **Implications**: What this means for the codebase
+   - **Risks**: What could happen if unfixed or fixed incorrectly
+   - **Recommendations**: Possible fix approaches with pros/cons
+
+   Wait for user decision, then execute via deepcode agent(s).
 
 #### Deepcode Agent 1: Fix Tech Stack Invalid Code
 
@@ -459,26 +586,69 @@ After all fixes are complete:
    git diff HEAD
    ```
 
-5. **Create summary report**:
-   - Issues found by each agent
+5. **Verify untracked files are still present and not broken**
+
+   ```bash
+   git ls-files --others --exclude-standard
+   ```
+
+   Confirm untracked files:
+   - Are still listed (not accidentally deleted)
+   - Can be imported/used by tracked files
+   - Build succeeds with untracked files included
+
+6. **Recommend staging new files** (if appropriate)
+
+   ```bash
+   # List files that should be added
+   git status --short
+   ```
+
+   Provide recommendations:
+   - Which untracked files should be staged
+   - Which might be intentionally untracked (e.g., local config)
+
+7. **Create summary report**:
+   - Issues found by each agent (tracked vs untracked)
    - Issues fixed by each agent
    - Remaining issues (if any)
    - Verification results
+   - Untracked files recommendations
 
 ## Workflow Summary
 
-1. ✅ Get git diff
-2. ✅ Launch 5 deep dive agents (parallel analysis)
-3. ✅ Consolidate findings and prioritize
-4. ✅ Launch 5 deepcode agents (sequential fixes, priority order)
-5. ✅ Verify fixes with build/lint/test
-6. ✅ Report summary
+1. ✅ Get git diff + untracked files + related files
+2. ✅ Read full content of untracked files
+3. ✅ Categorize all changes (modified/staged/untracked)
+4. ✅ Launch 5 deep dive agents (parallel analysis, all file types)
+5. ✅ Consolidate findings and prioritize (track untracked issues)
+6. ✅ Launch 5 deepcode agents (sequential fixes, priority order)
+7. ✅ Verify fixes with build/lint/test
+8. ✅ Verify untracked files and recommend staging
+9. ✅ Report summary with tracked vs untracked breakdown
 
 ## Notes
 
+- **DO NOT CREATE A COMMIT** - This review process ends with verification and reporting only. The user will decide when to commit.
+- **FIX ALL ISSUES CLAUDE IS CONFIDENT ABOUT** - Every issue where Claude knows how to fix it MUST be fixed immediately by the deepcode agents. Do not skip or defer these.
+- **DEFER ONLY SEVERE + UNCERTAIN ISSUES** - For issues that are both:
+  1. Very severe (could break the system, introduce security vulnerabilities, or have significant impact)
+  2. Claude is uncertain how to fix correctly
+
+  For these deferred issues, Claude MUST:
+  1. **Communicate explicitly** to the user that this issue is being deferred
+  2. **Explain the issue** - What exactly is wrong
+  3. **Explain implications** - What this issue means for the codebase
+  4. **Explain risks** - What problems it could introduce if left unfixed or fixed incorrectly
+  5. **Provide recommendations** - Possible approaches to fix with pros/cons
+
+  After the user reviews and decides, execute their decision via deepcode agent(s).
+
 - **Tech stack validation is HIGHEST PRIORITY** - invalid code must be fixed first
+- **Untracked files require FULL content review** - no diff exists, so entire file must be analyzed
 - Each deep dive agent should work independently and provide comprehensive analysis
 - Deepcode agents should fix issues in priority order
 - All fixes should maintain existing functionality
 - If an agent finds no issues in their domain, they should report "No issues found"
 - If fixes introduce new issues, they should be caught in verification phase
+- Untracked files often include: new test files, fixtures, utilities, documentation, and configuration examples

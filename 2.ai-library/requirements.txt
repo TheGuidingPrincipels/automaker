@@ -1,0 +1,22 @@
+# Personal Knowledge Library System - The Reliable Librarian
+# Note: pyproject.toml is the source of truth - this file is for compatibility
+
+# Core dependencies
+claude-code-sdk>=0.0.23
+anyio>=4.0.0
+pydantic>=2.0.0
+pyyaml>=6.0
+rich>=13.0.0
+python-dotenv>=1.0.0
+
+# Vector database
+qdrant-client>=1.7.0
+
+# HTTP client
+httpx>=0.26.0
+
+# REST API (Phase D)
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.6
+websockets>=12.0

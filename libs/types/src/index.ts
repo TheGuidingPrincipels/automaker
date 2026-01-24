@@ -425,3 +425,54 @@ export type {
   KnowledgeSearchQuery,
   KnowledgeSearchResult,
 } from './knowledge.js';
+
+// Document types
+export type {
+  DocumentStatus,
+  DocumentType,
+  DocumentSourceType,
+  DocumentSyncStatus,
+  DocumentSource,
+  DocumentMetadata,
+  DocumentSection,
+  Document,
+  CreateDocumentInput,
+  UpdateDocumentInput,
+  ImportDocumentInput,
+  SyncDocumentInput,
+  DocumentListItem,
+  DocumentSearchResult,
+  DocumentSyncResult,
+  DocumentSearchQuery,
+  DocumentListQuery,
+  DocumentContextQuery,
+  DocumentContextResult,
+} from './document.js';
+
+// Token usage and rate limiting types
+export type {
+  TokenUsage,
+  TokenCost,
+  TokenUsageWithCost,
+  RateLimitWindow,
+  UsageStats,
+  ClaudeTokenUsage,
+  CodexPlanType,
+  CodexTokenUsage,
+  UsageProviderType,
+  UnifiedTokenUsage,
+  SessionTokenMetrics,
+  MessageTokenMetrics,
+} from './token.js';
+export {
+  tokenUsageSchema,
+  sessionTokenMetricsSchema,
+  getUsageStatusColor,
+  getUsageStatusDescription,
+  createEmptyTokenUsage,
+  sumTokenUsage,
+  formatTokenCount,
+} from './token.js';
+
+// User types
+export type { PublicUser, RegisterUserInput, LoginWithEmailInput } from './user.js';

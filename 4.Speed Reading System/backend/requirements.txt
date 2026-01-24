@@ -1,0 +1,19 @@
+# Speed Reading System Backend Dependencies
+# Note: pyproject.toml is the source of truth - this file is for compatibility
+
+# Web framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+
+# Database
+sqlalchemy>=2.0.0
+alembic>=1.14.0
+
+# Validation and settings
+pydantic>=2.10.0
+pydantic-settings>=2.6.0
+
+# Development and testing
+pytest>=8.0.0
+pytest-asyncio>=0.24.0
+httpx>=0.28.0
