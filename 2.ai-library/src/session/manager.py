@@ -18,7 +18,7 @@ from ..models.session import ExtractionSession, SessionPhase
 from ..models.content import SourceDocument
 from ..models.content_mode import ContentMode
 from ..models.cleanup_plan import CleanupPlan, CleanupItem, CleanupDisposition
-from ..models.routing_plan import RoutingPlan, BlockRoutingItem
+from ..models.routing_plan import RoutingPlan, BlockRoutingItem, validate_overview_text
 from ..extraction.parser import parse_markdown_file
 from .storage import SessionStorage
 
@@ -32,7 +32,7 @@ class SessionManager:
 
     async def create_session(
         self,
-        source_path: str,
+        source_path: Optional[str],
         library_path: Optional[str] = None,
         content_mode: ContentMode = ContentMode.STRICT,
     ) -> ExtractionSession:
@@ -40,7 +40,7 @@ class SessionManager:
         Create a new extraction session and parse the source document.
 
         Args:
-            source_path: Path to the source markdown file
+            source_path: Path to the source markdown file (optional)
             library_path: Path to the library (optional, uses default)
             content_mode: STRICT or REFINEMENT mode
 
@@ -58,6 +58,11 @@ class SessionManager:
             library_path=library_path or self.library_path,
             content_mode=content_mode,
         )
+
+        await self.storage.save(session)
+
+        if source_path is None:
+            return session
 
         # Parse the source document
         session.phase = SessionPhase.PARSING
@@ -237,6 +242,8 @@ class SessionManager:
         custom_file: Optional[str] = None,
         custom_section: Optional[str] = None,
         custom_action: Optional[str] = None,
+        proposed_file_title: Optional[str] = None,
+        proposed_file_overview: Optional[str] = None,
     ) -> None:
         """
         Select destination for a block (user click selection).
@@ -253,14 +260,37 @@ class SessionManager:
         if not session or not session.routing_plan:
             raise ValueError("Session or routing plan not found")
 
+        normalized_overview = (
+            validate_overview_text(proposed_file_overview)
+            if proposed_file_overview is not None
+            else None
+        )
+
         for item in session.routing_plan.blocks:
             if item.block_id == block_id:
                 if option_index is not None:
+                    options_count = len(item.options)
+                    if options_count == 0:
+                        raise ValueError(
+                            f"Invalid option_index {option_index}: block {block_id} has no options"
+                        )
+                    if option_index < 0 or option_index >= options_count:
+                        raise ValueError(
+                            "Invalid option_index "
+                            f"{option_index}: block {block_id} has {options_count} options "
+                            f"(valid range 0-{options_count - 1})"
+                        )
                     item.selected_option_index = option_index
+                    if proposed_file_title is not None:
+                        item.options[option_index].proposed_file_title = proposed_file_title
+                    if normalized_overview is not None:
+                        item.options[option_index].proposed_file_overview = normalized_overview
                 else:
                     item.custom_destination_file = custom_file
                     item.custom_destination_section = custom_section
                     item.custom_action = custom_action
+                    item.custom_proposed_file_title = proposed_file_title
+                    item.custom_proposed_file_overview = normalized_overview
                 item.status = "selected"
                 break
 

@@ -6,6 +6,7 @@ Provides save/load/list/delete operations for ExtractionSession objects.
 """
 
 import json
+import logging
 from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
@@ -13,6 +14,9 @@ import anyio
 
 from ..models.session import ExtractionSession, SessionPhase
 from ..models.content_mode import ContentMode
+
+
+logger = logging.getLogger(__name__)
 
 
 class SessionStorage:
@@ -30,6 +34,18 @@ class SessionStorage:
     def _session_file(self, session_id: str) -> Path:
         """Get the file path for a session."""
         return self.sessions_path / f"{session_id}.json"
+
+    def _uploads_root(self) -> Path:
+        """Get the root path for session uploads."""
+        return self.sessions_path / "uploads"
+
+    def upload_dir(self, session_id: str) -> Path:
+        """Get the directory for a session's uploaded files."""
+        return self._uploads_root() / session_id
+
+    def upload_path(self, session_id: str, filename: str) -> Path:
+        """Get the full path for a session upload."""
+        return self.upload_dir(session_id) / filename
 
     async def save(self, session: ExtractionSession) -> None:
         """
@@ -108,6 +124,37 @@ class SessionStorage:
             return True
 
         return False
+
+    async def delete_uploads(self, session: ExtractionSession) -> None:
+        """
+        Delete persisted uploads for a session if they exist.
+        """
+        if not session.source:
+            return
+
+        upload_root = self._uploads_root().resolve()
+        source_path = Path(session.source.file_path).resolve()
+        if not source_path.is_relative_to(upload_root):
+            return
+
+        async_path = anyio.Path(source_path)
+        if not await async_path.exists():
+            logger.warning(
+                "Upload file missing for session %s: %s",
+                session.id,
+                source_path,
+            )
+        else:
+            await async_path.unlink()
+
+        session_dir = anyio.Path(self.upload_dir(session.id))
+        if await session_dir.exists():
+            has_items = False
+            async for _ in session_dir.iterdir():
+                has_items = True
+                break
+            if not has_items:
+                await session_dir.rmdir()
 
     async def exists(self, session_id: str) -> bool:
         """

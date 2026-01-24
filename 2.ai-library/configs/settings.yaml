@@ -91,9 +91,11 @@ api:
   port: 8001
   cors_origins:
     - http://localhost:3007 # Automaker Vite dev server
+    - http://localhost:3008 # Automaker backend (self, for swagger/docs)
     - http://localhost:5173 # Vite alternate port
     - http://localhost:5174 # Vite alt port
     - http://127.0.0.1:3007 # Localhost variant
+    - http://127.0.0.1:3008 # Localhost backend variant
     # Add production origins when deploying:
     # - https://your-app.com
   debug: false

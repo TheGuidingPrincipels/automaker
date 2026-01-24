@@ -87,8 +87,36 @@ class ContentWriter:
             return await async_path.read_text()
         return ""
 
+    def _validate_path(self, file_path: Path) -> Path:
+        """
+        Validate that the path is within the library directory.
+        
+        Args:
+            file_path: The path to validate
+            
+        Returns:
+            The resolved absolute path
+            
+        Raises:
+            ValueError: If path is outside library
+        """
+        # Resolve to absolute paths
+        resolved = file_path.resolve()
+        # self.library_path is a Path object from __init__
+        # We need its resolved absolute version
+        start = self.library_path.resolve()
+        
+        # Check if resolved path starts with library path
+        if not resolved.is_relative_to(start):
+            raise ValueError(f"Path traversal detected: {file_path} is outside library {start}")
+        
+        return resolved
+
     async def _write_file(self, file_path: Path, content: str) -> None:
         """Write content to file atomically."""
+        # Validate path before doing anything
+        self._validate_path(file_path)
+        
         await self._ensure_directory(file_path)
 
         async_path = anyio.Path(file_path)
@@ -146,6 +174,7 @@ class ContentWriter:
             WriteResult with success/verification status
         """
         file_path = self.library_path / destination
+        self._validate_path(file_path)
 
         # Create backup
         backup_path = await self._create_backup(file_path)
@@ -271,6 +300,7 @@ class ContentWriter:
         self,
         destination: str,
         title: str,
+        overview: str,
         initial_content: str = "",
     ) -> WriteResult:
         """
@@ -279,12 +309,14 @@ class ContentWriter:
         Args:
             destination: Relative path for the new file
             title: File title (H1 header)
+            overview: Overview text for the file
             initial_content: Optional initial content
 
         Returns:
             WriteResult
         """
         file_path = self.library_path / destination
+        self._validate_path(file_path)
 
         async_path = anyio.Path(file_path)
         if await async_path.exists():
@@ -297,7 +329,10 @@ class ContentWriter:
                 error=f"File already exists: {destination}",
             )
 
-        content = f"# {title}\n\n{initial_content}".strip()
+        content = f"# {title}\n\n## Overview\n{overview}"
+        if initial_content:
+            content = f"{content}\n\n{initial_content}"
+        content = content.strip()
 
         try:
             await self._write_file(file_path, content)
@@ -335,6 +370,7 @@ class ContentWriter:
             WriteResult
         """
         file_path = self.library_path / destination
+        self._validate_path(file_path)
 
         existing = await self._read_file(file_path)
         if not existing:

@@ -148,24 +148,42 @@ class ClaudeCodeClient:
 
     def _extract_json(self, text: str) -> Optional[Dict[str, Any]]:
         """Extract JSON from response text using safe parsing."""
-        # Try direct parse first
+        # 1. Try direct parse first
         try:
             return json.loads(text)
         except json.JSONDecodeError:
             pass
 
-        # Try to find JSON block in markdown
-        import re
-
-        json_match = re.search(r'```(?:json)?\s*\n(.*?)\n```', text, re.DOTALL)
-        if json_match:
+        # 2. Try to find markdown code blocks (```json or just ```)
+        # We iterate to find a block that contains valid JSON
+        current_pos = 0
+        while True:
+            start_marker = text.find("```", current_pos)
+            if start_marker == -1:
+                break
+            
+            # Find end of the line (start of content)
+            newline_pos = text.find("\n", start_marker)
+            if newline_pos == -1:
+                break # Malformed block
+            
+            content_start = newline_pos + 1
+            
+            # Find end marker
+            end_marker = text.find("```", content_start)
+            if end_marker == -1:
+                break
+            
+            candidate = text[content_start:end_marker].strip()
             try:
-                return json.loads(json_match.group(1))
+                return json.loads(candidate)
             except json.JSONDecodeError:
-                pass
+                # This block wasn't valid JSON, continue searching
+                current_pos = end_marker + 3
+                continue
 
-        # Fallback: Find the first '{' and the last '}'
-        # This is strictly safer than the recursive regex which can cause ReDoS
+        # 3. Fallback: Find the first '{' and the last '}'
+        # This is a heuristic that works for most single-object responses
         start_idx = text.find('{')
         end_idx = text.rfind('}')
 
@@ -183,6 +201,8 @@ class ClaudeCodeClient:
         source_file: str,
         blocks: List[Dict[str, Any]],
         content_mode: str = "strict",
+        conversation_history: str = "",
+        pending_questions: Optional[List[str]] = None,
     ) -> CleanupPlan:
         """
         Generate a cleanup plan using Claude Code SDK.
@@ -196,7 +216,13 @@ class ClaudeCodeClient:
         Returns:
             CleanupPlan with AI suggestions
         """
-        user_prompt = build_cleanup_prompt(blocks, source_file, content_mode)
+        user_prompt = build_cleanup_prompt(
+            blocks=blocks,
+            source_file=source_file,
+            content_mode=content_mode,
+            conversation_history=conversation_history,
+            pending_questions=pending_questions,
+        )
 
         response = await self._query(CLEANUP_SYSTEM_PROMPT, user_prompt)
 
@@ -250,6 +276,8 @@ class ClaudeCodeClient:
         blocks: List[Dict[str, Any]],
         library_context: Dict[str, Any],
         content_mode: str = "strict",
+        conversation_history: str = "",
+        pending_questions: Optional[List[str]] = None,
     ) -> RoutingPlan:
         """
         Generate a routing plan using Claude Code SDK.
@@ -265,7 +293,12 @@ class ClaudeCodeClient:
             RoutingPlan with AI suggestions
         """
         user_prompt = build_routing_prompt(
-            blocks, library_context, source_file, content_mode
+            blocks=blocks,
+            library_context=library_context,
+            source_file=source_file,
+            content_mode=content_mode,
+            conversation_history=conversation_history,
+            pending_questions=pending_questions,
         )
 
         response = await self._query(ROUTING_SYSTEM_PROMPT, user_prompt)
@@ -290,6 +323,7 @@ class ClaudeCodeClient:
                             confidence=opt.get("confidence", 0.5),
                             reasoning=opt.get("reasoning", ""),
                             proposed_file_title=opt.get("proposed_file_title"),
+                            proposed_file_overview=opt.get("proposed_file_overview"),
                             proposed_section_title=opt.get("proposed_section_title"),
                         )
                     )

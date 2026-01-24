@@ -2,7 +2,29 @@
 
 from typing import Optional, List
 from datetime import datetime
-from pydantic import BaseModel, Field
+import re
+from pydantic import BaseModel, Field, field_validator
+
+# Overview length constraints (shared across routing_plan and scanner)
+OVERVIEW_MIN_LENGTH = 50
+OVERVIEW_MAX_LENGTH = 250
+
+
+def normalize_overview_text(overview: str) -> str:
+    """Normalize overview text for length validation."""
+    return re.sub(r"\s+", " ", overview).strip()
+
+
+def validate_overview_text(overview: Optional[str]) -> Optional[str]:
+    """Validate overview length (50-250 chars, normalized)."""
+    if overview is None:
+        return None
+    normalized = normalize_overview_text(overview)
+    if len(normalized) < OVERVIEW_MIN_LENGTH or len(normalized) > OVERVIEW_MAX_LENGTH:
+        raise ValueError(
+            f"proposed_file_overview must be {OVERVIEW_MIN_LENGTH}-{OVERVIEW_MAX_LENGTH} characters (got {len(normalized)})"
+        )
+    return normalized
 
 
 class BlockDestination(BaseModel):
@@ -15,7 +37,13 @@ class BlockDestination(BaseModel):
 
     # For creation actions
     proposed_file_title: Optional[str] = None
+    proposed_file_overview: Optional[str] = None
     proposed_section_title: Optional[str] = None
+
+    @field_validator("proposed_file_overview")
+    @classmethod
+    def validate_proposed_file_overview(cls, value: Optional[str]) -> Optional[str]:
+        return validate_overview_text(value)
 
 
 class BlockRoutingItem(BaseModel):
@@ -32,8 +60,15 @@ class BlockRoutingItem(BaseModel):
     custom_destination_file: Optional[str] = None
     custom_destination_section: Optional[str] = None
     custom_action: Optional[str] = None
+    custom_proposed_file_title: Optional[str] = None
+    custom_proposed_file_overview: Optional[str] = None
 
     status: str = "pending"                # "pending" | "selected" | "rejected"
+
+    @field_validator("custom_proposed_file_overview")
+    @classmethod
+    def validate_custom_file_overview(cls, value: Optional[str]) -> Optional[str]:
+        return validate_overview_text(value)
 
 
 class MergePreview(BaseModel):

@@ -12,6 +12,7 @@ from datetime import datetime
 import anyio
 
 from ..models.library import LibraryFile, LibraryCategory
+from ..models.routing_plan import OVERVIEW_MIN_LENGTH, OVERVIEW_MAX_LENGTH
 
 
 class LibraryScanner:
@@ -106,9 +107,27 @@ class LibraryScanner:
         # Extract title (first H1 or filename)
         title_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
         title = title_match.group(1) if title_match else file_path.stem
+        has_title = title_match is not None
 
         # Extract sections (H2 headers)
         sections = re.findall(r'^##\s+(.+)$', content, re.MULTILINE)
+
+        # Extract overview content (under ## Overview)
+        overview_raw = self._extract_overview(content)
+        overview = self._normalize_overview(overview_raw) if overview_raw else None
+
+        validation_errors: list[str] = []
+        if not has_title:
+            validation_errors.append("Missing H1 title")
+        if overview_raw is None:
+            validation_errors.append("Missing ## Overview section")
+        else:
+            if overview is None or len(overview) < OVERVIEW_MIN_LENGTH or len(overview) > OVERVIEW_MAX_LENGTH:
+                validation_errors.append(
+                    f"Overview must be {OVERVIEW_MIN_LENGTH}-{OVERVIEW_MAX_LENGTH} characters (normalized)"
+                )
+
+        is_valid = len(validation_errors) == 0
 
         # Count blocks (rough estimate based on paragraphs)
         blocks = len(re.split(r'\n\n+', content.strip()))
@@ -119,10 +138,31 @@ class LibraryScanner:
             path=rel_path,
             category=category_path,
             title=title,
+            overview=overview,
             sections=sections,
             last_modified=datetime.fromtimestamp(stat.st_mtime).isoformat(),
             block_count=blocks,
+            is_valid=is_valid,
+            validation_errors=validation_errors,
         )
+
+    @staticmethod
+    def _extract_overview(content: str) -> Optional[str]:
+        """Extract overview text under the ## Overview header."""
+        match = re.search(r"^##\s+Overview\s*$", content, re.MULTILINE)
+        if not match:
+            return None
+
+        start = match.end()
+        next_header = re.search(r"^##\s+", content[start:], re.MULTILINE)
+        end = start + next_header.start() if next_header else len(content)
+
+        return content[start:end].strip()
+
+    @staticmethod
+    def _normalize_overview(overview: str) -> str:
+        """Normalize overview text for length validation."""
+        return re.sub(r"\s+", " ", overview).strip()
 
     async def get_file(self, file_path: str) -> Optional[LibraryFile]:
         """

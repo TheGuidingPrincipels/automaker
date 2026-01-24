@@ -16,6 +16,7 @@ from ..models.routing_plan import (
     BlockDestination,
     MergePreview,
     PlanSummary,
+    validate_overview_text,
 )
 from ..models.library import LibraryFile, LibraryCategory
 
@@ -44,7 +45,7 @@ class SuccessResponse(BaseModel):
 
 class CreateSessionRequest(BaseModel):
     """Request to create a new session."""
-    source_path: str
+    source_path: Optional[str] = None
     library_path: Optional[str] = None
     content_mode: str = "strict"  # "strict" or "refinement"
 
@@ -231,6 +232,7 @@ class DestinationOptionResponse(BaseModel):
     confidence: float
     reasoning: str
     proposed_file_title: Optional[str] = None
+    proposed_file_overview: Optional[str] = None
     proposed_section_title: Optional[str] = None
 
     @classmethod
@@ -243,6 +245,7 @@ class DestinationOptionResponse(BaseModel):
             confidence=dest.confidence,
             reasoning=dest.reasoning,
             proposed_file_title=dest.proposed_file_title,
+            proposed_file_overview=dest.proposed_file_overview,
             proposed_section_title=dest.proposed_section_title,
         )
 
@@ -257,6 +260,8 @@ class BlockRoutingItemResponse(BaseModel):
     custom_destination_file: Optional[str] = None
     custom_destination_section: Optional[str] = None
     custom_action: Optional[str] = None
+    custom_proposed_file_title: Optional[str] = None
+    custom_proposed_file_overview: Optional[str] = None
     status: str
 
     @classmethod
@@ -271,6 +276,8 @@ class BlockRoutingItemResponse(BaseModel):
             custom_destination_file=item.custom_destination_file,
             custom_destination_section=item.custom_destination_section,
             custom_action=item.custom_action,
+            custom_proposed_file_title=item.custom_proposed_file_title,
+            custom_proposed_file_overview=item.custom_proposed_file_overview,
             status=item.status,
         )
 
@@ -361,6 +368,13 @@ class SelectDestinationRequest(BaseModel):
     custom_file: Optional[str] = None
     custom_section: Optional[str] = None
     custom_action: Optional[str] = None
+    proposed_file_title: Optional[str] = None
+    proposed_file_overview: Optional[str] = None
+
+    @field_validator("proposed_file_overview")
+    @classmethod
+    def validate_proposed_file_overview(cls, v: Optional[str]) -> Optional[str]:
+        return validate_overview_text(v)
 
 
 class MergeDecisionRequest(BaseModel):
@@ -410,9 +424,12 @@ class LibraryFileResponse(BaseModel):
     path: str
     category: str
     title: str
+    overview: Optional[str] = None
     sections: List[str]
     last_modified: str
     block_count: int
+    is_valid: bool
+    validation_errors: List[str]
 
     @classmethod
     def from_file(cls, file: LibraryFile) -> "LibraryFileResponse":
@@ -421,9 +438,12 @@ class LibraryFileResponse(BaseModel):
             path=file.path,
             category=file.category,
             title=file.title,
+            overview=file.overview,
             sections=file.sections,
             last_modified=file.last_modified,
             block_count=file.block_count,
+            is_valid=file.is_valid,
+            validation_errors=file.validation_errors,
         )
 
 

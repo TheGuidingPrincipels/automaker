@@ -23,23 +23,27 @@ pip install uv
 ## Quick Start
 
 ```bash
-# Navigate to ai-library directory
-cd /path/to/automaker/ai-library
+# Navigate to the AI-Library directory
+cd 2.ai-library
 
-# Create virtual environment and install dependencies
+# Create virtual environment and install dependencies (including dev/test)
 uv venv
-uv sync
+uv sync --all-extras
 
 # Activate the virtual environment
 source .venv/bin/activate
 ```
+
+**Blessed setup command:**
+
+`cd 2.ai-library && uv venv && uv sync --all-extras`
 
 ## Environment Setup
 
 ### 1. Create Virtual Environment
 
 ```bash
-cd ai-library
+cd 2.ai-library
 uv venv
 ```
 
@@ -51,7 +55,7 @@ This creates a `.venv/` directory with an isolated Python environment.
 # Install all dependencies from pyproject.toml
 uv sync
 
-# Or install with dev dependencies explicitly
+# Install with dev dependencies explicitly (recommended for tests)
 uv sync --all-extras
 ```
 
@@ -75,7 +79,7 @@ source .venv/bin/activate
 python --version
 
 # Run tests to verify setup
-pytest
+python3 -m pytest -q
 ```
 
 ## Configuration
@@ -108,27 +112,27 @@ sessions_path: ./sessions
 ### Start the API Server
 
 ```bash
-# From ai-library directory with venv activated
+# From 2.ai-library directory with venv activated
 python run_api.py
 
 # Or with uvicorn directly
-uvicorn src.api.main:app --reload --port 8000
+uvicorn src.api.main:app --reload --port 8001
 ```
 
 ### Run Tests
 
 ```bash
-# Run all tests
-pytest
+# Run all tests (blessed command)
+python3 -m pytest -q
 
 # Run with verbose output
-pytest -v
+python3 -m pytest -v
 
 # Run specific test file
-pytest tests/test_extraction.py
+python3 -m pytest tests/test_extraction.py
 
 # Run with coverage
-pytest --cov=src
+python3 -m pytest --cov=src
 ```
 
 ## Development Workflow
@@ -162,7 +166,7 @@ mypy src/
 ## Project Structure
 
 ```
-ai-library/
+2.ai-library/
 ├── src/                    # Source code
 │   ├── api/               # REST API (FastAPI)
 │   ├── extraction/        # Content parsing & checksums
@@ -206,7 +210,7 @@ uv sync --refresh
 Ensure you're running from the `ai-library/` directory with the virtual environment activated:
 
 ```bash
-cd ai-library
+cd 2.ai-library
 source .venv/bin/activate
 python -c "import src; print('OK')"
 ```
@@ -220,3 +224,32 @@ The AI-Library is a Python module within the Automaker monorepo. It operates ind
 3. **SDK** - Import and use from other Python scripts
 
 The TypeScript apps can communicate with ai-library via HTTP requests to the FastAPI server.
+
+### Frontend Configuration
+
+To enable Knowledge Library features in the Automaker UI, configure the following environment variable:
+
+```bash
+# In the root .env file (or apps/ui/.env)
+VITE_KNOWLEDGE_LIBRARY_API=http://localhost:8001
+```
+
+This tells the frontend where to find the AI-Library API server. The default value is `http://localhost:8001`.
+
+**Full setup workflow:**
+
+1. Start the AI-Library backend:
+
+   ```bash
+   cd 2.ai-library
+   source .venv/bin/activate
+   python run_api.py
+   ```
+
+2. Set the environment variable in your `.env`:
+
+   ```bash
+   VITE_KNOWLEDGE_LIBRARY_API=http://localhost:8001
+   ```
+
+3. Start the Automaker UI (it will now connect to the Knowledge Library API)

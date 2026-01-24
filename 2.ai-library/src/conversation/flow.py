@@ -118,6 +118,8 @@ class PlanningFlow:
                 source_file=session.source.file_path,
                 blocks=blocks,
                 content_mode=session.content_mode.value,
+                conversation_history=self._format_conversation_history(session),
+                pending_questions=self._pending_question_texts(session),
             )
 
             # Count discard suggestions (for user info only - no auto-discard)
@@ -262,6 +264,8 @@ class PlanningFlow:
                 blocks=kept_blocks,
                 library_context=library_context,
                 content_mode=session.content_mode.value,
+                conversation_history=self._format_conversation_history(session),
+                pending_questions=self._pending_question_texts(session),
             )
 
             # Count blocks with options
@@ -286,6 +290,23 @@ class PlanningFlow:
                 message=f"Failed to generate routing plan: {str(e)}",
                 data={"error": str(e)},
             )
+
+    @staticmethod
+    def _format_conversation_history(session: ExtractionSession) -> str:
+        """Format conversation history for prompt context."""
+        if not session.conversation_history:
+            return ""
+
+        lines = []
+        for turn in session.conversation_history:
+            timestamp = turn.timestamp.isoformat()
+            lines.append(f"- [{timestamp}] {turn.role}: {turn.content}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _pending_question_texts(session: ExtractionSession) -> List[str]:
+        """Extract pending question text for prompt context."""
+        return [q.question for q in session.pending_questions]
 
     async def validate_routing_options(
         self,
