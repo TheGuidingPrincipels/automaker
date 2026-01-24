@@ -6,12 +6,13 @@
     "createdAt": "2026-01-18T00:00:00Z"
   },
   "tracking": {
-    "lastCheckedCommit": "7a33940816edc9ea9c7fd1b610fa1700fc19d316",
-    "lastCheckedAt": "2026-01-23T13:10:00Z",
-    "checkFrequencyDays": 1,
-    "lastCheckedBranch": "upstream/v0.14.0rc",
+    "lastCheckedCommit": "a8ddd0744209a9ce09e34d55c39bc61f637d2888",
+    "lastCheckedAt": "2026-01-24T11:45:00Z",
+    "checkFrequencyDays": 3,
+    "lastCheckedBranch": "upstream/main",
     "lastMergedBranch": "upstream/v0.14.0rc",
-    "lastMergedAt": "2026-01-23T13:10:00Z"
+    "lastMergedAt": "2026-01-23T13:10:00Z",
+    "note": "Switched to tracking main on 2026-01-24. Fork includes v0.14.0rc features not yet in main."
   },
   "analysis": {
     "skipPatterns": ["^docs:", "^chore\\(deps\\):", "^style:", "^test:", "^ci:"],
