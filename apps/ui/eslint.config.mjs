@@ -72,6 +72,9 @@ const eslintConfig = defineConfig([
         ScrollBehavior: 'readonly',
         URL: 'readonly',
         URLSearchParams: 'readonly',
+        FormData: 'readonly',
+        HeadersInit: 'readonly',
+        RequestCache: 'readonly',
         // Timers
         setTimeout: 'readonly',
         setInterval: 'readonly',

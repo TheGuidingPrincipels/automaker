@@ -267,6 +267,7 @@ Use the **SYSTEMS feature** as the canonical reference:
 - `TEST_SERVER_PORT` - Backend port for Vite proxy (default: 3008)
 - `VITE_SERVER_URL` - Explicit server URL for frontend (overrides proxy)
 - `CORS_ORIGIN` - Allowed CORS origins (comma-separated)
+- `VITE_KNOWLEDGE_LIBRARY_API` - URL for the AI-Library backend API (default: http://localhost:8001)
 
 ## Worktree Port Configuration (CRITICAL)
 
