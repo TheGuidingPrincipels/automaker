@@ -6,7 +6,47 @@ description: Run checks, generate perfect commit message, and commit
 
 This workflow streamlines the commit process by ensuring code quality, generating a standardized commit message, and executing the commit.
 
+## Worktree Support
+
+This command accepts an optional worktree name argument via `$ARGUMENTS`:
+
+- `/smart-commit` - Commits in current worktree
+- `/smart-commit dev-improvements` - Commits in the dev-improvements worktree
+
 ## Steps
+
+0.  **Determine Worktree Context**
+
+    If `$ARGUMENTS` contains a worktree name, find and switch to that worktree:
+
+    ```bash
+    # Parse optional worktree argument
+    WORKTREE_NAME="$ARGUMENTS"
+
+    if [ -n "$WORKTREE_NAME" ]; then
+      # Find worktree path by name
+      WORKTREE_PATH=$(git worktree list | grep "/$WORKTREE_NAME " | awk '{print $1}')
+
+      if [ -z "$WORKTREE_PATH" ]; then
+        echo "Error: Worktree '$WORKTREE_NAME' not found."
+        echo ""
+        echo "Available worktrees:"
+        git worktree list
+        exit 1
+      fi
+
+      # Change to worktree directory
+      cd "$WORKTREE_PATH"
+    fi
+
+    # Report context
+    echo "=== WORKTREE CONTEXT ==="
+    echo "Path: $(git rev-parse --show-toplevel)"
+    echo "Branch: $(git branch --show-current)"
+    echo "========================"
+    ```
+
+    All subsequent git commands will run in the target worktree context.
 
 1.  **Pre-Commit Check**
     - **Action**: Internal check - "Has the user run `/review` recently?" or "Are there critical issues pending?"

@@ -13,13 +13,96 @@ This command analyzes all changes in the git diff and verifies:
 
 Then automatically fixes any issues found.
 
-### Optional Arguments
+### Arguments
 
-- **Target branch**: Optional branch name to compare against (defaults to `main` or `master` if not provided)
-  - Example: `@deepreview develop` - compares current branch against `develop`
-  - If not provided, automatically detects `main` or `master` as the target branch
+This command supports two optional arguments via `$ARGUMENTS`:
+
+- **Worktree name**: Name of a worktree to review (e.g., `dev-improvements`)
+- **Target branch**: Branch name to compare against (e.g., `develop`, `main`)
+
+**Examples:**
+
+- `/deepreview` - Current worktree, auto-detect main/master
+- `/deepreview dev-improvements` - Reviews dev-improvements worktree, auto-detect branch
+- `/deepreview develop` - Current worktree, compare to develop branch
+- `/deepreview dev-improvements develop` - Reviews dev-improvements worktree, compare to develop
+
+**Argument Detection:**
+
+1. If argument matches a known worktree name → use as worktree
+2. If argument matches a branch name → use as target branch
+3. If two arguments → first is worktree, second is target branch
 
 ## Instructions
+
+### Phase 0: Parse Arguments and Determine Context
+
+1. **Parse `$ARGUMENTS`** (may contain worktree name, target branch, or both)
+
+   ```bash
+   # Split arguments
+   ARG1=$(echo "$ARGUMENTS" | awk '{print $1}')
+   ARG2=$(echo "$ARGUMENTS" | awk '{print $2}')
+
+   # Initialize variables
+   WORKTREE_NAME=""
+   TARGET_BRANCH_ARG=""
+
+   # Get list of worktree names
+   WORKTREE_NAMES=$(git worktree list | awk '{print $1}' | xargs -I{} basename {})
+
+   # Check if ARG1 is a worktree name
+   if echo "$WORKTREE_NAMES" | grep -qx "$ARG1" 2>/dev/null; then
+     WORKTREE_NAME="$ARG1"
+     TARGET_BRANCH_ARG="$ARG2"
+   elif [ -n "$ARG1" ]; then
+     # ARG1 might be a branch name
+     TARGET_BRANCH_ARG="$ARG1"
+   fi
+   ```
+
+2. **Switch to worktree if specified**
+
+   ```bash
+   if [ -n "$WORKTREE_NAME" ]; then
+     # Find worktree path
+     WORKTREE_PATH=$(git worktree list | grep "/$WORKTREE_NAME " | awk '{print $1}')
+
+     if [ -z "$WORKTREE_PATH" ]; then
+       echo "Error: Worktree '$WORKTREE_NAME' not found."
+       echo ""
+       echo "Available worktrees:"
+       git worktree list
+       exit 1
+     fi
+
+     # Change to worktree directory
+     cd "$WORKTREE_PATH"
+     echo "Switched to worktree: $WORKTREE_PATH"
+   fi
+   ```
+
+3. **Report context**
+
+   ```bash
+   echo "=== WORKTREE CONTEXT ==="
+   echo "Path: $(git rev-parse --show-toplevel)"
+   echo "Branch: $(git branch --show-current)"
+
+   # Show port configuration if .env exists
+   if [ -f ".env" ]; then
+     echo "Ports: UI=$(grep '^TEST_PORT=' .env | cut -d'=' -f2), Server=$(grep '^PORT=' .env | cut -d'=' -f2)"
+   fi
+
+   if [ -n "$TARGET_BRANCH_ARG" ]; then
+     echo "Target Branch (from arg): $TARGET_BRANCH_ARG"
+   fi
+   echo "========================"
+   ```
+
+4. **Pass target branch to Phase 1**
+
+   If `TARGET_BRANCH_ARG` was set, use it as the target branch. Otherwise, Phase 1 will auto-detect main/master.
 
 ### Phase 1: Get Git Diff
 
@@ -30,10 +113,9 @@ Then automatically fixes any issues found.
    CURRENT_BRANCH=$(git branch --show-current)
    echo "Current branch: $CURRENT_BRANCH"
 
-   # Get target branch from user argument or detect default
-   # If user provided a target branch as argument, use it
-   # Otherwise, detect main or master
-   TARGET_BRANCH="${1:-}"  # First argument if provided
+   # Get target branch from Phase 0 or detect default
+   # TARGET_BRANCH_ARG is set in Phase 0 from parsed arguments
+   TARGET_BRANCH="${TARGET_BRANCH_ARG:-}"
 
    if [ -z "$TARGET_BRANCH" ]; then
      # Check if main exists

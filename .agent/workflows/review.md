@@ -6,7 +6,47 @@ description: Comprehensive codebase review (Quality, Security, Speed)
 
 This workflow performs a deep analysis of your current uncommitted changes. It acts as a gatekeeper to ensure only high-quality, secure, and performant code is committed.
 
+## Worktree Support
+
+This command accepts an optional worktree name argument via `$ARGUMENTS`:
+
+- `/review` - Reviews current worktree
+- `/review dev-improvements` - Reviews the dev-improvements worktree
+
 ## Steps
+
+0.  **Determine Worktree Context**
+
+    If `$ARGUMENTS` contains a worktree name, find and switch to that worktree:
+
+    ```bash
+    # Parse optional worktree argument
+    WORKTREE_NAME="$ARGUMENTS"
+
+    if [ -n "$WORKTREE_NAME" ]; then
+      # Find worktree path by name
+      WORKTREE_PATH=$(git worktree list | grep "/$WORKTREE_NAME " | awk '{print $1}')
+
+      if [ -z "$WORKTREE_PATH" ]; then
+        echo "Error: Worktree '$WORKTREE_NAME' not found."
+        echo ""
+        echo "Available worktrees:"
+        git worktree list
+        exit 1
+      fi
+
+      # Change to worktree directory
+      cd "$WORKTREE_PATH"
+    fi
+
+    # Report context
+    echo "=== WORKTREE CONTEXT ==="
+    echo "Path: $(git rev-parse --show-toplevel)"
+    echo "Branch: $(git branch --show-current)"
+    echo "========================"
+    ```
+
+    All subsequent git commands will run in the target worktree context.
 
 1.  **Analyze Context**
     - Target: Uncommitted changes.

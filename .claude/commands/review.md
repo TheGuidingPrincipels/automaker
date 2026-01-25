@@ -13,32 +13,89 @@ This command analyzes all changes in the git diff and verifies:
 
 Then automatically fixes any issues found.
 
+### Worktree Support
+
+This command accepts an optional worktree name via `$ARGUMENTS`:
+
+- `/review` - Reviews current worktree
+- `/review dev-improvements` - Reviews the dev-improvements worktree
+
 ## Instructions
 
-### Phase 1: Get Git Diff
+### Phase 0: Determine Worktree Context
 
-1. **Get the current git diff**
+1. **Parse arguments for worktree name**
+
+   `$ARGUMENTS` may contain an optional worktree name. If empty, use current directory.
+
+2. **If worktree specified, find and validate**
 
    ```bash
-   git diff HEAD
+   # Parse optional worktree argument
+   WORKTREE_NAME="$ARGUMENTS"
+
+   if [ -n "$WORKTREE_NAME" ]; then
+     # List all worktrees
+     echo "Looking for worktree: $WORKTREE_NAME"
+     git worktree list
+
+     # Find worktree path (exact match on path component)
+     WORKTREE_PATH=$(git worktree list | grep "/$WORKTREE_NAME " | awk '{print $1}')
+
+     if [ -z "$WORKTREE_PATH" ]; then
+       echo "Error: Worktree '$WORKTREE_NAME' not found."
+       echo ""
+       echo "Available worktrees:"
+       git worktree list
+       exit 1
+     fi
+
+     # Change to worktree directory
+     cd "$WORKTREE_PATH"
+     echo "Switched to worktree: $WORKTREE_PATH"
+   fi
    ```
 
-   If you need staged changes instead:
+3. **Report context**
 
    ```bash
-   git diff --cached
+   echo "=== WORKTREE CONTEXT ==="
+   echo "Path: $(git rev-parse --show-toplevel)"
+   echo "Branch: $(git branch --show-current)"
+
+   # Show port configuration if .env exists
+   if [ -f ".env" ]; then
+     echo "Ports: UI=$(grep '^TEST_PORT=' .env | cut -d'=' -f2), Server=$(grep '^PORT=' .env | cut -d'=' -f2)"
+   fi
+   echo "========================"
    ```
 
-   Or for a specific commit range:
+4. **Proceed with review in target worktree context**
+
+   All subsequent git commands will execute in the resolved worktree directory.
+
+### Phase 1: Collect Metadata (Lean Context)
+
+**IMPORTANT**: This phase collects ONLY metadata. DO NOT read file contents - agents will read files themselves.
+
+1. **Get diff statistics** (not full diff content)
 
    ```bash
-   git diff <base-branch>
+   # Summary of changes per file (lines added/removed)
+   git diff --stat HEAD
+
+   # For staged changes
+   git diff --stat --cached
    ```
 
 2. **Get list of changed files**
 
    ```bash
+   # Modified files
    git diff --name-only HEAD
+
+   # Staged files
+   git diff --name-only --cached
    ```
 
 3. **Get untracked files** (new files not yet added to git)
@@ -47,22 +104,9 @@ Then automatically fixes any issues found.
    git ls-files --others --exclude-standard
    ```
 
-   This captures NEW files that `git diff` misses.
+   **DO NOT read untracked file contents** - agents will read them.
 
-4. **Read full content of untracked files**
-
-   For each untracked file from step 3, read the FULL file content (no diff exists for new files).
-
-   Format each untracked file as:
-
-   ```
-   ### NEW FILE: path/to/file.ts (UNTRACKED)
-   Lines: <line count>
-
-   <full file content>
-   ```
-
-5. **Categorize all changes**
+4. **Categorize all changes** (metadata only)
 
    Create a summary table:
 
@@ -73,15 +117,16 @@ Then automatically fixes any issues found.
    | Untracked (new)    | X     | list files... |
    | **Total**          | X     |               |
 
-6. **Find related files** (import/export dependencies)
+5. **Identify file types** for agent routing
 
-   For changed/untracked files, use grep to find:
-   - Files that import from the changed files
-   - Files that the changed files import from
+   Categorize files by domain:
+   - **Frontend**: `apps/ui/**`, `*.tsx`, `*.css`
+   - **Backend**: `apps/server/**`, routes, services
+   - **Shared**: `libs/**`
+   - **Config**: `*.json`, `*.config.*`, `.env*`
+   - **Tests**: `*.test.ts`, `*.spec.ts`
 
-   This provides context for architectural review.
-
-7. **Understand the tech stack** (for validation):
+6. **Note the tech stack** (agents will verify against this):
    - **Node.js**: >=22.0.0 <23.0.0
    - **TypeScript**: 5.9.3
    - **React**: 19.2.3
@@ -89,34 +134,56 @@ Then automatically fixes any issues found.
    - **Electron**: 39.2.7
    - **Vite**: 7.3.0
    - **Vitest**: 4.0.16
-   - Check `package.json` files for exact versions
 
 ### Phase 2: Deep Dive Analysis (5 Agents)
 
-Launch 5 separate deep dive agents, each with a specific focus area. Each agent should be invoked with the `@deepdive` agent and given the git diff along with their specific instructions.
+Launch 5 separate deep dive agents, each with a specific focus area. Each agent should be invoked with the `@deepdive` agent.
 
-**IMPORTANT: Input Format for All Agents**
+**IMPORTANT: Delegated File Reading Architecture**
 
-Provide each agent with:
+To avoid context bloat in the main session, agents read files themselves:
 
-1. **Git Diff** - Changes to tracked files (from `git diff HEAD`)
-2. **Full File Content** - For NEW untracked files (entire file, no diff markers)
-3. **Related Files** - Files that import from / are imported by changed files
+1. **Main session provides ONLY**:
+   - List of file paths to analyze (from Phase 1)
+   - Diff statistics (lines changed per file)
+   - File categorization (frontend/backend/shared/tests)
+   - Tech stack versions to validate against
 
-Each agent must understand:
+2. **Each agent MUST**:
+   - Read the files assigned to them using the Read tool
+   - Run `git diff HEAD -- <file>` to see specific changes
+   - Read related files as needed for context
+   - Focus on their specific domain
 
-- Untracked files have NO diff markers (`+`/`-`) - review the FULL content
-- New files need complete analysis, not just incremental review
-- Consider how new files integrate with existing codebase
+3. **Agent file reading strategy**:
+   - For MODIFIED files: Run `git diff HEAD -- <file>` to see changes
+   - For UNTRACKED files: Read full file content (no diff exists)
+   - For CONTEXT: Read imports/related files as needed
+
+**Benefits of this approach**:
+
+- Main session stays lean (~5-10k tokens)
+- Each agent has fresh context for their files
+- Agents can read additional context files as needed
+- Scales to any number of changed files
 
 #### Agent 1: Tech Stack Validation (HIGHEST PRIORITY)
 
 **Focus:** Verify code is valid for the tech stack
 
+**Input:** List of files to analyze, tech stack versions
+
 **Instructions for Agent 1:**
 
 ```
-Analyze the git diff for invalid code based on the tech stack:
+STEP 0: READ THE FILES (Required First Step)
+
+For each file in your assigned list:
+- MODIFIED files: Run `git diff HEAD -- <filepath>` to see changes
+- UNTRACKED files: Use Read tool to get full content
+- Read any imported files if needed for type checking
+
+Then analyze for invalid code based on the tech stack:
 
 1. **TypeScript/JavaScript Syntax**
    - Check for valid TypeScript syntax (no invalid type annotations, correct import/export syntax)
@@ -169,10 +236,19 @@ Provide a detailed report with:
 
 **Focus:** Security issues and vulnerabilities
 
+**Input:** List of files to analyze (prioritize routes, auth, API files)
+
 **Instructions for Agent 2:**
 
 ```
-Analyze the git diff for security vulnerabilities:
+STEP 0: READ THE FILES (Required First Step)
+
+For each file in your assigned list:
+- MODIFIED files: Run `git diff HEAD -- <filepath>` to see changes
+- UNTRACKED files: Use Read tool to get full content
+- Prioritize: auth/*, routes/*, api/*, *.env*, config files
+
+Then analyze for security vulnerabilities:
 
 1. **Injection Vulnerabilities**
    - SQL injection (if applicable)
@@ -228,10 +304,19 @@ Provide a detailed report with:
 
 **Focus:** Dirty code, code smells, and quality issues
 
+**Input:** List of files to analyze
+
 **Instructions for Agent 3:**
 
 ```
-Analyze the git diff for code quality issues:
+STEP 0: READ THE FILES (Required First Step)
+
+For each file in your assigned list:
+- MODIFIED files: Run `git diff HEAD -- <filepath>` to see changes
+- UNTRACKED files: Use Read tool to get full content
+- For long files, focus on changed sections
+
+Then analyze for code quality issues:
 
 1. **Code Smells**
    - Long functions/methods (>50 lines)
@@ -287,10 +372,19 @@ Provide a detailed report with:
 
 **Focus:** Verify code implements requirements correctly
 
+**Input:** List of files to analyze
+
 **Instructions for Agent 4:**
 
 ```
-Analyze the git diff for implementation correctness:
+STEP 0: READ THE FILES (Required First Step)
+
+For each file in your assigned list:
+- MODIFIED files: Run `git diff HEAD -- <filepath>` to see changes
+- UNTRACKED files: Use Read tool to get full content
+- Read test files alongside implementation files
+
+Then analyze for implementation correctness:
 
 1. **Logic Errors**
    - Incorrect conditional logic
@@ -343,10 +437,20 @@ Provide a detailed report with:
 
 **Focus:** Architectural issues and design pattern violations
 
+**Input:** List of files to analyze, file categorization from Phase 1
+
 **Instructions for Agent 5:**
 
 ```
-Analyze the git diff for architectural and design issues:
+STEP 0: READ THE FILES (Required First Step)
+
+For each file in your assigned list:
+- MODIFIED files: Run `git diff HEAD -- <filepath>` to see changes
+- UNTRACKED files: Use Read tool to get full content
+- Read CLAUDE.md and project docs for architecture patterns
+- Check import/export relationships between files
+
+Then analyze for architectural and design issues:
 
 1. **Architecture Violations**
    - Violation of project structure patterns
@@ -420,14 +524,14 @@ After all 5 deep dive agents complete their analysis:
 
 Launch 5 deepcode agents to fix the issues found. Each agent should be invoked with the `@deepcode` agent.
 
-**IMPORTANT: Untracked Files Context**
+**IMPORTANT: File Reading for Fixes**
 
-When fixing issues in untracked files:
+Deepcode agents must read files before fixing:
 
-- Edit the files normally using the Edit tool
-- Untracked files can be modified just like tracked files
+- Use Read tool to get current file content
+- For context, run `git diff HEAD -- <filepath>` to see what was changed
+- Edit files using the Edit tool
 - After all fixes are complete, recommend `git add <file>` for untracked files
-- Issues marked [UNTRACKED] require reading the full file, not diff
 
 **IMPORTANT: Issue Handling Strategy**
 
@@ -617,19 +721,19 @@ After all fixes are complete:
 
 ## Workflow Summary
 
-1. ✅ Get git diff + untracked files + related files
-2. ✅ Read full content of untracked files
-3. ✅ Categorize all changes (modified/staged/untracked)
-4. ✅ Launch 5 deep dive agents (parallel analysis, all file types)
-5. ✅ Consolidate findings and prioritize (track untracked issues)
-6. ✅ Launch 5 deepcode agents (sequential fixes, priority order)
-7. ✅ Verify fixes with build/lint/test
-8. ✅ Verify untracked files and recommend staging
-9. ✅ Report summary with tracked vs untracked breakdown
+1. ✅ Collect metadata only (file lists, diff stats) - NO file content reading
+2. ✅ Categorize files by domain (frontend/backend/shared/tests)
+3. ✅ Launch 5 deep dive agents with file lists (agents read files themselves)
+4. ✅ Consolidate findings and prioritize (track untracked issues)
+5. ✅ Launch 5 deepcode agents (sequential fixes, priority order)
+6. ✅ Verify fixes with build/lint/test
+7. ✅ Verify untracked files and recommend staging
+8. ✅ Report summary with tracked vs untracked breakdown
 
 ## Notes
 
 - **DO NOT CREATE A COMMIT** - This review process ends with verification and reporting only. The user will decide when to commit.
+- **DELEGATED FILE READING** - Main session collects only metadata. Agents read files themselves to avoid context bloat.
 - **FIX ALL ISSUES CLAUDE IS CONFIDENT ABOUT** - Every issue where Claude knows how to fix it MUST be fixed immediately by the deepcode agents. Do not skip or defer these.
 - **DEFER ONLY SEVERE + UNCERTAIN ISSUES** - For issues that are both:
   1. Very severe (could break the system, introduce security vulnerabilities, or have significant impact)
@@ -645,10 +749,10 @@ After all fixes are complete:
   After the user reviews and decides, execute their decision via deepcode agent(s).
 
 - **Tech stack validation is HIGHEST PRIORITY** - invalid code must be fixed first
-- **Untracked files require FULL content review** - no diff exists, so entire file must be analyzed
+- **Agents read their own files** - Each agent uses Read tool and `git diff` to fetch file content
+- **Untracked files** - Agents read full content since no diff exists
 - Each deep dive agent should work independently and provide comprehensive analysis
 - Deepcode agents should fix issues in priority order
 - All fixes should maintain existing functionality
 - If an agent finds no issues in their domain, they should report "No issues found"
 - If fixes introduce new issues, they should be caught in verification phase
-- Untracked files often include: new test files, fixtures, utilities, documentation, and configuration examples
