@@ -38,6 +38,8 @@ import type {
   KLStreamCommandRequest,
 } from '@automaker/types';
 
+import { getApiKey, getSessionToken } from './http-api-client';
+
 // ============================================================================
 // Error Handling
 // ============================================================================
@@ -122,6 +124,22 @@ interface RequestOptions {
   params?: Record<string, string | number | boolean | undefined>;
 }
 
+function getAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+
+  const apiKey = getApiKey();
+  if (apiKey) {
+    headers['X-API-Key'] = apiKey;
+  }
+
+  const sessionToken = getSessionToken();
+  if (sessionToken) {
+    headers['X-Session-Token'] = sessionToken;
+  }
+
+  return headers;
+}
+
 /**
  * Make an HTTP request to the Knowledge Library API
  */
@@ -143,8 +161,9 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     }
   }
 
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    ...getAuthHeaders(),
   };
 
   try {
@@ -152,6 +171,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
+      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -231,7 +251,9 @@ export const knowledgeLibraryApi = {
     try {
       const response = await fetch(url, {
         method: 'POST',
+        headers: getAuthHeaders(),
         body: formData,
+        credentials: 'include',
       });
 
       if (!response.ok) {

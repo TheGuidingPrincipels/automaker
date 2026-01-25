@@ -90,3 +90,52 @@ export type { CursorPermissionsData } from './use-cursor-permissions';
 
 // Workspace
 export { useWorkspaceDirectories } from './use-workspace';
+
+// API Health
+export { useApiHealth } from './use-api-health';
+export type { ApiHealthResponse, ApiHealthDetailedResponse } from './use-api-health';
+
+// Knowledge Library (AI-Library)
+export {
+  // Health
+  useKLHealth,
+  // Sessions
+  useKLSessions,
+  useKLSession,
+  useKLCreateSession,
+  useKLUploadSource,
+  useKLDeleteSession,
+  // Blocks
+  useKLBlocks,
+  // Mode
+  useKLSetMode,
+  // Cleanup
+  useKLGenerateCleanupPlan,
+  useKLCleanupPlan,
+  useKLDecideCleanupItem,
+  useKLApproveCleanupPlan,
+  // Routing
+  useKLGenerateRoutingPlan,
+  useKLRoutingPlan,
+  useKLSelectDestination,
+  useKLRejectBlock,
+  useKLApproveRoutingPlan,
+  // Execution
+  useKLExecuteSession,
+  // Library
+  useKLLibrary,
+  useKLFileMetadata,
+  useKLFileContent,
+  useKLLibraryKeywordSearch,
+  useKLIndexLibrary,
+  useKLIndexStats,
+  // Query (RAG)
+  useKLSemanticSearch,
+  useKLAsk,
+  useKLConversations,
+  useKLConversation,
+  useKLDeleteConversation,
+  // Errors
+  KnowledgeLibraryError,
+  isKLOfflineError,
+} from './use-knowledge-library';

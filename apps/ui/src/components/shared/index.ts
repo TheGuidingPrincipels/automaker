@@ -8,3 +8,12 @@ export {
 
 // Font Components
 export { FontSelector } from './font-selector';
+
+// Session Transcript Components
+export {
+  SessionTranscript,
+  type SessionTranscriptProps,
+  type TranscriptEntry,
+  type TranscriptRole,
+  type TranscriptLevel,
+} from './session-transcript';

@@ -113,12 +113,16 @@ export function useKLCreateSession() {
 /**
  * Upload a source file to a session
  */
-export function useKLUploadSource(sessionId: string) {
+type KLUploadSourceVariables = { sessionId: string; file: File };
+
+export function useKLUploadSource() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (file: File) => knowledgeLibraryApi.uploadSource(sessionId, file),
-    onSuccess: (data) => {
+    mutationFn: ({ sessionId, file }: KLUploadSourceVariables) =>
+      knowledgeLibraryApi.uploadSource(sessionId, file),
+    onSuccess: (data, variables) => {
+      const { sessionId } = variables;
       // Update session cache
       queryClient.setQueryData(queryKeys.knowledgeLibrary.session(sessionId), data);
       // Invalidate related queries
@@ -195,7 +199,8 @@ export function useKLGenerateCleanupPlan(sessionId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (useAi = true) => knowledgeLibraryApi.generateCleanupPlan(sessionId, useAi),
+    mutationFn: (useAi: boolean = true) =>
+      knowledgeLibraryApi.generateCleanupPlan(sessionId, useAi),
     onSuccess: (data) => {
       queryClient.setQueryData(queryKeys.knowledgeLibrary.cleanupPlan(sessionId), data);
       // Also refresh session (phase may have changed)
@@ -271,8 +276,10 @@ export function useKLGenerateRoutingPlan(sessionId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ useAi = true, useCandidateFinder = true } = {}) =>
-      knowledgeLibraryApi.generateRoutingPlan(sessionId, useAi, useCandidateFinder),
+    mutationFn: (options: { useAi?: boolean; useCandidateFinder?: boolean } = {}) => {
+      const { useAi = true, useCandidateFinder = true } = options;
+      return knowledgeLibraryApi.generateRoutingPlan(sessionId, useAi, useCandidateFinder);
+    },
     onSuccess: (data) => {
       queryClient.setQueryData(queryKeys.knowledgeLibrary.routingPlan(sessionId), data);
       // Refresh session (phase changed)

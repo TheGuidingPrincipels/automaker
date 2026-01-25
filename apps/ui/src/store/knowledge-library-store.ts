@@ -64,12 +64,12 @@ const validateProposedNewFile = (
   const normalizedOverview = normalizeWhitespace(overview);
   /* Regex explanation:
    * ^          - Start of string
-   * #+         - One or more '#' characters (allow different heading levels if needed, though usually strict)
+   * ##         - Exactly two '#' characters
    * \s*        - Optional whitespace
    * Overview   - Literal "Overview"
    * /i         - Case insensitive
    */
-  if (!/^#+\s*Overview/i.test(normalizedOverview)) {
+  if (!/^##\s*Overview/i.test(normalizedOverview)) {
     errors.push('Overview must start with "## Overview".');
   }
 

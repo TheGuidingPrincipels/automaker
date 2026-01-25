@@ -2,7 +2,7 @@
  * Knowledge Types - Types for the Knowledge Hub feature
  *
  * The Knowledge Hub consists of three main sections:
- * 1. Blueprints - Guidelines, behaviors, and processes for agents
+ * 1. Knowledge Library - Personal knowledge storage with AI-powered organization
  * 2. Knowledge Server - Company knowledge storage and retrieval
  * 3. Learning MCP - Agent learnings from issue resolution
  */
@@ -10,7 +10,7 @@
 /**
  * KnowledgeSection - Identifiers for Knowledge Hub sections
  */
-export type KnowledgeSection = 'blueprints' | 'knowledge-server' | 'learning';
+export type KnowledgeSection = 'knowledge-library' | 'knowledge-server' | 'learning';
 
 /**
  * BlueprintCategory - Categories for organizing blueprints

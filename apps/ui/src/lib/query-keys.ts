@@ -187,6 +187,16 @@ export const queryKeys = {
   },
 
   // ============================================
+  // Health / Connection Status
+  // ============================================
+  health: {
+    /** API health status */
+    api: () => ['health', 'api'] as const,
+    /** Detailed health (authenticated) */
+    detailed: () => ['health', 'detailed'] as const,
+  },
+
+  // ============================================
   // Cursor Permissions
   // ============================================
   cursorPermissions: {
