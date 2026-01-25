@@ -263,6 +263,87 @@ Use the **SYSTEMS feature** as the canonical reference:
 - `AUTOMAKER_MOCK_AGENT=true` - Enable mock agent mode for CI testing
 - `AUTOMAKER_AUTO_LOGIN=true` - Skip login prompt in development (disabled when NODE_ENV=production)
 - `VITE_HOSTNAME` - Hostname for frontend API URLs (default: localhost)
+- `TEST_PORT` - Frontend/Vite dev server port (default: 3007)
+- `TEST_SERVER_PORT` - Backend port for Vite proxy (default: 3008)
+- `VITE_SERVER_URL` - Explicit server URL for frontend (overrides proxy)
+- `CORS_ORIGIN` - Allowed CORS origins (comma-separated)
+- `VITE_KNOWLEDGE_LIBRARY_API` - URL for the AI-Library backend API (default: http://localhost:8001)
+
+## Worktree Port Configuration (CRITICAL)
+
+This repository uses git worktrees for isolated development. **Each worktree has a unique port range** to allow simultaneous development, testing, and UI access without conflicts.
+
+### Port Allocation Table
+
+| Location | UI Port | Server Port | Access URL |
+|----------|---------|-------------|------------|
+| **Main repo** | 3007 | 3008 | http://localhost:3007 |
+| **dev-improvements** | 3017 | 3018 | http://localhost:3017 |
+| **reading-system** | 3027 | 3028 | http://localhost:3027 |
+
+### How It Works
+
+Each worktree has a `.env` file with pre-configured ports:
+
+```bash
+# Example: dev-improvements worktree
+PORT=3018              # Backend server
+TEST_PORT=3017         # Frontend dev server
+TEST_SERVER_PORT=3018  # Vite proxy target
+VITE_SERVER_URL=http://localhost:3018
+CORS_ORIGIN=http://localhost:3017
+```
+
+### Running Commands from Worktrees
+
+**Start the WebUI:**
+```bash
+cd /Users/ruben/Documents/GitHub/automaker/.worktrees/dev-improvements
+npm run dev:web
+# Opens at http://localhost:3017 (NOT 3007!)
+```
+
+**Run E2E Tests:**
+```bash
+cd /Users/ruben/Documents/GitHub/automaker/.worktrees/dev-improvements
+npm run test
+# Uses ports 3017/3018 automatically
+```
+
+**Run Unit Tests (safe to run in parallel):**
+```bash
+npm run test:server   # No port conflicts - uses mocks
+npm run test:packages # No port conflicts - uses mocks
+```
+
+### Creating New Worktrees
+
+When creating a new worktree, add a `.env` file with the next available port range (+10 increment):
+
+```bash
+# For a new worktree at port range 3037/3038:
+PORT=3038
+TEST_PORT=3037
+TEST_SERVER_PORT=3038
+VITE_SERVER_URL=http://localhost:3038
+CORS_ORIGIN=http://localhost:3037
+DATA_DIR=/Users/ruben/Documents/GitHub/automaker/data
+```
+
+### Simultaneous Operation Rules
+
+1. **WebUI**: Can run from multiple worktrees simultaneously (different ports)
+2. **Unit Tests**: Safe to run in parallel (use mocks, no ports)
+3. **E2E Tests**: One at a time per worktree (each uses its own ports)
+4. **Settings/Data**: Shared via `DATA_DIR` - avoid concurrent modifications
+
+### AI Agent Instructions
+
+When working in a worktree, the agent **MUST**:
+- Use `npm run dev:web` (not `npm run dev`) to respect `.env` ports
+- Note the actual port in output (3017/3027, not 3007)
+- Run tests normally - `.env` handles port configuration
+- Never hardcode port 3007/3008 - always use environment variables
 
 ## Documentation
 
