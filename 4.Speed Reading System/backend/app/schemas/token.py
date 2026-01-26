@@ -1,20 +1,16 @@
 """Pydantic schemas for token-related API endpoints."""
 
-from enum import Enum
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
+
+from app.models.enums import BreakType
 
 
 class SchemaBase(BaseModel):
     """Base schema with ORM attribute support."""
 
     model_config = ConfigDict(from_attributes=True)
-
-
-class BreakType(str, Enum):
-    PARAGRAPH = "paragraph"
-    HEADING = "heading"
 
 
 class TokenDTO(SchemaBase):
