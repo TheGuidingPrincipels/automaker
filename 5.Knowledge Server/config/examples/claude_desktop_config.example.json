@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "knowledge-server": {
+      "command": "/Users/ruben/Documents/GitHub/automaker/5.Knowledge Server/.venv/bin/python",
+      "args": ["/Users/ruben/Documents/GitHub/automaker/5.Knowledge Server/mcp_server.py"],
+      "cwd": "/Users/ruben/Documents/GitHub/automaker/5.Knowledge Server",
+      "env": {
+        "PYTHONPATH": "/Users/ruben/Documents/GitHub/automaker/5.Knowledge Server",
+        "NEO4J_URI": "bolt://localhost:7687",
+        "NEO4J_USER": "neo4j",
+        "NEO4J_PASSWORD": "password",
+        "MCP_NEO4J_PASSWORD": "password",
+        "MCP_SERVER_NAME": "knowledge-server",
+        "LOG_LEVEL": "INFO",
+        "CHROMA_PERSIST_DIRECTORY": "/Users/ruben/Documents/GitHub/automaker/5.Knowledge Server/data/chroma",
+        "EMBEDDING_MODEL": "sentence-transformers/all-MiniLM-L6-v2",
+        "EMBEDDING_CACHE_DIR": "/Users/ruben/Documents/GitHub/automaker/5.Knowledge Server/data/embeddings",
+        "EVENT_STORE_PATH": "/Users/ruben/Documents/GitHub/automaker/5.Knowledge Server/data/events.db",
+        "MAX_BATCH_SIZE": "50",
+        "CACHE_TTL_SECONDS": "300"
+      }
+    }
+  }
+}

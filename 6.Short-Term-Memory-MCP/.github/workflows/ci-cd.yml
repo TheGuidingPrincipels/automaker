@@ -1,0 +1,765 @@
+name: CI/CD Pipeline
+
+# ============================================================================
+# TRIGGER CONDITIONS
+# ============================================================================
+# This pipeline runs on:
+# - Every push to any branch
+# - Every pull request targeting main/develop
+# - Manual workflow dispatch for testing
+# ============================================================================
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+      - 'hotfix/**'
+      - 'claude/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: 'Skip test execution (for testing pipeline only)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+# ============================================================================
+# ENVIRONMENT VARIABLES
+# ============================================================================
+# These can be customized per repository
+# Secrets should be configured in GitHub Settings > Secrets
+# ============================================================================
+
+env:
+  PYTHON_VERSION: '3.11'
+  CACHE_KEY_PREFIX: 'short-term-mcp'
+  MIN_COVERAGE_PERCENT: 80
+  MAX_BUILD_TIME_MINUTES: 10
+  ARTIFACT_RETENTION_DAYS: 30
+
+# ============================================================================
+# CONCURRENCY CONTROL
+# ============================================================================
+# Cancel in-progress runs for the same branch to save resources
+# ============================================================================
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# ============================================================================
+# JOBS
+# ============================================================================
+
+jobs:
+  # ==========================================================================
+  # JOB 1: BUILD & DEPENDENCY SETUP
+  # ==========================================================================
+  # Purpose: Set up Python environment, install dependencies
+  # Fail-fast: Yes - if dependencies can't be installed, fail immediately
+  # Cache: Dependencies cached for faster subsequent runs
+  # ==========================================================================
+
+  build:
+    name: 🔨 Build & Setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full history for proper versioning
+
+      - name: 🐍 Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip' # Cache pip dependencies
+
+      - name: 📦 Cache pip dependencies
+        uses: actions/cache@v4
+        id: cache-deps
+        with:
+          path: |
+            ~/.cache/pip
+            .venv
+          key: ${{ env.CACHE_KEY_PREFIX }}-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('**/requirements.txt', '**/pyproject.toml') }}
+          restore-keys: |
+            ${{ env.CACHE_KEY_PREFIX }}-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-
+
+      - name: 🔧 Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          # Override system packages that may be compiled for wrong Python version
+          pip install --ignore-installed cffi cryptography
+          pip install -r requirements.txt
+          pip install flake8 black isort mypy bandit safety
+
+      - name: 📊 Display environment info
+        run: |
+          echo "Python version: $(python --version)"
+          echo "Pip version: $(pip --version)"
+          echo "Installed packages:"
+          pip list
+
+      - name: 🏗️ Build package
+        run: |
+          python -m pip install build
+          python -m build
+
+      - name: 📤 Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-packages
+          path: dist/
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+
+  # ==========================================================================
+  # JOB 2: CODE QUALITY & LINTING
+  # ==========================================================================
+  # Purpose: Static analysis, code formatting, type checking
+  # Fail-fast: Yes - enforce code quality standards
+  # Tools: flake8 (linting), black (formatting), isort (imports), mypy (types)
+  # ==========================================================================
+
+  code-quality:
+    name: 🔍 Code Quality
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 5
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: 📦 Restore cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            .venv
+          key: ${{ env.CACHE_KEY_PREFIX }}-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('**/requirements.txt', '**/pyproject.toml') }}
+
+      - name: 🔧 Install quality tools
+        run: |
+          pip install --ignore-installed cffi cryptography
+          pip install flake8 black isort mypy
+          pip install -r requirements.txt
+
+      - name: 🎨 Check code formatting (Black)
+        run: |
+          echo "Checking code formatting with Black..."
+          black --check --diff short_term_mcp/ || {
+            echo "❌ Code formatting issues found. Run 'black short_term_mcp/' to fix."
+            exit 1
+          }
+
+      - name: 📋 Check import sorting (isort)
+        run: |
+          echo "Checking import order with isort..."
+          isort --check-only --diff short_term_mcp/ || {
+            echo "❌ Import order issues found. Run 'isort short_term_mcp/' to fix."
+            exit 1
+          }
+
+      - name: 🔎 Lint with flake8
+        run: |
+          echo "Running flake8 linting..."
+          # Stop the build if there are Python syntax errors or undefined names
+          flake8 short_term_mcp/ --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Exit-zero treats all errors as warnings. Adjust max-line-length as needed
+          flake8 short_term_mcp/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: 🔬 Type checking (mypy)
+        continue-on-error: true # Don't fail pipeline on type errors initially
+        run: |
+          echo "Running mypy type checking..."
+          mypy short_term_mcp/ --ignore-missing-imports --no-strict-optional || {
+            echo "⚠️ Type checking issues found (non-blocking)"
+          }
+
+      - name: 📊 Generate code quality report
+        if: always()
+        run: |
+          echo "=== Code Quality Summary ===" > quality-report.txt
+          echo "Black: $(black --check short_term_mcp/ && echo '✅ PASS' || echo '❌ FAIL')" >> quality-report.txt
+          echo "isort: $(isort --check-only short_term_mcp/ && echo '✅ PASS' || echo '❌ FAIL')" >> quality-report.txt
+          echo "flake8: ✅ Completed" >> quality-report.txt
+          cat quality-report.txt
+
+      - name: 📤 Upload quality report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-quality-report
+          path: quality-report.txt
+          retention-days: 30
+
+  # ==========================================================================
+  # JOB 3: SECURITY SCANNING
+  # ==========================================================================
+  # Purpose: Scan for security vulnerabilities and code security issues
+  # Tools: bandit (SAST), safety (dependency vulnerabilities)
+  # Fail-fast: Yes - critical security issues block deployment
+  # ==========================================================================
+
+  security:
+    name: 🔒 Security Scan
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 5
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: 🔧 Install security tools
+        run: |
+          pip install --ignore-installed cffi cryptography
+          pip install bandit safety
+          pip install -r requirements.txt
+
+      - name: 🛡️ Run Bandit SAST scan
+        continue-on-error: false # Fail on critical security issues
+        run: |
+          echo "Running Bandit security scan..."
+          bandit -r short_term_mcp/ -f json -o bandit-report.json || true
+          bandit -r short_term_mcp/ -ll -f txt  # Show medium/high severity issues
+
+      - name: 🔍 Check dependency vulnerabilities (Safety)
+        continue-on-error: true # Don't block on dependency issues initially
+        run: |
+          echo "Scanning dependencies for known vulnerabilities..."
+          safety check --json --output safety-report.json || {
+            echo "⚠️ Dependency vulnerabilities found (check report)"
+          }
+          safety check || echo "See safety-report.json for details"
+
+      - name: 📤 Upload security reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            bandit-report.json
+            safety-report.json
+          retention-days: 90 # Keep security reports longer
+
+  # ==========================================================================
+  # JOB 4: UNIT TESTS
+  # ==========================================================================
+  # Purpose: Run comprehensive unit test suite with coverage
+  # Target: 159 tests, 100% pass rate, >80% coverage
+  # Matrix: Test on multiple Python versions for compatibility
+  # ==========================================================================
+
+  unit-tests:
+    name: 🧪 Unit Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false # Run all Python versions even if one fails
+      matrix:
+        python-version: ['3.11', '3.12']
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: 🔧 Install dependencies
+        run: |
+          pip install --ignore-installed cffi cryptography
+          pip install -r requirements.txt
+          pip install pytest-xdist
+
+      - name: 🧪 Run unit tests with coverage
+        if: ${{ github.event.inputs.skip_tests != 'true' }}
+        run: |
+          echo "Running 159 tests with pytest..."
+          python -m pytest short_term_mcp/tests/ \
+            -v \
+            --cov=short_term_mcp \
+            --cov-report=xml \
+            --cov-report=html \
+            --cov-report=term-missing \
+            --cov-fail-under=${{ env.MIN_COVERAGE_PERCENT }} \
+            --junitxml=test-results.xml \
+            --maxfail=5 \
+            -n auto
+
+      - name: 📊 Display test summary
+        if: always()
+        run: |
+          if [ -f test-results.xml ]; then
+            echo "=== Test Results Summary ==="
+            python << 'PYTHON_EOF'
+          import xml.etree.ElementTree as ET
+          tree = ET.parse('test-results.xml')
+          root = tree.getroot()
+          tests = root.attrib.get('tests', '0')
+          failures = root.attrib.get('failures', '0')
+          errors = root.attrib.get('errors', '0')
+          skipped = root.attrib.get('skipped', '0')
+          time = root.attrib.get('time', '0')
+          print(f'Total Tests: {tests}')
+          print(f'Passed: {int(tests) - int(failures) - int(errors) - int(skipped)}')
+          print(f'Failed: {failures}')
+          print(f'Errors: {errors}')
+          print(f'Skipped: {skipped}')
+          print(f'Duration: {float(time):.2f}s')
+          PYTHON_EOF
+          fi
+
+      - name: 📤 Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-py${{ matrix.python-version }}
+          path: |
+            test-results.xml
+            htmlcov/
+            .coverage
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+
+      - name: 📈 Upload coverage to Codecov (optional)
+        if: matrix.python-version == '3.11'
+        continue-on-error: true
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+  # ==========================================================================
+  # JOB 5: INTEGRATION TESTS
+  # ==========================================================================
+  # Purpose: Test end-to-end workflows and tool integration
+  # Database: Uses SQLite (local, no external services needed)
+  # ==========================================================================
+
+  integration-tests:
+    name: 🔗 Integration Tests
+    runs-on: ubuntu-latest
+    needs: [unit-tests, code-quality]
+    timeout-minutes: 10
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: 🔧 Install dependencies
+        run: |
+          pip install --ignore-installed cffi cryptography
+          pip install -r requirements.txt
+
+      - name: 🗄️ Set up test database
+        run: |
+          mkdir -p data
+          echo "Database directory created for integration tests"
+
+      - name: 🔗 Run integration tests
+        if: ${{ github.event.inputs.skip_tests != 'true' }}
+        run: |
+          echo "Running integration test suite..."
+          python -m pytest short_term_mcp/tests/test_integration.py -v --tb=short
+          python -m pytest short_term_mcp/tests/test_research_cache_integration.py -v --tb=short
+
+      - name: 🏥 Run health check tests
+        run: |
+          echo "Running production health checks..."
+          python -m pytest short_term_mcp/tests/test_production.py -v -k "health"
+
+      - name: 📤 Upload integration test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: |
+            test-results.xml
+          retention-days: 30
+
+  # ==========================================================================
+  # JOB 6: PACKAGE & ARTIFACT GENERATION
+  # ==========================================================================
+  # Purpose: Build distributable packages (wheel, sdist)
+  # Versioning: Tagged with git commit hash
+  # Artifacts: Stored for deployment stages
+  # ==========================================================================
+
+  package:
+    name: 📦 Package Artifacts
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests, security]
+    timeout-minutes: 5
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      artifact_name: ${{ steps.version.outputs.artifact_name }}
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Need full history for versioning
+
+      - name: 🐍 Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: 🏷️ Generate version tag
+        id: version
+        run: |
+          # Extract version from pyproject.toml
+          VERSION=$(grep '^version' pyproject.toml | cut -d'"' -f2)
+          COMMIT_SHA=$(git rev-parse --short HEAD)
+          BUILD_VERSION="${VERSION}+${COMMIT_SHA}"
+          ARTIFACT_NAME="short-term-mcp-${BUILD_VERSION}"
+
+          echo "version=${BUILD_VERSION}" >> $GITHUB_OUTPUT
+          echo "artifact_name=${ARTIFACT_NAME}" >> $GITHUB_OUTPUT
+
+          echo "📦 Package Version: ${BUILD_VERSION}"
+          echo "📝 Artifact Name: ${ARTIFACT_NAME}"
+
+      - name: 🔧 Install build tools
+        run: |
+          pip install build twine
+
+      - name: 🏗️ Build distribution packages
+        run: |
+          python -m build
+          echo "Built packages:"
+          ls -lh dist/
+
+      - name: ✅ Verify package integrity
+        run: |
+          twine check dist/*
+
+      - name: 📝 Create build manifest
+        run: |
+          cat > dist/BUILD_MANIFEST.txt << EOF
+          Build Information
+          ==================
+          Version: ${{ steps.version.outputs.version }}
+          Commit: ${{ github.sha }}
+          Branch: ${{ github.ref_name }}
+          Build Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          Workflow: ${{ github.workflow }}
+          Run Number: ${{ github.run_number }}
+          Triggered By: ${{ github.actor }}
+
+          Packages
+          =========
+          $(ls -1 dist/*.whl dist/*.tar.gz)
+
+          Git Info
+          ========
+          $(git log -1 --pretty=format:"Commit: %H%nAuthor: %an <%ae>%nDate: %ad%nMessage: %s")
+          EOF
+
+          cat dist/BUILD_MANIFEST.txt
+
+      - name: 📤 Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.version.outputs.artifact_name }}
+          path: dist/
+          retention-days: 90
+
+  # ==========================================================================
+  # JOB 7: STAGING DEPLOYMENT
+  # ==========================================================================
+  # Purpose: Deploy to staging environment (develop branch)
+  # Trigger: Automatic on develop branch
+  # Action: Create pre-release, notify stakeholders
+  # ==========================================================================
+
+  deploy-staging:
+    name: 🚀 Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: package
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    timeout-minutes: 5
+
+    permissions:
+      contents: write # Required for creating GitHub releases
+
+    environment:
+      name: staging
+      url: https://github.com/${{ github.repository }}/releases/tag/staging-latest
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.package.outputs.artifact_name }}
+          path: dist/
+
+      - name: 🏷️ Create staging pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: staging-${{ needs.package.outputs.version }}
+          name: Staging Release ${{ needs.package.outputs.version }}
+          body: |
+            ## Staging Deployment
+
+            **Version:** ${{ needs.package.outputs.version }}
+            **Branch:** develop
+            **Commit:** ${{ github.sha }}
+
+            ### Changes in this release
+            ${{ github.event.head_commit.message }}
+
+            ### Artifacts
+            - Python wheel and source distribution
+            - Build manifest with full build details
+
+            ### Testing
+            - ✅ All 159 unit tests passed
+            - ✅ Integration tests passed
+            - ✅ Security scans completed
+            - ✅ Code quality checks passed
+
+            **Status:** ⚠️ Pre-release - For staging/testing only
+          files: dist/*
+          prerelease: true
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📢 Staging deployment summary
+        run: |
+          echo "✅ Deployed to STAGING environment"
+          echo "Version: ${{ needs.package.outputs.version }}"
+          echo "Tag: staging-${{ needs.package.outputs.version }}"
+          echo "Artifacts: $(ls -1 dist/ | wc -l) files uploaded"
+
+  # ==========================================================================
+  # JOB 8: PRODUCTION DEPLOYMENT (MANUAL APPROVAL REQUIRED)
+  # ==========================================================================
+  # Purpose: Deploy to production environment (main branch)
+  # Trigger: Automatic on main branch, MANUAL APPROVAL required
+  # Action: Create production release, update latest tag
+  # Rollback: Previous releases available in GitHub Releases
+  # ==========================================================================
+
+  deploy-production:
+    name: 🌟 Deploy to Production
+    runs-on: ubuntu-latest
+    needs: package
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    timeout-minutes: 10
+
+    permissions:
+      contents: write # Required for creating GitHub releases
+
+    environment:
+      name: production
+      url: https://github.com/${{ github.repository }}/releases/tag/v${{ needs.package.outputs.version }}
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📦 Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.package.outputs.artifact_name }}
+          path: dist/
+
+      - name: 📝 Generate release notes
+        id: release_notes
+        run: |
+          # Extract changelog for this version
+          CHANGELOG=$(cat CHANGELOG.md | sed -n '/^## /,/^## /p' | head -n -1)
+
+          cat > release_notes.md << 'EOF'
+          ## 🎉 Production Release
+
+          **Version:** ${{ needs.package.outputs.version }}
+          **Release Date:** $(date -u +"%Y-%m-%d")
+
+          ### What's New
+          $CHANGELOG
+
+          ### Quality Metrics
+          - ✅ 159 unit tests passed (100% pass rate)
+          - ✅ Integration tests passed
+          - ✅ Security scans completed
+          - ✅ Code coverage: >80%
+          - ✅ Code quality checks passed
+
+          ### Installation
+
+          \`\`\`bash
+          # Download and install
+          pip install dist/short_term_mcp-*.whl
+
+          # Or install from source
+          pip install dist/short-term-mcp-*.tar.gz
+          \`\`\`
+
+          ### Deployment Checklist
+          - [ ] Update Claude Desktop configuration
+          - [ ] Restart Claude Desktop
+          - [ ] Run health check: \`health_check\` tool
+          - [ ] Verify 22 MCP tools available
+          - [ ] Test with sample workflow
+          - [ ] Monitor logs for errors
+
+          ### Rollback Instructions
+          If issues occur, install previous release:
+          \`\`\`bash
+          pip install --force-reinstall <previous-version-wheel>
+          \`\`\`
+
+          ### Support
+          - 📖 [Documentation](docs/)
+          - 🐛 [Report Issues](issues)
+          - 💬 [Discussions](discussions)
+
+          **Full Changelog:** https://github.com/${{ github.repository }}/compare/v${{ needs.package.outputs.version }}...main
+          EOF
+
+          cat release_notes.md
+
+      - name: 🏷️ Create production release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.package.outputs.version }}
+          name: Release v${{ needs.package.outputs.version }}
+          body_path: release_notes.md
+          files: dist/*
+          prerelease: false
+          draft: false
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🔔 Post-deployment smoke test
+        run: |
+          echo "Running post-deployment validation..."
+          python << 'PYTHON_EOF'
+          import sys
+          sys.path.insert(0, '.')
+          from short_term_mcp import __version__
+          print(f'✅ Package version: {__version__}')
+          print('✅ Smoke test passed')
+          PYTHON_EOF
+
+      - name: 📢 Production deployment summary
+        run: |
+          echo "🎉 PRODUCTION DEPLOYMENT SUCCESSFUL"
+          echo "=================================="
+          echo "Version: v${{ needs.package.outputs.version }}"
+          echo "Release: https://github.com/${{ github.repository }}/releases/tag/v${{ needs.package.outputs.version }}"
+          echo "Artifacts: $(ls -1 dist/ | wc -l) files uploaded"
+          echo ""
+          echo "Next Steps:"
+          echo "1. Verify release in GitHub Releases"
+          echo "2. Update installation documentation if needed"
+          echo "3. Announce release to users"
+          echo "4. Monitor for issues in first 24 hours"
+
+  # ==========================================================================
+  # JOB 9: PIPELINE STATUS SUMMARY
+  # ==========================================================================
+  # Purpose: Aggregate all job results and provide final status
+  # Always runs, even if previous jobs fail
+  # ==========================================================================
+
+  pipeline-summary:
+    name: 📊 Pipeline Summary
+    runs-on: ubuntu-latest
+    needs: [build, code-quality, security, unit-tests, integration-tests, package]
+    if: always()
+
+    steps:
+      - name: 📊 Generate pipeline summary
+        run: |
+          echo "# 🚀 CI/CD Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow:** ${{ github.workflow }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Job Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ needs.build.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Code Quality | ${{ needs.code-quality.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security | ${{ needs.security.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Unit Tests | ${{ needs.unit-tests.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Integration Tests | ${{ needs.integration-tests.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Package | ${{ needs.package.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check if all jobs succeeded
+          if [ "${{ needs.build.result }}" == "success" ] && \
+             [ "${{ needs.code-quality.result }}" == "success" ] && \
+             [ "${{ needs.security.result }}" == "success" ] && \
+             [ "${{ needs.unit-tests.result }}" == "success" ] && \
+             [ "${{ needs.integration-tests.result }}" == "success" ] && \
+             [ "${{ needs.package.result }}" == "success" ]; then
+            echo "## ✅ Pipeline Status: SUCCESS" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "All quality gates passed! 🎉" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ❌ Pipeline Status: FAILED" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "One or more jobs failed. Please review the logs." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: 💾 Pipeline metrics
+        if: always()
+        run: |
+          echo "Pipeline execution completed at $(date -u)"
+          echo "Total jobs: 9"
+          echo "Branch: ${{ github.ref_name }}"

@@ -1,0 +1,111 @@
+# Ruff Configuration
+# Fast Python linter - replaces flake8, pylint, isort, and more
+# Documentation: https://docs.astral.sh/ruff/
+
+# Maximum line length
+line-length = 100
+
+# Target Python version
+target-version = "py311"
+
+# Exclude directories from linting
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "*.egg-info",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "htmlcov",
+    ".coverage",
+]
+
+[lint]
+# Enable specific rule sets
+# See: https://docs.astral.sh/ruff/rules/
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes (undefined names, unused imports, etc.)
+    "I",     # isort (import sorting)
+    "B",     # flake8-bugbear (common bugs and design problems)
+    "C4",    # flake8-comprehensions (better list/dict comprehensions)
+    "UP",    # pyupgrade (modernize Python code)
+    "N",     # pep8-naming (naming conventions)
+    "S",     # flake8-bandit (security issues)
+    "A",     # flake8-builtins (avoid shadowing built-ins)
+    "COM",   # flake8-commas (trailing commas)
+    "DTZ",   # flake8-datetimez (timezone-aware datetimes)
+    "T20",   # flake8-print (avoid print statements)
+    "SIM",   # flake8-simplify (code simplification)
+    "RUF",   # Ruff-specific rules
+]
+
+# Rules to ignore
+ignore = [
+    "E501",   # Line too long (handled by formatter)
+    "S101",   # Use of assert (needed for pytest)
+    "T201",   # Print statements (needed for scripts)
+    "COM812", # Missing trailing comma (conflicts with formatter)
+    "COM819", # Prohibited trailing comma (conflicts with formatter)
+]
+
+# Allow autofix for all enabled rules when running with --fix
+fixable = ["ALL"]
+unfixable = []
+
+# Allow unused variables when underscore-prefixed
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[lint.per-file-ignores]
+# Ignore specific rules in specific files/directories
+"__init__.py" = [
+    "F401",  # Unused imports (often used for re-exporting)
+]
+"tests/**/*.py" = [
+    "S101",  # Use of assert (required in pytest)
+    "S105",  # Possible hardcoded password (test fixtures)
+    "S106",  # Possible hardcoded password (test fixtures)
+    "S108",  # Insecure temp file usage (acceptable in tests)
+    "N802",  # Function name should be lowercase (test names can be descriptive)
+    "B008",  # Do not perform function call in argument defaults (pytest fixtures)
+]
+"scripts/**/*.py" = [
+    "T201",  # Print statements (expected in scripts)
+]
+
+[lint.isort]
+# Configure import sorting
+known-first-party = ["services", "tools", "projections", "models", "monitoring"]
+force-single-line = false
+lines-after-imports = 2
+section-order = [
+    "future",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder",
+]
+
+[lint.flake8-bugbear]
+# Allow default arguments like B008 for FastAPI/Pydantic
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "pydantic.Field",
+]
+
+[lint.flake8-builtins]
+# Allow certain builtin shadowing
+builtins-ignorelist = ["id", "type", "filter"]
+
+[format]
+# Code formatting configuration
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

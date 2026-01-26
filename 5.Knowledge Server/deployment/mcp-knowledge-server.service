@@ -1,0 +1,57 @@
+[Unit]
+Description=MCP Knowledge Management Server
+Documentation=https://github.com/your-org/mcp-knowledge-server
+After=network.target network-online.target neo4j.service
+Wants=network-online.target
+Requires=neo4j.service
+
+[Service]
+Type=simple
+User=mcp
+Group=mcp
+WorkingDirectory=/opt/mcp-knowledge-server
+
+# Environment file with production configuration
+EnvironmentFile=/opt/mcp-knowledge-server/.env
+
+# Start command using virtual environment Python
+ExecStart=/opt/mcp-knowledge-server/.venv/bin/python /opt/mcp-knowledge-server/mcp_server.py
+
+# Restart policy
+Restart=on-failure
+RestartSec=10s
+StartLimitInterval=300s
+StartLimitBurst=5
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+MemoryLimit=2G
+CPUQuota=200%
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/mcp-knowledge-server/data
+ReadWritePaths=/var/log/mcp-knowledge-server
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mcp-knowledge-server
+
+# Process management
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target

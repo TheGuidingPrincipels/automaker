@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+.venv/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# Testing
+.pytest_cache/
+.coverage
+*.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+
+# Data
+data/
+*.db
+*.db-journal
+services/confidence/cache/confidence_listener_checkpoint.json
+
+# Logs
+*.log
+logs/
+
+# Test artifacts
+tests/benchmarks/*.json
+tests/uat/uat_results.json
+tests/uat/uat_execution.log
+tests/token_analysis_results.json
+
+# Temporary documentation
+*_DEBUG*.md
+TEST_RESULTS_*.md
+TASK_*.md
+WEEK_*.md
+coverage.json
+
+# Test and validation output directories
+.test-output/
+.validation-output/
+.fix-output/
+.code-analyzer-output/
+
+# OS
+.DS_Store
+Thumbs.db
+feat-research-cache-20251107/
+
+# Auto Claude data directory
+.auto-claude/

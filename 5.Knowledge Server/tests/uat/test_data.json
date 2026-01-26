@@ -1,0 +1,662 @@
+{
+  "concepts": [
+    {
+      "name": "Python Programming",
+      "description": "A high-level, interpreted programming language known for its simplicity and readability. Python emphasizes code readability with its notable use of significant whitespace.",
+      "subtopic": "Programming Languages",
+      "examples": [
+        "print('Hello, World!')",
+        "def greet(name): return f'Hello, {name}!'",
+        "list_comprehension = [x**2 for x in range(10)]"
+      ],
+      "confidence_score": 0.95
+    },
+    {
+      "name": "Variables",
+      "description": "Named containers that store data values in programming. Variables can hold different types of data and can be reassigned.",
+      "subtopic": "Programming Fundamentals",
+      "examples": ["x = 10", "name = 'Alice'", "is_active = True"],
+      "confidence_score": 1.0
+    },
+    {
+      "name": "Functions",
+      "description": "Reusable blocks of code that perform specific tasks. Functions can accept parameters and return values.",
+      "subtopic": "Programming Fundamentals",
+      "examples": [
+        "def add(a, b): return a + b",
+        "def greet(name='World'): print(f'Hello, {name}!')",
+        "lambda x: x * 2"
+      ],
+      "confidence_score": 0.98
+    },
+    {
+      "name": "Object-Oriented Programming",
+      "description": "A programming paradigm based on the concept of objects containing data and code. OOP focuses on encapsulation, inheritance, and polymorphism.",
+      "subtopic": "Programming Paradigms",
+      "examples": [
+        "class Person: def __init__(self, name): self.name = name",
+        "class Car: def drive(self): print('Driving...')",
+        "inheritance: class Student(Person): pass"
+      ],
+      "confidence_score": 0.92
+    },
+    {
+      "name": "Classes",
+      "description": "Blueprints for creating objects in object-oriented programming. Classes define attributes and methods that objects will have.",
+      "subtopic": "OOP Concepts",
+      "examples": [
+        "class Dog: def bark(self): return 'Woof!'",
+        "class Rectangle: def __init__(self, width, height): self.width = width",
+        "class Account: balance = 0"
+      ],
+      "confidence_score": 0.95
+    },
+    {
+      "name": "Inheritance",
+      "description": "A mechanism where a new class inherits properties and methods from an existing class. Enables code reuse and hierarchical relationships.",
+      "subtopic": "OOP Concepts",
+      "examples": [
+        "class Child(Parent): pass",
+        "class Manager(Employee): def approve(self): pass",
+        "super().__init__()"
+      ],
+      "confidence_score": 0.9
+    },
+    {
+      "name": "Polymorphism",
+      "description": "The ability of different classes to be treated as instances of the same class through inheritance. Allows methods to do different things based on the object.",
+      "subtopic": "OOP Concepts",
+      "examples": [
+        "def speak(animal): animal.make_sound()",
+        "class Cat(Animal): def make_sound(self): return 'Meow'",
+        "Method overriding in subclasses"
+      ],
+      "confidence_score": 0.88
+    },
+    {
+      "name": "Encapsulation",
+      "description": "The bundling of data and methods that operate on that data within a single unit. Restricts direct access to some components.",
+      "subtopic": "OOP Concepts",
+      "examples": [
+        "private attributes: self.__private_var",
+        "getter methods: def get_name(self): return self._name",
+        "setter methods: def set_name(self, value): self._name = value"
+      ],
+      "confidence_score": 0.91
+    },
+    {
+      "name": "Abstraction",
+      "description": "Hiding complex implementation details and showing only necessary features. Achieved through abstract classes and interfaces.",
+      "subtopic": "OOP Concepts",
+      "examples": [
+        "from abc import ABC, abstractmethod",
+        "class Shape(ABC): @abstractmethod def area(self): pass",
+        "Abstract base classes define interface contracts"
+      ],
+      "confidence_score": 0.87
+    },
+    {
+      "name": "Data Structures",
+      "description": "Organized formats for storing and managing data efficiently. Includes lists, dictionaries, sets, and more complex structures.",
+      "subtopic": "Computer Science",
+      "examples": [
+        "list: [1, 2, 3, 4]",
+        "dict: {'key': 'value', 'name': 'Alice'}",
+        "set: {1, 2, 3, 4}"
+      ],
+      "confidence_score": 0.96
+    },
+    {
+      "name": "Machine Learning",
+      "description": "A subset of artificial intelligence that enables systems to learn and improve from experience without explicit programming.",
+      "subtopic": "Data Science",
+      "examples": [
+        "Supervised learning: classification and regression",
+        "Unsupervised learning: clustering",
+        "from sklearn.linear_model import LogisticRegression"
+      ],
+      "confidence_score": 0.85
+    },
+    {
+      "name": "Deep Learning",
+      "description": "A subset of machine learning using neural networks with multiple layers. Particularly effective for image, speech, and natural language processing.",
+      "subtopic": "Data Science",
+      "examples": [
+        "import tensorflow as tf",
+        "model = tf.keras.Sequential([layers.Dense(128, activation='relu')])",
+        "Convolutional Neural Networks for image classification"
+      ],
+      "confidence_score": 0.82
+    },
+    {
+      "name": "Neural Networks",
+      "description": "Computing systems inspired by biological neural networks. Consist of interconnected nodes organized in layers.",
+      "subtopic": "Machine Learning",
+      "examples": [
+        "Input layer, hidden layers, output layer",
+        "Activation functions: ReLU, sigmoid, tanh",
+        "Backpropagation for training"
+      ],
+      "confidence_score": 0.83
+    },
+    {
+      "name": "Linear Regression",
+      "description": "A statistical method for modeling the relationship between a dependent variable and independent variables using a linear equation.",
+      "subtopic": "Machine Learning",
+      "examples": [
+        "y = mx + b",
+        "from sklearn.linear_model import LinearRegression",
+        "model.fit(X_train, y_train)"
+      ],
+      "confidence_score": 0.93
+    },
+    {
+      "name": "Data Cleaning",
+      "description": "The process of detecting and correcting corrupt or inaccurate data. Essential preprocessing step in data science.",
+      "subtopic": "Data Science",
+      "examples": [
+        "df.dropna() # Remove missing values",
+        "df.fillna(0) # Fill missing values",
+        "df.drop_duplicates() # Remove duplicates"
+      ],
+      "confidence_score": 0.94
+    },
+    {
+      "name": "Feature Engineering",
+      "description": "Creating new features from existing data to improve model performance. Critical skill in data science.",
+      "subtopic": "Data Science",
+      "examples": [
+        "One-hot encoding: pd.get_dummies(df['category'])",
+        "Scaling: StandardScaler().fit_transform(X)",
+        "Creating polynomial features"
+      ],
+      "confidence_score": 0.86
+    },
+    {
+      "name": "HTML",
+      "description": "HyperText Markup Language - the standard markup language for creating web pages. Defines the structure and content of web documents.",
+      "subtopic": "Web Development",
+      "examples": [
+        "<html><head><title>Page</title></head><body><h1>Hello</h1></body></html>",
+        "<div class='container'><p>Content</p></div>",
+        "Semantic tags: <header>, <nav>, <article>"
+      ],
+      "confidence_score": 0.98
+    },
+    {
+      "name": "CSS",
+      "description": "Cascading Style Sheets - language for describing the presentation of HTML documents. Controls layout, colors, fonts, and visual appearance.",
+      "subtopic": "Web Development",
+      "examples": [
+        "body { font-family: Arial; background-color: #fff; }",
+        ".container { max-width: 1200px; margin: 0 auto; }",
+        "Flexbox and Grid for layouts"
+      ],
+      "confidence_score": 0.97
+    },
+    {
+      "name": "JavaScript",
+      "description": "A high-level, interpreted programming language for web browsers. Enables interactive web pages and is essential for web development.",
+      "subtopic": "Web Development",
+      "examples": [
+        "document.getElementById('button').addEventListener('click', handler)",
+        "const data = await fetch('/api/data').then(r => r.json())",
+        "Arrow functions: const add = (a, b) => a + b"
+      ],
+      "confidence_score": 0.96
+    },
+    {
+      "name": "React",
+      "description": "A JavaScript library for building user interfaces, particularly single-page applications. Uses component-based architecture.",
+      "subtopic": "Frontend Frameworks",
+      "examples": [
+        "function App() { return <div>Hello World</div>; }",
+        "const [count, setCount] = useState(0);",
+        "useEffect(() => { fetchData(); }, [dependency]);"
+      ],
+      "confidence_score": 0.89
+    },
+    {
+      "name": "Vue.js",
+      "description": "A progressive JavaScript framework for building user interfaces. Known for its simplicity and flexibility.",
+      "subtopic": "Frontend Frameworks",
+      "examples": [
+        "<template><div>{{ message }}</div></template>",
+        "data() { return { message: 'Hello' } }",
+        "v-for='item in items' :key='item.id'"
+      ],
+      "confidence_score": 0.87
+    },
+    {
+      "name": "Angular",
+      "description": "A TypeScript-based web application framework developed by Google. Provides comprehensive solution for building complex applications.",
+      "subtopic": "Frontend Frameworks",
+      "examples": [
+        "@Component({ selector: 'app-root', template: '<h1>App</h1>' })",
+        "constructor(private service: DataService) {}",
+        "*ngFor='let item of items'"
+      ],
+      "confidence_score": 0.84
+    },
+    {
+      "name": "REST API",
+      "description": "Representational State Transfer - architectural style for designing networked applications. Uses HTTP methods for CRUD operations.",
+      "subtopic": "Web APIs",
+      "examples": [
+        "GET /api/users - Retrieve users",
+        "POST /api/users - Create user",
+        "PUT /api/users/123 - Update user"
+      ],
+      "confidence_score": 0.91
+    },
+    {
+      "name": "GraphQL",
+      "description": "A query language for APIs that provides a complete description of data. Allows clients to request exactly what they need.",
+      "subtopic": "Web APIs",
+      "examples": [
+        "query { user(id: '123') { name email } }",
+        "mutation { createUser(name: 'Alice') { id } }",
+        "type User { id: ID! name: String! }"
+      ],
+      "confidence_score": 0.85
+    },
+    {
+      "name": "Docker",
+      "description": "A platform for developing, shipping, and running applications in containers. Ensures consistency across environments.",
+      "subtopic": "DevOps",
+      "examples": [
+        "FROM python:3.11\\nRUN pip install requirements.txt",
+        "docker build -t myapp .",
+        "docker run -p 8000:8000 myapp"
+      ],
+      "confidence_score": 0.92
+    },
+    {
+      "name": "Kubernetes",
+      "description": "An open-source container orchestration platform for automating deployment, scaling, and management of containerized applications.",
+      "subtopic": "DevOps",
+      "examples": [
+        "kubectl apply -f deployment.yaml",
+        "kubectl get pods",
+        "apiVersion: apps/v1\\nkind: Deployment"
+      ],
+      "confidence_score": 0.88
+    },
+    {
+      "name": "CI/CD",
+      "description": "Continuous Integration and Continuous Deployment - practices that enable frequent code integration and automated deployment.",
+      "subtopic": "DevOps",
+      "examples": [
+        "GitHub Actions workflow",
+        "Jenkins pipeline",
+        "Automated testing and deployment on git push"
+      ],
+      "confidence_score": 0.9
+    },
+    {
+      "name": "Jenkins",
+      "description": "An open-source automation server for building, testing, and deploying software. Widely used for CI/CD pipelines.",
+      "subtopic": "DevOps Tools",
+      "examples": [
+        "Jenkinsfile: pipeline { stages { stage('Build') { steps { ... } } } }",
+        "Automated builds on commit",
+        "Integration with Git repositories"
+      ],
+      "confidence_score": 0.86
+    },
+    {
+      "name": "Monitoring",
+      "description": "The process of collecting, analyzing, and using information to track system performance and health.",
+      "subtopic": "DevOps",
+      "examples": [
+        "Prometheus for metrics collection",
+        "Grafana for visualization",
+        "Alert rules for anomaly detection"
+      ],
+      "confidence_score": 0.93
+    },
+    {
+      "name": "Logging",
+      "description": "Recording events, errors, and information about application execution. Essential for debugging and monitoring.",
+      "subtopic": "DevOps",
+      "examples": [
+        "import logging; logging.info('Message')",
+        "ELK Stack: Elasticsearch, Logstash, Kibana",
+        "Structured logging with JSON format"
+      ],
+      "confidence_score": 0.94
+    },
+    {
+      "name": "Git",
+      "description": "A distributed version control system for tracking changes in source code. Essential tool for collaborative software development.",
+      "subtopic": "Development Tools",
+      "examples": [
+        "git commit -m 'Add feature'",
+        "git branch feature/new-feature",
+        "git merge main"
+      ],
+      "confidence_score": 0.99
+    },
+    {
+      "name": "Testing",
+      "description": "The process of evaluating software to find defects and verify it meets requirements. Includes unit, integration, and end-to-end tests.",
+      "subtopic": "Software Engineering",
+      "examples": [
+        "def test_addition(): assert add(2, 3) == 5",
+        "pytest for Python testing",
+        "Mock objects for isolation"
+      ],
+      "confidence_score": 0.97
+    },
+    {
+      "name": "Algorithms",
+      "description": "Step-by-step procedures for solving problems or performing computations. Fundamental to computer science.",
+      "subtopic": "Computer Science",
+      "examples": [
+        "Binary search: O(log n)",
+        "Quicksort: O(n log n) average",
+        "Dijkstra's algorithm for shortest path"
+      ],
+      "confidence_score": 0.95
+    },
+    {
+      "name": "Databases",
+      "description": "Organized collections of data stored and accessed electronically. Includes relational (SQL) and non-relational (NoSQL) databases.",
+      "subtopic": "Data Management",
+      "examples": [
+        "PostgreSQL: relational database",
+        "MongoDB: document database",
+        "Redis: key-value store"
+      ],
+      "confidence_score": 0.96
+    },
+    {
+      "name": "APIs",
+      "description": "Application Programming Interfaces - sets of protocols for building and integrating application software.",
+      "subtopic": "Software Architecture",
+      "examples": [
+        "REST APIs with HTTP methods",
+        "GraphQL for flexible queries",
+        "WebSocket APIs for real-time communication"
+      ],
+      "confidence_score": 0.94
+    },
+    {
+      "name": "Microservices",
+      "description": "Architectural style structuring applications as collections of loosely coupled services. Each service is independently deployable.",
+      "subtopic": "Software Architecture",
+      "examples": [
+        "User service, Order service, Payment service",
+        "Service-to-service communication via APIs",
+        "Independent scaling and deployment"
+      ],
+      "confidence_score": 0.83
+    },
+    {
+      "name": "Async Programming",
+      "description": "Programming paradigm allowing concurrent execution of tasks without blocking. Essential for I/O-bound operations.",
+      "subtopic": "Programming Paradigms",
+      "examples": [
+        "async def fetch_data(): return await api.get('/data')",
+        "asyncio.gather(*tasks)",
+        "Non-blocking I/O operations"
+      ],
+      "confidence_score": 0.89
+    },
+    {
+      "name": "Type Hints",
+      "description": "Optional static typing in Python for better code documentation and IDE support. Helps catch bugs early.",
+      "subtopic": "Python Features",
+      "examples": [
+        "def greet(name: str) -> str: return f'Hello, {name}'",
+        "from typing import List, Dict, Optional",
+        "mypy for static type checking"
+      ],
+      "confidence_score": 0.92
+    },
+    {
+      "name": "Decorators",
+      "description": "Functions that modify the behavior of other functions or classes. Powerful Python feature for code reuse.",
+      "subtopic": "Python Features",
+      "examples": [
+        "@staticmethod",
+        "@property",
+        "def decorator(func): def wrapper(*args): ...; return wrapper"
+      ],
+      "confidence_score": 0.88
+    },
+    {
+      "name": "List Comprehensions",
+      "description": "Concise way to create lists in Python. More readable and often faster than traditional loops.",
+      "subtopic": "Python Features",
+      "examples": [
+        "[x**2 for x in range(10)]",
+        "[x for x in numbers if x % 2 == 0]",
+        "[(x, y) for x in range(3) for y in range(3)]"
+      ],
+      "confidence_score": 0.95
+    },
+    {
+      "name": "Context Managers",
+      "description": "Python feature for resource management using 'with' statement. Ensures proper acquisition and release of resources.",
+      "subtopic": "Python Features",
+      "examples": [
+        "with open('file.txt') as f: data = f.read()",
+        "with database.transaction(): db.save(data)",
+        "@contextmanager decorator"
+      ],
+      "confidence_score": 0.91
+    },
+    {
+      "name": "Generators",
+      "description": "Functions that yield values one at a time instead of returning all at once. Memory-efficient for large datasets.",
+      "subtopic": "Python Features",
+      "examples": [
+        "def count_up(): n = 0; while True: yield n; n += 1",
+        "(x**2 for x in range(1000000))",
+        "Lazy evaluation for efficiency"
+      ],
+      "confidence_score": 0.87
+    },
+    {
+      "name": "Exception Handling",
+      "description": "Mechanism for handling runtime errors gracefully. Prevents program crashes and enables error recovery.",
+      "subtopic": "Programming Fundamentals",
+      "examples": [
+        "try: risky_operation() except ValueError: handle_error()",
+        "finally: cleanup_resources()",
+        "raise CustomException('Error message')"
+      ],
+      "confidence_score": 0.96
+    },
+    {
+      "name": "Recursion",
+      "description": "A function calling itself to solve problems by breaking them into smaller subproblems. Elegant for certain algorithms.",
+      "subtopic": "Algorithms",
+      "examples": [
+        "def factorial(n): return 1 if n <= 1 else n * factorial(n-1)",
+        "Binary tree traversal",
+        "Base case and recursive case"
+      ],
+      "confidence_score": 0.93
+    },
+    {
+      "name": "Design Patterns",
+      "description": "Reusable solutions to common software design problems. Provide templates for solving recurring challenges.",
+      "subtopic": "Software Engineering",
+      "examples": [
+        "Singleton: Ensure single instance",
+        "Factory: Create objects without specifying class",
+        "Observer: Subscribe to object changes"
+      ],
+      "confidence_score": 0.85
+    }
+  ],
+  "relationships": [
+    {
+      "from": "Variables",
+      "to": "Functions",
+      "type": "prerequisite"
+    },
+    {
+      "from": "Functions",
+      "to": "Object-Oriented Programming",
+      "type": "prerequisite"
+    },
+    {
+      "from": "Object-Oriented Programming",
+      "to": "Classes",
+      "type": "prerequisite"
+    },
+    {
+      "from": "Classes",
+      "to": "Inheritance",
+      "type": "prerequisite"
+    },
+    {
+      "from": "Inheritance",
+      "to": "Polymorphism",
+      "type": "prerequisite"
+    },
+    {
+      "from": "Classes",
+      "to": "Encapsulation",
+      "type": "related"
+    },
+    {
+      "from": "Classes",
+      "to": "Abstraction",
+      "type": "related"
+    },
+    {
+      "from": "Machine Learning",
+      "to": "Deep Learning",
+      "type": "prerequisite"
+    },
+    {
+      "from": "Deep Learning",
+      "to": "Neural Networks",
+      "type": "prerequisite"
+    },
+    {
+      "from": "Machine Learning",
+      "to": "Linear Regression",
+      "type": "related"
+    },
+    {
+      "from": "Data Cleaning",
+      "to": "Feature Engineering",
+      "type": "prerequisite"
+    },
+    {
+      "from": "Feature Engineering",
+      "to": "Machine Learning",
+      "type": "prerequisite"
+    },
+    {
+      "from": "HTML",
+      "to": "CSS",
+      "type": "prerequisite"
+    },
+    {
+      "from": "CSS",
+      "to": "JavaScript",
+      "type": "prerequisite"
+    },
+    {
+      "from": "JavaScript",
+      "to": "React",
+      "type": "prerequisite"
+    },
+    {
+      "from": "JavaScript",
+      "to": "Vue.js",
+      "type": "related"
+    },
+    {
+      "from": "JavaScript",
+      "to": "Angular",
+      "type": "related"
+    },
+    {
+      "from": "REST API",
+      "to": "GraphQL",
+      "type": "related"
+    },
+    {
+      "from": "Docker",
+      "to": "Kubernetes",
+      "type": "prerequisite"
+    },
+    {
+      "from": "CI/CD",
+      "to": "Jenkins",
+      "type": "related"
+    },
+    {
+      "from": "Monitoring",
+      "to": "Logging",
+      "type": "related"
+    },
+    {
+      "from": "Git",
+      "to": "CI/CD",
+      "type": "prerequisite"
+    },
+    {
+      "from": "Functions",
+      "to": "Testing",
+      "type": "related"
+    },
+    {
+      "from": "Algorithms",
+      "to": "Data Structures",
+      "type": "related"
+    },
+    {
+      "from": "APIs",
+      "to": "REST API",
+      "type": "related"
+    },
+    {
+      "from": "APIs",
+      "to": "Microservices",
+      "type": "related"
+    },
+    {
+      "from": "Python Programming",
+      "to": "Type Hints",
+      "type": "related"
+    },
+    {
+      "from": "Python Programming",
+      "to": "Decorators",
+      "type": "related"
+    },
+    {
+      "from": "Python Programming",
+      "to": "List Comprehensions",
+      "type": "related"
+    },
+    {
+      "from": "Python Programming",
+      "to": "Context Managers",
+      "type": "related"
+    },
+    {
+      "from": "Python Programming",
+      "to": "Generators",
+      "type": "related"
+    },
+    {
+      "from": "Functions",
+      "to": "Recursion",
+      "type": "related"
+    },
+    {
+      "from": "Object-Oriented Programming",
+      "to": "Design Patterns",
+      "type": "related"
+    }
+  ]
+}

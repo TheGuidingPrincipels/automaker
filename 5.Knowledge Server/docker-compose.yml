@@ -1,0 +1,98 @@
+services:
+  neo4j:
+    image: neo4j:5-community
+    container_name: mcp-knowledge-neo4j
+    restart: unless-stopped
+    ports:
+      - '7474:7474' # HTTP Browser UI
+      - '7687:7687' # Bolt protocol
+    environment:
+      # Authentication - uses NEO4J_PASSWORD from .env file
+      # NOTE: Do NOT use env_file here as Neo4j interprets all NEO4J_* vars as config
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-password}
+
+      # Memory settings (adjust based on your system)
+      - NEO4J_server_memory_heap_initial__size=512m
+      - NEO4J_server_memory_heap_max__size=1G
+      - NEO4J_server_memory_pagecache_size=512m
+
+      # Security settings
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+
+      # Logging (Neo4j 5.x compatible settings)
+      - NEO4J_db_logs_query_enabled=INFO
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - neo4j_import:/var/lib/neo4j/import
+      - neo4j_plugins:/plugins
+    healthcheck:
+      # Note: Health check uses wget to HTTP endpoint (password not needed for health check)
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - mcp-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: mcp-knowledge-redis
+    restart: unless-stopped
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mcp-network
+
+volumes:
+  neo4j_data:
+    driver: local
+  neo4j_logs:
+    driver: local
+  neo4j_import:
+    driver: local
+  neo4j_plugins:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  mcp-network:
+    driver: bridge
+
+# Usage:
+# 1. Start services (Neo4j + Redis):
+#    docker-compose up -d
+#
+# 2. Check status:
+#    docker-compose ps
+#
+# 3. View logs:
+#    docker-compose logs -f neo4j
+#    docker-compose logs -f redis
+#
+# 4. Access Neo4j Browser:
+#    Open http://localhost:7474
+#    Login: neo4j / <your NEO4J_PASSWORD from .env>
+#
+# 5. Stop services:
+#    docker-compose down
+#
+# 6. Stop and remove data (CAUTION):
+#    docker-compose down -v
+#
+# Connection strings for MCP server (set in .env):
+#    NEO4J_URI=bolt://localhost:7687
+#    NEO4J_USER=neo4j
+#    NEO4J_PASSWORD=<your secure password>
+#    REDIS_HOST=localhost
+#    REDIS_PORT=6379

@@ -1,0 +1,37 @@
+# Bandit Security Scanner Configuration (YAML format)
+# Documentation: https://bandit.readthedocs.io/en/latest/config.html
+
+# Directories to exclude from scanning (comma-separated glob patterns)
+exclude_dirs:
+  - /tests/
+  - /.venv/
+  - /venv/
+  - /.git/
+  - /__pycache__/
+  - /htmlcov/
+  - /docs/
+  - /build/
+  - /dist/
+  - /.pytest_cache/
+  - /.mypy_cache/
+  - /.ruff_cache/
+
+# Test IDs to skip (false positives or acceptable risks)
+skips:
+  - B101  # assert_used - required for pytest
+  - B601  # paramiko_calls - if using SSH legitimately
+  - B603  # subprocess_without_shell_equals_true - we verify inputs
+
+# Test IDs to run (uncomment to limit to specific tests)
+# tests:
+#   - B201
+#   - B301
+
+# Severity level: LOW, MEDIUM, HIGH
+# Only report issues at or above this level
+# CI/CD will fail on MEDIUM and above
+# level: MEDIUM
+
+# Confidence level: LOW, MEDIUM, HIGH
+# Only report issues with at least this confidence
+# confidence: MEDIUM

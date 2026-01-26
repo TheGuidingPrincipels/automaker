@@ -1,0 +1,34 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true
+  },
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Read(./**)",
+      "Write(./**)",
+      "Edit(./**)",
+      "Glob(./**)",
+      "Grep(./**)",
+      "Read(/Users/ruben/Documents/GitHub/automaker/5.Knowledge Server/**)",
+      "Write(/Users/ruben/Documents/GitHub/automaker/5.Knowledge Server/**)",
+      "Edit(/Users/ruben/Documents/GitHub/automaker/5.Knowledge Server/**)",
+      "Glob(/Users/ruben/Documents/GitHub/automaker/5.Knowledge Server/**)",
+      "Grep(/Users/ruben/Documents/GitHub/automaker/5.Knowledge Server/**)",
+      "Read(/Users/ruben/Documents/GitHub/automaker/5.Knowledge Server/.auto-claude/specs/005-verify-and-fix-p1-02-exception-hierarchy/**)",
+      "Write(/Users/ruben/Documents/GitHub/automaker/5.Knowledge Server/.auto-claude/specs/005-verify-and-fix-p1-02-exception-hierarchy/**)",
+      "Edit(/Users/ruben/Documents/GitHub/automaker/5.Knowledge Server/.auto-claude/specs/005-verify-and-fix-p1-02-exception-hierarchy/**)",
+      "Bash(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "mcp__context7__resolve-library-id(*)",
+      "mcp__context7__get-library-docs(*)",
+      "mcp__graphiti-memory__search_nodes(*)",
+      "mcp__graphiti-memory__search_facts(*)",
+      "mcp__graphiti-memory__add_episode(*)",
+      "mcp__graphiti-memory__get_episodes(*)",
+      "mcp__graphiti-memory__get_entity_edge(*)"
+    ]
+  }
+}

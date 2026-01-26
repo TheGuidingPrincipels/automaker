@@ -1,0 +1,714 @@
+name: CI/CD Pipeline
+
+# ============================================================================
+# TRIGGER CONFIGURATION
+# ============================================================================
+# This pipeline runs on:
+# - Every push to main, develop, and feature branches
+# - Every pull request targeting main or develop
+# - Manual workflow dispatch for emergency deployments
+# ============================================================================
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+      - 'feature/**'
+      - 'hotfix/**'
+      - 'release/**'
+  pull_request:
+    branches:
+      - main
+      - master
+      - develop
+  workflow_dispatch:
+    inputs:
+      deploy_environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      version_tag:
+        description: 'Version tag (leave empty for latest commit)'
+        required: false
+        type: string
+
+# Ensure only one deployment runs at a time per environment
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: '3.11'
+  UV_VERSION: '0.1.0'
+  # Test coverage threshold - pipeline fails if below this
+  COVERAGE_THRESHOLD: 55
+  # Security scan settings
+  BANDIT_SEVERITY: medium
+  # Docker settings for integration tests
+  NEO4J_PASSWORD: test_password_12345
+  NEO4J_URI: bolt://localhost:7687
+  NEO4J_USER: neo4j
+
+jobs:
+  # ==========================================================================
+  # JOB 1: CODE QUALITY & LINTING
+  # ==========================================================================
+  # Fast feedback on code quality issues
+  # Runs: ruff (linter), black (formatter), isort (import sorting)
+  # Customization: Add/remove linters in the 'Install linting tools' step
+  # ==========================================================================
+
+  lint:
+    name: Code Quality & Linting
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full history for better analysis
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install UV package manager
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install linting tools
+        run: |
+          uv pip install --system ruff black isort mypy
+
+      - name: Run Ruff (Fast Python linter)
+        run: |
+          echo "::group::Ruff Linting"
+          ruff check . --output-format=github || true
+          echo "::endgroup::"
+
+      - name: Check code formatting with Black
+        run: |
+          echo "::group::Black Formatting Check"
+          black --check --diff . || true
+          echo "::endgroup::"
+
+      - name: Check import sorting with isort
+        run: |
+          echo "::group::Import Sorting Check"
+          isort --check-only --diff . || true
+          echo "::endgroup::"
+
+      - name: Type checking with mypy (non-blocking)
+        continue-on-error: true
+        run: |
+          echo "::group::Type Checking"
+          mypy . --ignore-missing-imports --no-strict-optional || true
+          echo "::endgroup::"
+
+  # ==========================================================================
+  # JOB 2: SECURITY SCANNING
+  # ==========================================================================
+  # Security analysis for vulnerabilities and unsafe code patterns
+  # Runs: bandit (SAST), safety (dependency vulnerabilities)
+  # Customization: Adjust BANDIT_SEVERITY env var for strictness
+  # ==========================================================================
+
+  security:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install UV package manager
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install security tools
+        run: |
+          uv pip install --system bandit[toml] safety pip-audit
+
+      - name: Run Bandit (SAST - Static Application Security Testing)
+        run: |
+          echo "::group::Bandit SAST Scan"
+          bandit -r . -f json -o bandit-report.json -ll || true
+          bandit -r . -f screen -ll
+          echo "::endgroup::"
+
+      - name: Check for known security vulnerabilities (Safety)
+        continue-on-error: true
+        run: |
+          echo "::group::Dependency Vulnerability Scan"
+          safety check --json || true
+          echo "::endgroup::"
+
+      - name: Audit Python packages (pip-audit)
+        continue-on-error: true
+        run: |
+          echo "::group::Package Audit"
+          pip-audit --desc || true
+          echo "::endgroup::"
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports
+          path: |
+            bandit-report.json
+          retention-days: 30
+
+  # ==========================================================================
+  # JOB 3: UNIT TESTS
+  # ==========================================================================
+  # Fast unit tests without external dependencies
+  # Runs: pytest with coverage reporting
+  # Customization: Adjust COVERAGE_THRESHOLD env var for minimum coverage
+  # ==========================================================================
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install UV package manager
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          uv sync
+
+      - name: Run unit tests with coverage
+        run: |
+          uv run pytest tests/unit/ \
+            --cov=. \
+            --cov-report=xml \
+            --cov-report=html \
+            --cov-report=term-missing \
+            --cov-fail-under=${{ env.COVERAGE_THRESHOLD }} \
+            --junitxml=junit-unit-tests.xml \
+            -v \
+            --tb=short \
+            --maxfail=5
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-unit-py${{ matrix.python-version }}
+          path: |
+            htmlcov/
+            coverage.xml
+          retention-days: 30
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-unit-py${{ matrix.python-version }}
+          path: junit-unit-tests.xml
+          retention-days: 30
+
+      - name: Comment coverage on PR
+        uses: codecov/codecov-action@v4
+        if: github.event_name == 'pull_request'
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          fail_ci_if_error: false
+
+  # ==========================================================================
+  # JOB 4: INTEGRATION TESTS
+  # ==========================================================================
+  # Integration tests with real external services (Neo4j, ChromaDB, Redis)
+  # Runs: pytest integration tests with Docker services
+  # Customization: Adjust service versions in docker-compose or add services
+  # ==========================================================================
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      neo4j:
+        image: neo4j:5-community
+        env:
+          NEO4J_AUTH: neo4j/test_password_12345
+          NEO4J_server_memory_heap_initial__size: 512m
+          NEO4J_server_memory_heap_max__size: 1G
+        ports:
+          - 7474:7474
+          - 7687:7687
+        options: >-
+          --health-cmd "cypher-shell -u neo4j -p test_password_12345 'RETURN 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install UV package manager
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          uv sync
+
+      - name: Wait for services to be ready
+        run: |
+          echo "Waiting for Neo4j..."
+          timeout 60 bash -c 'until nc -z localhost 7687; do sleep 1; done'
+          echo "Waiting for Redis..."
+          timeout 30 bash -c 'until nc -z localhost 6379; do sleep 1; done'
+          echo "All services ready!"
+
+      - name: Initialize databases
+        env:
+          NEO4J_URI: ${{ env.NEO4J_URI }}
+          NEO4J_USER: ${{ env.NEO4J_USER }}
+          NEO4J_PASSWORD: ${{ env.NEO4J_PASSWORD }}
+          CHROMA_PERSIST_DIRECTORY: /tmp/chromadb
+          EVENT_STORE_PATH: /tmp/events.db
+        run: |
+          mkdir -p /tmp/chromadb
+          uv run python scripts/init_database.py || true
+          uv run python scripts/init_neo4j.py || true
+          uv run python scripts/init_chromadb.py || true
+
+      - name: Run integration tests
+        env:
+          NEO4J_URI: ${{ env.NEO4J_URI }}
+          NEO4J_USER: ${{ env.NEO4J_USER }}
+          NEO4J_PASSWORD: ${{ env.NEO4J_PASSWORD }}
+          CHROMA_PERSIST_DIRECTORY: /tmp/chromadb
+          EVENT_STORE_PATH: /tmp/events.db
+          REDIS_URL: redis://localhost:6379
+        run: |
+          uv run pytest tests/integration/ tests/e2e/ \
+            --cov=. \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --junitxml=junit-integration-tests.xml \
+            -v \
+            --tb=short \
+            --maxfail=10 \
+            -m "not slow"
+
+      - name: Upload integration test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-integration
+          path: |
+            junit-integration-tests.xml
+            coverage.xml
+          retention-days: 30
+
+  # ==========================================================================
+  # JOB 5: BUILD & PACKAGE
+  # ==========================================================================
+  # Build Python package and create distributable artifacts
+  # Creates: wheel and source distribution, tagged with commit SHA
+  # Customization: Modify build-backend in pyproject.toml for different tools
+  # ==========================================================================
+
+  build:
+    name: Build & Package
+    runs-on: ubuntu-latest
+    needs: [lint, security, unit-tests]
+    timeout-minutes: 15
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      artifact_name: ${{ steps.version.outputs.artifact_name }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Full history for versioning
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install UV package manager
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Generate version from git
+        id: version
+        run: |
+          # Generate version: 0.1.0-{branch}-{short-sha}
+          GIT_BRANCH=${GITHUB_REF#refs/heads/}
+          GIT_SHA_SHORT=${GITHUB_SHA::8}
+          VERSION="0.1.0-${GIT_BRANCH//\//-}-${GIT_SHA_SHORT}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "artifact_name=mcp-knowledge-server-${VERSION}" >> $GITHUB_OUTPUT
+          echo "Generated version: ${VERSION}"
+
+      - name: Install build tools
+        run: |
+          uv pip install --system build twine
+
+      - name: Build Python package
+        run: |
+          python -m build
+
+      - name: Verify package
+        run: |
+          twine check dist/*
+
+      - name: Create artifact bundle
+        run: |
+          mkdir -p artifacts
+          cp dist/* artifacts/
+          cp requirements.txt artifacts/
+          cp pyproject.toml artifacts/
+          cp uv.lock artifacts/
+          cp README.md artifacts/
+          cp .env.example artifacts/
+          cp docker-compose.yml artifacts/
+          cp -r scripts/ artifacts/
+          echo "${{ steps.version.outputs.version }}" > artifacts/VERSION
+          echo "${{ github.sha }}" > artifacts/GIT_SHA
+          tar -czf ${{ steps.version.outputs.artifact_name }}.tar.gz artifacts/
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.version.outputs.artifact_name }}
+          path: |
+            ${{ steps.version.outputs.artifact_name }}.tar.gz
+            dist/*
+          retention-days: 90
+
+  # ==========================================================================
+  # JOB 6: DEPLOY TO STAGING
+  # ==========================================================================
+  # Automatic deployment to staging environment
+  # Triggers: Push to 'develop' branch or manual dispatch
+  # Customization: Update deployment commands for your infrastructure
+  # ==========================================================================
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build, integration-tests]
+    if: |
+      (github.ref == 'refs/heads/develop' && github.event_name == 'push') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_environment == 'staging')
+    environment:
+      name: staging
+      url: https://staging.mcp-knowledge-server.example.com
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.artifact_name }}
+
+      - name: Extract artifacts
+        run: |
+          tar -xzf ${{ needs.build.outputs.artifact_name }}.tar.gz
+          ls -lah artifacts/
+
+      - name: Deploy to staging (Local Docker)
+        run: |
+          echo "::group::Deployment Configuration"
+          echo "Environment: staging (local)"
+          echo "Version: ${{ needs.build.outputs.version }}"
+          echo "Artifact: ${{ needs.build.outputs.artifact_name }}"
+          echo "::endgroup::"
+
+          echo "::group::Docker Deployment"
+          # Build Docker image with version tag
+          docker build -t mcp-knowledge-server:${{ needs.build.outputs.version }} .
+          docker tag mcp-knowledge-server:${{ needs.build.outputs.version }} mcp-knowledge-server:staging
+
+          # Deploy using docker-compose
+          docker-compose -f docker-compose.yml -f docker-compose.deploy.yml down || true
+          docker-compose -f docker-compose.yml -f docker-compose.deploy.yml up -d
+
+          # Wait for services to be ready
+          echo "Waiting for services to start..."
+          sleep 15
+          echo "::endgroup::"
+
+      - name: Run smoke tests (post-deployment)
+        run: |
+          echo "::group::Smoke Tests"
+          # Install dependencies for smoke tests
+          pip install neo4j redis chromadb sentence-transformers
+
+          # Run smoke tests
+          python scripts/smoke_tests.py --env local --critical-only --timeout 30
+          echo "::endgroup::"
+
+      - name: Notify deployment success
+        if: success()
+        run: |
+          echo "::notice::Staging deployment successful - Version ${{ needs.build.outputs.version }}"
+
+  # ==========================================================================
+  # JOB 7: DEPLOY TO PRODUCTION
+  # ==========================================================================
+  # Production deployment with manual approval gate
+  # Triggers: Push to 'main' branch (requires approval) or manual dispatch
+  # Customization: Update deployment commands for your infrastructure
+  # Security: Requires manual approval in GitHub environment settings
+  # ==========================================================================
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build, integration-tests]
+    if: |
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_environment == 'production')
+    environment:
+      name: production
+      url: https://mcp-knowledge-server.example.com
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.artifact_name }}
+
+      - name: Extract artifacts
+        run: |
+          tar -xzf ${{ needs.build.outputs.artifact_name }}.tar.gz
+          ls -lah artifacts/
+
+      - name: Create rollback point
+        run: |
+          echo "::group::Rollback Preparation"
+          # Tag current production image as backup
+          BACKUP_TAG="backup-$(date +%Y%m%d-%H%M%S)"
+
+          if docker images | grep -q "mcp-knowledge-server.*production"; then
+            docker tag mcp-knowledge-server:production mcp-knowledge-server:${BACKUP_TAG}
+            echo "Backup created: ${BACKUP_TAG}"
+          else
+            echo "No existing production image to backup"
+          fi
+
+          echo "Version being deployed: ${{ needs.build.outputs.version }}"
+          echo "::endgroup::"
+
+      - name: Deploy to production (Local Docker)
+        run: |
+          echo "::group::Production Deployment"
+          echo "Environment: production (local)"
+          echo "Version: ${{ needs.build.outputs.version }}"
+          echo "Artifact: ${{ needs.build.outputs.artifact_name }}"
+          echo "::endgroup::"
+
+          echo "::group::Docker Deployment"
+          # Build Docker image with version tag
+          docker build -t mcp-knowledge-server:${{ needs.build.outputs.version }} .
+          docker tag mcp-knowledge-server:${{ needs.build.outputs.version }} mcp-knowledge-server:production
+
+          # Deploy using docker-compose
+          docker-compose -f docker-compose.yml -f docker-compose.deploy.yml down || true
+          docker-compose -f docker-compose.yml -f docker-compose.deploy.yml up -d
+
+          # Wait for services to be ready
+          echo "Waiting for services to start..."
+          sleep 20
+          echo "::endgroup::"
+
+      - name: Run production smoke tests
+        run: |
+          echo "::group::Production Smoke Tests"
+          # Install dependencies for smoke tests
+          pip install neo4j redis chromadb sentence-transformers
+
+          # Run comprehensive smoke tests for production
+          python scripts/smoke_tests.py --env local --timeout 60
+          echo "::endgroup::"
+
+      - name: Create Git release tag
+        if: success()
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git tag -a "v${{ needs.build.outputs.version }}" -m "Production release ${{ needs.build.outputs.version }}"
+          git push origin "v${{ needs.build.outputs.version }}" || true
+
+      - name: Notify deployment success
+        if: success()
+        run: |
+          echo "::notice::Production deployment successful - Version ${{ needs.build.outputs.version }}"
+
+  # ==========================================================================
+  # JOB 8: ROLLBACK (Manual trigger only)
+  # ==========================================================================
+  # Emergency rollback to previous version
+  # Triggers: Manual workflow dispatch only
+  # Customization: Implement your rollback strategy
+  # ==========================================================================
+
+  rollback:
+    name: Rollback Deployment
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.version_tag != ''
+    environment:
+      name: ${{ github.event.inputs.deploy_environment }}
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code at rollback version
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.version_tag }}
+
+      - name: Perform rollback (Local Docker)
+        run: |
+          echo "::warning::Rolling back to version: ${{ github.event.inputs.version_tag }}"
+          echo "Target environment: ${{ github.event.inputs.deploy_environment }}"
+
+          echo "::group::Docker Rollback"
+          # Verify rollback image exists
+          if ! docker images | grep -q "mcp-knowledge-server.*${{ github.event.inputs.version_tag }}"; then
+            echo "::error::Image not found: mcp-knowledge-server:${{ github.event.inputs.version_tag }}"
+            exit 1
+          fi
+
+          # Create backup of current state
+          BACKUP_TAG="pre-rollback-$(date +%Y%m%d-%H%M%S)"
+          docker tag mcp-knowledge-server:production mcp-knowledge-server:${BACKUP_TAG} || true
+
+          # Stop current deployment
+          docker-compose -f docker-compose.yml -f docker-compose.deploy.yml down
+
+          # Tag rollback version as production
+          docker tag mcp-knowledge-server:${{ github.event.inputs.version_tag }} mcp-knowledge-server:production
+
+          # Deploy rollback version
+          docker-compose -f docker-compose.yml -f docker-compose.deploy.yml up -d
+
+          echo "Waiting for services to start..."
+          sleep 20
+          echo "Rollback deployment complete"
+          echo "::endgroup::"
+
+      - name: Verify rollback
+        run: |
+          echo "::group::Rollback Verification"
+          # Install dependencies for smoke tests
+          pip install neo4j redis chromadb sentence-transformers
+
+          # Run smoke tests to verify rollback succeeded
+          python scripts/smoke_tests.py --env local --critical-only --timeout 30
+
+          if [ $? -eq 0 ]; then
+            echo "✅ Rollback verification successful"
+          else
+            echo "::error::Rollback verification failed - system may be unhealthy"
+            exit 1
+          fi
+          echo "::endgroup::"
+
+      - name: Notify rollback
+        run: |
+          echo "::warning::Rollback completed to version ${{ github.event.inputs.version_tag }}"
+
+# ==============================================================================
+# BRANCH STRATEGY SUMMARY
+# ==============================================================================
+# feature/* → Runs: lint, security, unit tests, integration tests
+# develop   → All above + automatic deployment to staging
+# main      → All above + manual approval + production deployment
+# hotfix/*  → All tests + fast-track to production (with approval)
+# ==============================================================================
+
+# ==============================================================================
+# LOCAL DEPLOYMENT SETUP CHECKLIST
+# ==============================================================================
+# ✅ Deployment configured for local Docker-based deployment
+# ✅ Smoke tests implemented (scripts/smoke_tests.py)
+# ✅ Rollback strategy implemented (Docker image tagging)
+# ✅ Deployment scripts available (scripts/deploy_local.sh, scripts/rollback_local.sh)
+#
+# Optional setup for production use:
+# [ ] Set up GitHub Environments (Settings → Environments):
+#     - Create 'staging' environment (no protection rules needed)
+#     - Create 'production' environment with required reviewers
+# [ ] Ensure Docker is installed on deployment target
+# [ ] Configure branch protection rules for main and develop branches
+# [ ] Adjust COVERAGE_THRESHOLD if needed (current: 55%)
+#
+# To extend to cloud deployment later:
+# [ ] See docs/PIPELINE-SETUP-GUIDE.md for cloud provider examples
+# [ ] Replace Docker deployment steps with cloud-specific commands
+# [ ] Update smoke tests for production endpoints
+# ==============================================================================

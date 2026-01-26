@@ -1,0 +1,157 @@
+[
+  {
+    "concept_id": "01c3003a-c3cb-4a80-bf90-c74cc4c8f2fc",
+    "confidence_score": 0.0,
+    "confidence_score_auto": null,
+    "all_properties": [
+      "deleted_at",
+      "created_at",
+      "name",
+      "concept_id",
+      "last_modified",
+      "explanation",
+      "deleted",
+      "confidence_score"
+    ]
+  },
+  {
+    "concept_id": "0b1e7d99-7efa-49a1-9836-7664174db887",
+    "confidence_score": 0.0,
+    "confidence_score_auto": null,
+    "all_properties": [
+      "deleted_at",
+      "deleted",
+      "created_at",
+      "name",
+      "concept_id",
+      "last_modified",
+      "explanation",
+      "confidence_score"
+    ]
+  },
+  {
+    "concept_id": "12740e84-6aee-491d-b32d-0da2bae31c79",
+    "confidence_score": 0.0,
+    "confidence_score_auto": null,
+    "all_properties": [
+      "deleted_at",
+      "created_at",
+      "name",
+      "deleted",
+      "concept_id",
+      "last_modified",
+      "explanation",
+      "area",
+      "confidence_score"
+    ]
+  },
+  {
+    "concept_id": "23959e7c-c69d-4bfd-9eb4-0b305bce0bf2",
+    "confidence_score": 0.0,
+    "confidence_score_auto": null,
+    "all_properties": [
+      "deleted_at",
+      "created_at",
+      "name",
+      "deleted",
+      "concept_id",
+      "last_modified",
+      "explanation",
+      "area",
+      "confidence_score"
+    ]
+  },
+  {
+    "concept_id": "2d06f0c2-37e1-4ff1-bb7c-1bce11fe1ee1",
+    "confidence_score": 0.0,
+    "confidence_score_auto": null,
+    "all_properties": [
+      "deleted_at",
+      "deleted",
+      "created_at",
+      "name",
+      "concept_id",
+      "last_modified",
+      "explanation",
+      "confidence_score"
+    ]
+  },
+  {
+    "concept_id": "3097a6d5-1e74-4756-a772-a90650c48e18",
+    "confidence_score": 0.0,
+    "confidence_score_auto": null,
+    "all_properties": [
+      "deleted_at",
+      "created_at",
+      "name",
+      "deleted",
+      "concept_id",
+      "last_modified",
+      "explanation",
+      "area",
+      "confidence_score"
+    ]
+  },
+  {
+    "concept_id": "35026338-1331-4cdf-b89b-fe7a4f46b27b",
+    "confidence_score": 0.0,
+    "confidence_score_auto": null,
+    "all_properties": [
+      "deleted_at",
+      "created_at",
+      "name",
+      "concept_id",
+      "last_modified",
+      "explanation",
+      "deleted",
+      "confidence_score"
+    ]
+  },
+  {
+    "concept_id": "361349e0-a536-48e2-ba12-98fa3ac43cdb",
+    "confidence_score": 0.0,
+    "confidence_score_auto": null,
+    "all_properties": [
+      "deleted_at",
+      "created_at",
+      "name",
+      "concept_id",
+      "last_modified",
+      "explanation",
+      "deleted",
+      "confidence_score"
+    ]
+  },
+  {
+    "concept_id": "45a35326-8b42-43b0-85e9-8fe2e744dde9",
+    "confidence_score": 0.6167826086956522,
+    "confidence_score_auto": 0.6167826086956522,
+    "all_properties": [
+      "confidence_last_calculated",
+      "confidence_score_auto",
+      "created_at",
+      "name",
+      "concept_id",
+      "last_modified",
+      "explanation",
+      "confidence_score"
+    ]
+  },
+  {
+    "concept_id": "46070ede-8482-4cc8-86bb-9ebd727a0970",
+    "confidence_score": 0.0,
+    "confidence_score_auto": null,
+    "all_properties": [
+      "deleted_at",
+      "deleted",
+      "created_at",
+      "topic",
+      "confidence_score",
+      "concept_id",
+      "last_modified",
+      "explanation",
+      "area",
+      "name"
+    ]
+  }
+]
