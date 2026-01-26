@@ -231,7 +231,7 @@ export function ControlDock({
             </div>
 
             {/* Transcript area */}
-            <ScrollArea className="h-28 rounded-md border bg-muted/30 mb-3" ref={scrollRef}>
+            <ScrollArea className="h-24 rounded-md border bg-muted/30 mb-3" ref={scrollRef}>
               <div className="p-3 space-y-2">
                 {transcript.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-4">
@@ -354,7 +354,7 @@ export function ControlDock({
 
             <div
               className={cn(
-                'h-full min-h-[140px] border-2 border-dashed rounded-xl p-4',
+                'h-full min-h-[120px] border-2 border-dashed rounded-xl p-4',
                 'flex flex-col items-center justify-center text-center',
                 'transition-colors duration-200',
                 isDragOver && 'border-primary bg-primary/5',

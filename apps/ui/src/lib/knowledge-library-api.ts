@@ -101,9 +101,9 @@ function handleFetchError(error: unknown): never {
  * Get the Knowledge Library API base URL from environment
  */
 function getBaseUrl(): string {
-  // Use environment variable or default
+  // Use environment variable or default (8002 = AI-Library, 8001 is occupied by deepread)
   const envUrl = import.meta.env.VITE_KNOWLEDGE_LIBRARY_API;
-  return envUrl || 'http://localhost:8001';
+  return envUrl || 'http://localhost:8002';
 }
 
 /**

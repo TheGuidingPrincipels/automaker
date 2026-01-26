@@ -13,8 +13,20 @@ This folder tracks potential improvements, refactoring opportunities, and techni
 
 | Item                                | Priority | Status   | File                                                                                 |
 | ----------------------------------- | -------- | -------- | ------------------------------------------------------------------------------------ |
+| Knowledge Library Cleanup UI        | High     | Ready    | [003-knowledge-library-cleanup-ui.md](./003-knowledge-library-cleanup-ui.md)         |
+| Knowledge Library Cleanup AI        | High     | Ready    | [004-knowledge-library-cleanup-ai.md](./004-knowledge-library-cleanup-ai.md)         |
 | Multi-User Authentication System    | High     | Planned  | [002-multi-user-authentication-system.md](./002-multi-user-authentication-system.md) |
 | Rollup Circular Dependency Warnings | Low      | Deferred | [001-rollup-circular-deps.md](./001-rollup-circular-deps.md)                         |
+
+### Implementation Order for Knowledge Library
+
+1. **Plan 003 (UI)** - Implement first (~7 hours)
+   - Shows full block content, confidence bars, color-coded recommendations
+   - Users can see exactly what will be removed
+
+2. **Plan 004 (AI)** - Implement second (~9 hours)
+   - Better decision criteria, signal detection
+   - Requires Plan 003 to display the improved AI output
 
 ---
 

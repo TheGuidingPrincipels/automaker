@@ -30,7 +30,7 @@ export function EmptyState() {
         <CardContent className="pt-6">
           <div className="text-center">
             {/* Icon */}
-            <div className="mx-auto mb-6 p-6 bg-muted rounded-full w-fit">
+            <div className="mx-auto mb-4 p-4 bg-muted rounded-full w-fit">
               <Upload className="h-12 w-12 text-muted-foreground" />
             </div>
 
@@ -61,7 +61,7 @@ export function EmptyState() {
             </p>
 
             {/* Workflow steps */}
-            <div className="mt-8 pt-6 border-t">
+            <div className="mt-6 pt-4 border-t">
               <h3 className="text-sm font-medium mb-4">How it works</h3>
               <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
                 <span className="flex items-center gap-1">

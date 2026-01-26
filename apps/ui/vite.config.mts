@@ -23,6 +23,8 @@ export default defineConfig(({ command }) => {
   const proxyTarget = process.env.VITE_SERVER_URL || `http://localhost:${testServerPort}`;
 
   return {
+    // Load .env from monorepo root (not apps/ui)
+    envDir: path.resolve(__dirname, '../..'),
     plugins: [
       // Only include electron plugin when not in CI/headless dev mode
       ...(skipElectron

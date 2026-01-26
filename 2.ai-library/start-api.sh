@@ -36,9 +36,9 @@ else
     pip install -e ".[dev]"
 fi
 
-# Start API on port 8001
-echo "Starting AI-Library API on http://localhost:8001"
-echo "  - Swagger UI: http://localhost:8001/docs"
-echo "  - ReDoc: http://localhost:8001/redoc"
-echo "  - Health: http://localhost:8001/health"
-python run_api.py --port 8001
+# Start API on port 8002 (8001 reserved for deepread-backend)
+echo "Starting AI-Library API on http://localhost:8002"
+echo "  - Swagger UI: http://localhost:8002/docs"
+echo "  - ReDoc: http://localhost:8002/redoc"
+echo "  - Health: http://localhost:8002/health"
+python run_api.py --port 8002

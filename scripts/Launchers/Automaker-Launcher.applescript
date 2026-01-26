@@ -28,13 +28,20 @@ repeat while attempt < maxAttempts and not serverReady
 	set attempt to attempt + 1
 end repeat
 
--- Open Chrome
+-- Open Chrome using shell command (avoids race condition that can create two windows)
+do shell script "open -a 'Google Chrome' " & quoted form of webURL
+
+-- Wait briefly for Chrome to open, then maximize window
+delay 1.5
 tell application "Google Chrome"
 	activate
-	if (count of windows) = 0 then
-		make new window
+	if (count of windows) > 0 then
+		-- Get screen bounds and maximize window (leaving space for menu bar)
+		tell application "Finder"
+			set screenBounds to bounds of window of desktop
+		end tell
+		set bounds of front window to {0, 25, item 3 of screenBounds, item 4 of screenBounds}
 	end if
-	set URL of active tab of front window to webURL
 end tell
 
 display notification "Automaker is ready!" with title "Automaker" subtitle webURL
