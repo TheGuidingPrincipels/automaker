@@ -6,7 +6,7 @@ The routing phase determines where each kept block should be placed in the libra
 Provides top-3 destination options per block for user selection.
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 
 ROUTING_SYSTEM_PROMPT = """You are a knowledge librarian assistant routing content blocks to their appropriate locations in a personal knowledge library.
@@ -56,6 +56,7 @@ Return a JSON object with the following structure:
           "destination_section": null,
           "action": "create_file",
           "proposed_file_title": "Security Best Practices",
+          "proposed_file_overview": "Explain what this file covers, its scope, and how it should be used (50-250 chars).",
           "confidence": 0.6,
           "reasoning": "Could start a new security-focused file"
         }
@@ -87,6 +88,7 @@ Return a JSON object with the following structure:
 - Never suggest merging in STRICT mode
 - Consider semantic relevance, not just keyword matching
 - If library is empty, suggest logical new file structures
+- For `create_file`, include proposed_file_title and proposed_file_overview (50-250 chars)
 """
 
 
@@ -95,6 +97,8 @@ def build_routing_prompt(
     library_context: Dict[str, Any],
     source_file: str,
     content_mode: str = "strict",
+    conversation_history: str = "",
+    pending_questions: Optional[List[str]] = None,
 ) -> str:
     """
     Build the user prompt for routing plan generation.
@@ -170,7 +174,22 @@ def build_routing_prompt(
 ## Blocks to Route
 
 {blocks_text}
+"""
 
+    if conversation_history:
+        prompt += f"""
+## Conversation History
+{conversation_history}
+"""
+
+    if pending_questions:
+        questions_text = "\n".join(f"- {q}" for q in pending_questions)
+        prompt += f"""
+## Pending Questions
+{questions_text}
+"""
+
+    prompt += """
 ## Instructions
 
 For each block, provide exactly 3 destination options ranked by fit.

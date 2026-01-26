@@ -3,11 +3,12 @@
 
 from functools import lru_cache
 from typing import Annotated, Optional
+import threading
 import anyio
 
 from fastapi import Depends, HTTPException, status
 
-from ..config import Config, load_config
+from ..config import Config, load_config, _apply_env_overrides
 from ..session.manager import SessionManager
 from ..session.storage import SessionStorage
 from ..library.scanner import LibraryScanner
@@ -26,20 +27,35 @@ from ..sdk.client import ClaudeCodeClient
 def get_config_sync() -> Config:
     """Get configuration synchronously (cached).
 
-    Note: uses async AnyIO filesystem operations under the hood.
+    Note: This function loads config synchronously to avoid event loop conflicts.
     """
-    return anyio.run(load_config)
+    import yaml
+    from pathlib import Path
 
+    config_path = Path("configs/settings.yaml")
+    if config_path.exists():
+        with open(config_path) as f:
+            data = yaml.safe_load(f)
+        config = Config(**data) if data else Config()
+    else:
+        config = Config()
+    return _apply_env_overrides(config)
+
+
+# Module-level guards (thread-safe, can be created at module load)
+_lock_init_guard = threading.Lock()
 
 _config: Optional[Config] = None
 _config_lock: Optional[anyio.Lock] = None
 
 
 def _get_config_lock() -> anyio.Lock:
-    """Get or create the config lock (lazy initialization)."""
+    """Get or create the config lock (lazy initialization with thread-safe guard)."""
     global _config_lock
     if _config_lock is None:
-        _config_lock = anyio.Lock()
+        with _lock_init_guard:
+            if _config_lock is None:
+                _config_lock = anyio.Lock()
     return _config_lock
 
 
@@ -68,10 +84,12 @@ _session_manager_lock: Optional[anyio.Lock] = None
 
 
 def _get_session_manager_lock() -> anyio.Lock:
-    """Get or create the session manager lock (lazy initialization)."""
+    """Get or create the session manager lock (lazy initialization with thread-safe guard)."""
     global _session_manager_lock
     if _session_manager_lock is None:
-        _session_manager_lock = anyio.Lock()
+        with _lock_init_guard:
+            if _session_manager_lock is None:
+                _session_manager_lock = anyio.Lock()
     return _session_manager_lock
 
 
@@ -105,10 +123,12 @@ _library_scanner_lock: Optional[anyio.Lock] = None
 
 
 def _get_library_scanner_lock() -> anyio.Lock:
-    """Get or create the library scanner lock (lazy initialization)."""
+    """Get or create the library scanner lock (lazy initialization with thread-safe guard)."""
     global _library_scanner_lock
     if _library_scanner_lock is None:
-        _library_scanner_lock = anyio.Lock()
+        with _lock_init_guard:
+            if _library_scanner_lock is None:
+                _library_scanner_lock = anyio.Lock()
     return _library_scanner_lock
 
 
@@ -140,18 +160,22 @@ _semantic_search_lock: Optional[anyio.Lock] = None
 
 
 def _get_vector_store_lock() -> anyio.Lock:
-    """Get or create the vector store lock (lazy initialization)."""
+    """Get or create the vector store lock (lazy initialization with thread-safe guard)."""
     global _vector_store_lock
     if _vector_store_lock is None:
-        _vector_store_lock = anyio.Lock()
+        with _lock_init_guard:
+            if _vector_store_lock is None:
+                _vector_store_lock = anyio.Lock()
     return _vector_store_lock
 
 
 def _get_semantic_search_lock() -> anyio.Lock:
-    """Get or create the semantic search lock (lazy initialization)."""
+    """Get or create the semantic search lock (lazy initialization with thread-safe guard)."""
     global _semantic_search_lock
     if _semantic_search_lock is None:
-        _semantic_search_lock = anyio.Lock()
+        with _lock_init_guard:
+            if _semantic_search_lock is None:
+                _semantic_search_lock = anyio.Lock()
     return _semantic_search_lock
 
 
@@ -223,18 +247,22 @@ _sdk_client_lock: Optional[anyio.Lock] = None
 
 
 def _get_query_engine_lock() -> anyio.Lock:
-    """Get or create the query engine lock (lazy initialization)."""
+    """Get or create the query engine lock (lazy initialization with thread-safe guard)."""
     global _query_engine_lock
     if _query_engine_lock is None:
-        _query_engine_lock = anyio.Lock()
+        with _lock_init_guard:
+            if _query_engine_lock is None:
+                _query_engine_lock = anyio.Lock()
     return _query_engine_lock
 
 
 def _get_sdk_client_lock() -> anyio.Lock:
-    """Get or create the SDK client lock (lazy initialization)."""
+    """Get or create the SDK client lock (lazy initialization with thread-safe guard)."""
     global _sdk_client_lock
     if _sdk_client_lock is None:
-        _sdk_client_lock = anyio.Lock()
+        with _lock_init_guard:
+            if _sdk_client_lock is None:
+                _sdk_client_lock = anyio.Lock()
     return _sdk_client_lock
 
 

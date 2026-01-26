@@ -9,7 +9,10 @@ from src.session.storage import SessionStorage
 from src.session.manager import SessionManager
 from src.models.session import ExtractionSession, SessionPhase
 from src.models.content_mode import ContentMode
+from src.models.content import SourceDocument
 from src.models.cleanup_plan import CleanupDisposition
+from src.models.routing_plan import RoutingPlan, BlockRoutingItem, BlockDestination
+import anyio
 
 
 @pytest.fixture
@@ -110,6 +113,36 @@ class TestSessionStorage:
         result = await storage.delete("to_delete")
         assert result is True
         assert not await storage.exists("to_delete")
+
+    @pytest.mark.asyncio
+    async def test_delete_uploads_missing_file_is_noop(self, temp_sessions_dir):
+        """Missing upload files should not block cleanup."""
+        storage = SessionStorage(temp_sessions_dir)
+
+        session_id = "missing_upload"
+        upload_dir = anyio.Path(temp_sessions_dir) / "uploads" / session_id
+        await upload_dir.mkdir(parents=True, exist_ok=True)
+
+        missing_path = Path(temp_sessions_dir) / "uploads" / session_id / "source.md"
+        source = SourceDocument(
+            file_path=str(missing_path),
+            checksum_exact="abcdef0123456789",
+            total_blocks=0,
+            blocks=[],
+        )
+
+        session = ExtractionSession(
+            id=session_id,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            phase=SessionPhase.INITIALIZED,
+            source=source,
+            library_path="./library",
+        )
+
+        await storage.delete_uploads(session)
+
+        assert not await upload_dir.exists()
 
     @pytest.mark.asyncio
     async def test_load_nonexistent_session(self, temp_sessions_dir):
@@ -233,6 +266,56 @@ class TestSessionManager:
         loaded = await storage.load(session.id)
         assert loaded.routing_plan is not None
         assert loaded.phase == SessionPhase.ROUTING_PLAN_READY
+
+    @pytest.mark.asyncio
+    async def test_select_destination_rejects_invalid_option_index(
+        self,
+        temp_sessions_dir,
+        temp_library_dir,
+    ):
+        """Invalid option_index should raise a clear error."""
+        storage = SessionStorage(temp_sessions_dir)
+        manager = SessionManager(storage, temp_library_dir)
+
+        destination = BlockDestination(
+            destination_file="tech/example.md",
+            destination_section=None,
+            action="append",
+            confidence=0.9,
+            reasoning="test",
+        )
+        item = BlockRoutingItem(
+            block_id="block_001",
+            heading_path=["Heading"],
+            content_preview="Preview content",
+            options=[destination],
+            status="pending",
+        )
+        routing_plan = RoutingPlan(
+            session_id="sess_invalid_option",
+            source_file="source.md",
+            content_mode="strict",
+            blocks=[item],
+        )
+
+        session = ExtractionSession(
+            id="sess_invalid_option",
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            phase=SessionPhase.ROUTING_PLAN_READY,
+            source=None,
+            library_path=temp_library_dir,
+            content_mode=ContentMode.STRICT,
+            routing_plan=routing_plan,
+        )
+        await storage.save(session)
+
+        with pytest.raises(ValueError, match="option_index"):
+            await manager.select_destination(
+                session_id=session.id,
+                block_id="block_001",
+                option_index=5,
+            )
 
     @pytest.mark.asyncio
     async def test_cannot_execute_without_approval(

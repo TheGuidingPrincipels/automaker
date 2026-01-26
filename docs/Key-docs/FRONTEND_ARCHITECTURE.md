@@ -132,15 +132,15 @@ libs/types/src/           # Shared TypeScript types
 1. **Update type** in `libs/types/src/knowledge.ts`:
 
    ```tsx
-   export type KnowledgeSection = 'blueprints' | 'knowledge-server' | 'learning' | 'library';
+   export type KnowledgeSection = 'knowledge-library' | 'knowledge-server' | 'learning';
    ```
 
 2. **Add section config** in `knowledge-hub-page/index.tsx` (`SECTIONS` array):
 
    ```tsx
    {
-     id: 'library',
-     name: 'Library',
+     id: 'knowledge-library',
+     name: 'Knowledge Library',
      description: '...',
      icon: SomeIcon,
      itemCount: 0,

@@ -187,6 +187,16 @@ export const queryKeys = {
   },
 
   // ============================================
+  // Health / Connection Status
+  // ============================================
+  health: {
+    /** API health status */
+    api: () => ['health', 'api'] as const,
+    /** Detailed health (authenticated) */
+    detailed: () => ['health', 'detailed'] as const,
+  },
+
+  // ============================================
   // Cursor Permissions
   // ============================================
   cursorPermissions: {
@@ -275,6 +285,45 @@ export const queryKeys = {
     /** File diff */
     fileDiff: (projectPath: string, filePath: string) =>
       ['git', 'diffs', projectPath, filePath] as const,
+  },
+
+  // ============================================
+  // Knowledge Library (AI-Library)
+  // ============================================
+  knowledgeLibrary: {
+    /** Health check */
+    health: () => ['knowledgeLibrary', 'health'] as const,
+    /** Base key for all sessions (use for invalidation) */
+    sessionsBase: () => ['knowledgeLibrary', 'sessions'] as const,
+    /** All sessions */
+    sessions: (limit?: number, offset?: number) =>
+      ['knowledgeLibrary', 'sessions', { limit, offset }] as const,
+    /** Single session */
+    session: (sessionId: string) => ['knowledgeLibrary', 'sessions', sessionId] as const,
+    /** Session blocks */
+    blocks: (sessionId: string) => ['knowledgeLibrary', 'sessions', sessionId, 'blocks'] as const,
+    /** Session cleanup plan */
+    cleanupPlan: (sessionId: string) =>
+      ['knowledgeLibrary', 'sessions', sessionId, 'cleanup'] as const,
+    /** Session routing plan */
+    routingPlan: (sessionId: string) =>
+      ['knowledgeLibrary', 'sessions', sessionId, 'routing'] as const,
+    /** Library structure */
+    library: () => ['knowledgeLibrary', 'library'] as const,
+    /** Library file metadata */
+    fileMetadata: (filePath: string) => ['knowledgeLibrary', 'library', 'file', filePath] as const,
+    /** Library file content */
+    fileContent: (filePath: string) =>
+      ['knowledgeLibrary', 'library', 'file', filePath, 'content'] as const,
+    /** Library keyword search */
+    keywordSearch: (query: string) => ['knowledgeLibrary', 'library', 'search', query] as const,
+    /** Library index stats */
+    indexStats: () => ['knowledgeLibrary', 'library', 'indexStats'] as const,
+    /** Conversations list */
+    conversations: () => ['knowledgeLibrary', 'conversations'] as const,
+    /** Single conversation */
+    conversation: (conversationId: string) =>
+      ['knowledgeLibrary', 'conversations', conversationId] as const,
   },
 } as const;
 

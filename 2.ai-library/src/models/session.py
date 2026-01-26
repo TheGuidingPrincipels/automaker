@@ -24,6 +24,21 @@ class SessionPhase(str, Enum):
     ERROR = "error"                             # Something went wrong
 
 
+class ConversationTurn(BaseModel):
+    """A single conversation turn for session history."""
+    role: str
+    content: str
+    timestamp: datetime = Field(default_factory=datetime.now)
+    sources: list[str] = Field(default_factory=list)
+
+
+class PendingQuestion(BaseModel):
+    """A pending question that blocks plan generation."""
+    id: str
+    question: str
+    created_at: datetime = Field(default_factory=datetime.now)
+
+
 class ExtractionSession(BaseModel):
     """
     Complete session state for extracting a source document into the library.
@@ -50,8 +65,8 @@ class ExtractionSession(BaseModel):
     routing_plan: Optional[RoutingPlan] = None
 
     # Conversation state
-    pending_questions: list[dict] = Field(default_factory=list)
-    conversation_history: list[dict] = Field(default_factory=list)
+    pending_questions: list[PendingQuestion] = Field(default_factory=list)
+    conversation_history: list[ConversationTurn] = Field(default_factory=list)
 
     # Execution tracking
     execution_log: list[str] = Field(default_factory=list)

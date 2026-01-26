@@ -267,6 +267,7 @@ Use the **SYSTEMS feature** as the canonical reference:
 - `TEST_SERVER_PORT` - Backend port for Vite proxy (default: 3008)
 - `VITE_SERVER_URL` - Explicit server URL for frontend (overrides proxy)
 - `CORS_ORIGIN` - Allowed CORS origins (comma-separated)
+- `VITE_KNOWLEDGE_LIBRARY_API` - URL for the AI-Library backend API (default: http://localhost:8001)
 
 ## Worktree Port Configuration (CRITICAL)
 
@@ -274,11 +275,11 @@ This repository uses git worktrees for isolated development. **Each worktree has
 
 ### Port Allocation Table
 
-| Location | UI Port | Server Port | Access URL |
-|----------|---------|-------------|------------|
-| **Main repo** | 3007 | 3008 | http://localhost:3007 |
-| **dev-improvements** | 3017 | 3018 | http://localhost:3017 |
-| **reading-system** | 3027 | 3028 | http://localhost:3027 |
+| Location             | UI Port | Server Port | Access URL            |
+| -------------------- | ------- | ----------- | --------------------- |
+| **Main repo**        | 3007    | 3008        | http://localhost:3007 |
+| **dev-improvements** | 3017    | 3018        | http://localhost:3017 |
+| **reading-system**   | 3027    | 3028        | http://localhost:3027 |
 
 ### How It Works
 
@@ -296,6 +297,7 @@ CORS_ORIGIN=http://localhost:3017
 ### Running Commands from Worktrees
 
 **Start the WebUI:**
+
 ```bash
 cd /Users/ruben/Documents/GitHub/automaker/.worktrees/dev-improvements
 npm run dev:web
@@ -303,6 +305,7 @@ npm run dev:web
 ```
 
 **Run E2E Tests:**
+
 ```bash
 cd /Users/ruben/Documents/GitHub/automaker/.worktrees/dev-improvements
 npm run test
@@ -310,6 +313,7 @@ npm run test
 ```
 
 **Run Unit Tests (safe to run in parallel):**
+
 ```bash
 npm run test:server   # No port conflicts - uses mocks
 npm run test:packages # No port conflicts - uses mocks
@@ -339,6 +343,7 @@ DATA_DIR=/Users/ruben/Documents/GitHub/automaker/data
 ### AI Agent Instructions
 
 When working in a worktree, the agent **MUST**:
+
 - Use `npm run dev:web` (not `npm run dev`) to respect `.env` ports
 - Note the actual port in output (3017/3027, not 3007)
 - Run tests normally - `.env` handles port configuration

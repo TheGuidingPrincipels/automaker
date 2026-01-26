@@ -3,6 +3,7 @@
 
 import pytest
 from pathlib import Path
+import anyio
 
 from src.execution.markers import BlockMarker, MarkerParser
 from src.execution.writer import ContentWriter, WriteResult
@@ -236,20 +237,27 @@ class TestContentWriter:
     async def test_create_file(self, temp_library_dir):
         """Create a new library file with title."""
         writer = ContentWriter(temp_library_dir)
+        overview = (
+            "This overview explains the purpose of the new topic file "
+            "and satisfies the minimum length requirement."
+        )
 
         result = await writer.create_file(
             destination="tech/new_topic.md",
             title="New Topic",
+            overview=overview,
             initial_content="Some initial notes.",
         )
 
         assert result.success
 
-        file_path = Path(temp_library_dir) / "tech" / "new_topic.md"
-        assert file_path.exists()
+        file_path = anyio.Path(temp_library_dir) / "tech" / "new_topic.md"
+        assert await file_path.exists()
 
-        content = file_path.read_text()
-        assert "# New Topic" in content
+        content = await file_path.read_text()
+        assert content.startswith("# New Topic")
+        assert "## Overview" in content
+        assert overview in content
         assert "Some initial notes" in content
 
     @pytest.mark.asyncio

@@ -70,6 +70,7 @@ export function useAutoMode(worktree?: WorktreeInfo) {
     setAutoModeRunning,
     addRunningTask,
     removeRunningTask,
+    removeRunningTaskFromAllWorktrees,
     currentProject,
     addAutoModeActivity,
     projects,
@@ -84,6 +85,7 @@ export function useAutoMode(worktree?: WorktreeInfo) {
       setAutoModeRunning: state.setAutoModeRunning,
       addRunningTask: state.addRunningTask,
       removeRunningTask: state.removeRunningTask,
+      removeRunningTaskFromAllWorktrees: state.removeRunningTaskFromAllWorktrees,
       currentProject: state.currentProject,
       addAutoModeActivity: state.addAutoModeActivity,
       projects: state.projects,
@@ -616,7 +618,8 @@ export function useAutoMode(worktree?: WorktreeInfo) {
         const result = await api.autoMode.stopFeature(featureId);
 
         if (result.success) {
-          removeRunningTask(currentProject.id, branchName, featureId);
+          // Remove from ALL worktrees to handle branch normalization edge cases
+          removeRunningTaskFromAllWorktrees(featureId);
           logger.info('Feature stopped successfully:', featureId);
           addAutoModeActivity({
             featureId,
@@ -633,7 +636,7 @@ export function useAutoMode(worktree?: WorktreeInfo) {
         throw error;
       }
     },
-    [currentProject, branchName, removeRunningTask, addAutoModeActivity]
+    [currentProject, removeRunningTaskFromAllWorktrees, addAutoModeActivity]
   );
 
   return {

@@ -8,7 +8,7 @@ The cleanup phase identifies:
 - Overall document organization suggestions
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 
 CLEANUP_SYSTEM_PROMPT = """You are a knowledge librarian assistant analyzing a document for extraction into a personal knowledge library.
@@ -65,6 +65,8 @@ def build_cleanup_prompt(
     blocks: List[Dict[str, Any]],
     source_file: str,
     content_mode: str = "strict",
+    conversation_history: str = "",
+    pending_questions: Optional[List[str]] = None,
 ) -> str:
     """
     Build the user prompt for cleanup plan generation.
@@ -105,7 +107,22 @@ def build_cleanup_prompt(
 ## Document Blocks
 
 {blocks_text}
+"""
 
+    if conversation_history:
+        prompt += f"""
+## Conversation History
+{conversation_history}
+"""
+
+    if pending_questions:
+        questions_text = "\n".join(f"- {q}" for q in pending_questions)
+        prompt += f"""
+## Pending Questions
+{questions_text}
+"""
+
+    prompt += """
 ## Instructions
 
 Analyze each block and provide your cleanup suggestions as JSON. Remember:

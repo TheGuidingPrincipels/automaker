@@ -1,7 +1,7 @@
 # Sub-Plan F-1: Backend Setup (Standalone Service)
 
 > **Prerequisites**: Sub-Plans A, B, 3A, 3B, D, E must be complete
-> **Execution Location**: Automaker repository (`/Users/ruben/Documents/GitHub/automaker/2.ai-library/`)
+> **Execution Location**: Automaker repository (`2.ai-library/`)
 > **Effort**: Small (1-2 hours)
 > **Next**: Sub-Plan F-2 (API Client & Types)
 

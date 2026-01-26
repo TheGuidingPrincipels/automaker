@@ -11,7 +11,7 @@ from .routing_plan import (
     PlanSummary,
     RoutingPlan,
 )
-from .session import SessionPhase, ExtractionSession
+from .session import SessionPhase, ExtractionSession, ConversationTurn, PendingQuestion
 
 __all__ = [
     "ContentMode",
@@ -30,4 +30,6 @@ __all__ = [
     "RoutingPlan",
     "SessionPhase",
     "ExtractionSession",
+    "ConversationTurn",
+    "PendingQuestion",
 ]

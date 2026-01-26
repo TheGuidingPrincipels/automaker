@@ -1117,6 +1117,7 @@ export interface AppActions {
   ) => void;
   addRunningTask: (projectId: string, branchName: string | null, taskId: string) => void;
   removeRunningTask: (projectId: string, branchName: string | null, taskId: string) => void;
+  removeRunningTaskFromAllWorktrees: (taskId: string) => void;
   clearRunningTasks: (projectId: string, branchName: string | null) => void;
   getAutoModeState: (
     projectId: string,
@@ -2428,6 +2429,19 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
         },
       },
     });
+  },
+
+  removeRunningTaskFromAllWorktrees: (taskId) => {
+    const current = get().autoModeByWorktree;
+    const updated: typeof current = {};
+    for (const key of Object.keys(current)) {
+      const worktreeState = current[key];
+      updated[key] = {
+        ...worktreeState,
+        runningTasks: worktreeState.runningTasks.filter((id) => id !== taskId),
+      };
+    }
+    set({ autoModeByWorktree: updated });
   },
 
   clearRunningTasks: (projectId, branchName) => {

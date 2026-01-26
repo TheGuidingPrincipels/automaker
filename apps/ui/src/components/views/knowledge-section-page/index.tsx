@@ -2,9 +2,10 @@
  * Knowledge Section Page - Dynamic page for viewing a specific knowledge section
  *
  * Renders different content based on the section:
- * - blueprints: Blueprint list and editor
  * - knowledge-server: Knowledge entries list and search
  * - learning: Agent learnings list and details
+ *
+ * Note: 'knowledge-library' section is handled by its own dedicated component
  */
 
 import { useState } from 'react';
@@ -17,7 +18,6 @@ import {
   ArrowLeft,
   Plus,
   Search,
-  FileStack,
   Database,
   GraduationCap,
   MoreVertical,
@@ -34,57 +34,13 @@ import {
 import { cn } from '@/lib/utils';
 import type {
   KnowledgeSection,
-  Blueprint,
   KnowledgeEntry,
   Learning,
-  BlueprintCategory,
-  BlueprintStatus,
-  KnowledgeEntryType,
-  LearningType,
   LearningConfidence,
 } from '@automaker/types';
 import { KnowledgeSectionHeader } from './components/knowledge-section-header';
 
 // Mock data for each section
-const MOCK_BLUEPRINTS: Blueprint[] = [
-  {
-    id: 'bp-1',
-    name: 'TypeScript Code Standards',
-    description: 'Standards for writing TypeScript code in this project',
-    content: '# TypeScript Standards\n\n- Use strict mode\n- Prefer interfaces over types\n- ...',
-    category: 'coding-standards',
-    status: 'active',
-    tags: ['typescript', 'standards'],
-    priority: 10,
-    createdAt: '2024-01-15T10:00:00Z',
-    updatedAt: '2024-01-15T10:00:00Z',
-  },
-  {
-    id: 'bp-2',
-    name: 'Security Review Guidelines',
-    description: 'Guidelines for conducting security reviews',
-    content: '# Security Review\n\n- Check for SQL injection\n- Validate all inputs\n- ...',
-    category: 'security',
-    status: 'active',
-    tags: ['security', 'review'],
-    priority: 8,
-    createdAt: '2024-01-14T10:00:00Z',
-    updatedAt: '2024-01-14T10:00:00Z',
-  },
-  {
-    id: 'bp-3',
-    name: 'Test Coverage Requirements',
-    description: 'Minimum test coverage requirements for new code',
-    content: '# Testing Standards\n\n- Minimum 80% coverage\n- Unit tests for all functions\n- ...',
-    category: 'testing',
-    status: 'active',
-    tags: ['testing', 'coverage'],
-    priority: 7,
-    createdAt: '2024-01-13T10:00:00Z',
-    updatedAt: '2024-01-13T10:00:00Z',
-  },
-];
-
 const MOCK_KNOWLEDGE_ENTRIES: KnowledgeEntry[] = [
   {
     id: 'ke-1',
@@ -153,21 +109,19 @@ const MOCK_LEARNINGS: Learning[] = [
   },
 ];
 
-const SECTION_CONFIG: Record<
-  KnowledgeSection,
-  {
-    name: string;
-    singularName: string;
-    icon: React.ComponentType<{ className?: string }>;
-    description: string;
-  }
+// Note: This config only includes sections handled by this component.
+// 'knowledge-library' is handled by its own dedicated component.
+const SECTION_CONFIG: Partial<
+  Record<
+    KnowledgeSection,
+    {
+      name: string;
+      singularName: string;
+      icon: React.ComponentType<{ className?: string }>;
+      description: string;
+    }
+  >
 > = {
-  blueprints: {
-    name: 'Blueprints',
-    singularName: 'Blueprint',
-    icon: FileStack,
-    description: 'Guidelines and processes for agents',
-  },
   'knowledge-server': {
     name: 'Knowledge Server',
     singularName: 'Knowledge Entry',
@@ -182,81 +136,12 @@ const SECTION_CONFIG: Record<
   },
 };
 
-const CATEGORY_COLORS: Record<BlueprintCategory, string> = {
-  'coding-standards': 'bg-blue-500/10 text-blue-500',
-  architecture: 'bg-purple-500/10 text-purple-500',
-  testing: 'bg-green-500/10 text-green-500',
-  security: 'bg-red-500/10 text-red-500',
-  documentation: 'bg-orange-500/10 text-orange-500',
-  workflow: 'bg-cyan-500/10 text-cyan-500',
-  review: 'bg-yellow-500/10 text-yellow-500',
-  deployment: 'bg-pink-500/10 text-pink-500',
-  custom: 'bg-gray-500/10 text-gray-500',
-};
-
 const CONFIDENCE_COLORS: Record<LearningConfidence, string> = {
   low: 'bg-gray-500/10 text-gray-500',
   medium: 'bg-yellow-500/10 text-yellow-500',
   high: 'bg-green-500/10 text-green-500',
   verified: 'bg-blue-500/10 text-blue-500',
 };
-
-function BlueprintCard({ blueprint }: { blueprint: Blueprint }) {
-  return (
-    <Card className="group hover:border-primary/50 transition-colors">
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <CardTitle className="text-base">{blueprint.name}</CardTitle>
-            <Badge
-              variant="outline"
-              className={cn('mt-1 text-xs capitalize', CATEGORY_COLORS[blueprint.category])}
-            >
-              {blueprint.category.replace('-', ' ')}
-            </Badge>
-          </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 opacity-0 group-hover:opacity-100"
-              >
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem>
-                <Eye className="mr-2 h-4 w-4" />
-                View
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Edit className="mr-2 h-4 w-4" />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem className="text-destructive">
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <CardDescription className="line-clamp-2 text-sm">{blueprint.description}</CardDescription>
-        {blueprint.tags && (
-          <div className="flex flex-wrap gap-1 mt-3">
-            {blueprint.tags.slice(0, 3).map((tag) => (
-              <Badge key={tag} variant="secondary" className="text-xs">
-                {tag}
-              </Badge>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
 
 function KnowledgeEntryCard({ entry }: { entry: KnowledgeEntry }) {
   return (
@@ -422,10 +307,8 @@ export function KnowledgeSectionPage() {
   const Icon = config.icon;
 
   // Get items based on section
-  let items: (Blueprint | KnowledgeEntry | Learning)[] = [];
-  if (sectionId === 'blueprints') {
-    items = MOCK_BLUEPRINTS;
-  } else if (sectionId === 'knowledge-server') {
+  let items: (KnowledgeEntry | Learning)[] = [];
+  if (sectionId === 'knowledge-server') {
     items = MOCK_KNOWLEDGE_ENTRIES;
   } else if (sectionId === 'learning') {
     items = MOCK_LEARNINGS;
@@ -458,10 +341,6 @@ export function KnowledgeSectionPage() {
         {/* Items Grid */}
         {items.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {sectionId === 'blueprints' &&
-              (items as Blueprint[]).map((item) => (
-                <BlueprintCard key={item.id} blueprint={item} />
-              ))}
             {sectionId === 'knowledge-server' &&
               (items as KnowledgeEntry[]).map((item) => (
                 <KnowledgeEntryCard key={item.id} entry={item} />
