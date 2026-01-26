@@ -18,7 +18,8 @@ Then automatically fixes any issues found.
 This command accepts an optional worktree name via `$ARGUMENTS`:
 
 - `/review` - Reviews current worktree
-- `/review dev-improvements` - Reviews the dev-improvements worktree
+- `/review 1` or `/review feature-1` - Reviews the feature-1 worktree
+- `/review 2` or `/review feature-2` - Reviews the feature-2 worktree
 
 ## Instructions
 

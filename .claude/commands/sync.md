@@ -1,19 +1,34 @@
 # Universal Worktree Sync
 
-Synchronize the current worktree branch with main, ensuring no work is lost.
+Synchronize a worktree branch with main, ensuring no work is lost.
 
-## Modes
+## Syntax
 
-| Command    | Mode         | Final Action                          |
-| ---------- | ------------ | ------------------------------------- |
-| `/sync`    | Standard     | Merge directly to main branch         |
-| `/sync:pr` | Pull Request | Create a PR for review before merging |
+| Command      | Description                                       |
+| ------------ | ------------------------------------------------- |
+| `/sync`      | Sync current worktree (must be run from worktree) |
+| `/sync 1`    | Sync feature-1 worktree                           |
+| `/sync 2`    | Sync feature-2 worktree                           |
+| `/sync:pr`   | Create PR instead of direct merge                 |
+| `/sync 1:pr` | Sync feature-1 via PR                             |
+| `/sync 2:pr` | Sync feature-2 via PR                             |
 
-**Check the argument**: If `$ARGUMENTS` contains `pr` or `:pr`, use **PR Mode**. Otherwise, use **Standard Mode**.
+## Argument Parsing
+
+**Parse `$ARGUMENTS` to determine:**
+
+1. **Worktree selection**:
+   - If contains `1` → use `.worktrees/feature-1`
+   - If contains `2` → use `.worktrees/feature-2`
+   - Otherwise → use current directory (must be a worktree)
+
+2. **Mode selection**:
+   - If contains `pr` or `:pr` → **PR Mode**
+   - Otherwise → **Standard Mode**
 
 ## Purpose
 
-This command works from ANY worktree and automatically detects:
+This command works from ANY location when a number is specified:
 
 - Current worktree path and branch
 - Main repository path and branch
@@ -39,44 +54,69 @@ Both repos synced at same commit
 
 **This step MUST be executed before any other step.**
 
+**First, parse `$ARGUMENTS` to determine worktree:**
+
+- If `$ARGUMENTS` contains `1` → `WORKTREE_PATH=.worktrees/feature-1`
+- If `$ARGUMENTS` contains `2` → `WORKTREE_PATH=.worktrees/feature-2`
+- Otherwise → use current directory
+
 ```bash
 echo "=== Environment Detection ==="
 
-# 1. Verify we're in a git repository
+# 1. Parse arguments for worktree selection
+ARGS="$ARGUMENTS"
+MAIN_REPO="/Users/ruben/Documents/GitHub/automaker"
+
+if echo "$ARGS" | grep -q "1"; then
+    WORKTREE_PATH="$MAIN_REPO/.worktrees/feature-1"
+    echo "Selected: feature-1 worktree (from argument)"
+elif echo "$ARGS" | grep -q "2"; then
+    WORKTREE_PATH="$MAIN_REPO/.worktrees/feature-2"
+    echo "Selected: feature-2 worktree (from argument)"
+else
+    WORKTREE_PATH=$(pwd)
+    echo "Using: current directory"
+fi
+
+# 2. Navigate to worktree
+cd "$WORKTREE_PATH" || { echo "ERROR: Cannot access $WORKTREE_PATH"; exit 1; }
+
+# 3. Verify we're in a git repository
 GIT_DIR=$(git rev-parse --absolute-git-dir 2>/dev/null)
 if [ -z "$GIT_DIR" ]; then
     echo "ERROR: Not in a git repository."
     exit 1
 fi
 
-# 2. Get the common git directory (main repo's .git)
+# 4. Get the common git directory (main repo's .git)
 GIT_COMMON=$(cd "$(git rev-parse --git-common-dir)" && pwd -P)
 
-# 3. Check if running from main repo (not a worktree)
+# 5. Check if running from main repo (not a worktree)
 if [ "$GIT_DIR" = "$GIT_COMMON" ]; then
     echo "ERROR: Running from main repo. Nothing to sync."
     echo ""
-    echo "This command must be run from a WORKTREE, not the main repository."
-    echo "The main repo is already the sync target."
+    echo "Specify a worktree to sync:"
+    echo "  /sync 1  - sync feature-1"
+    echo "  /sync 2  - sync feature-2"
     echo ""
-    echo "Available worktrees to sync:"
+    echo "Available worktrees:"
     git worktree list | grep -v '\[main\]'
     exit 1
 fi
 
-# 4. Get current worktree info
+# 6. Get worktree info
 CURRENT_PATH=$(git rev-parse --show-toplevel)
 CURRENT_BRANCH=$(git branch --show-current)
-WORKTREE_NAME=$(basename "$GIT_DIR")
+WORKTREE_NAME=$(basename "$CURRENT_PATH")
 
-# 5. Validate branch exists (not detached HEAD)
+# 7. Validate branch exists (not detached HEAD)
 if [ -z "$CURRENT_BRANCH" ]; then
     echo "ERROR: Worktree is in detached HEAD state."
     echo "Checkout a branch first: git checkout -b <branch-name>"
     exit 1
 fi
 
-# 6. Get main repo info
+# 8. Get main repo info
 MAIN_REPO=$(dirname "$GIT_COMMON")
 MAIN_BRANCH=$(git -C "$MAIN_REPO" branch --show-current)
 
@@ -86,7 +126,7 @@ if [ -z "$MAIN_BRANCH" ]; then
     exit 1
 fi
 
-# 7. Display configuration
+# 9. Display configuration
 echo ""
 echo "Sync Configuration"
 echo "=================="
@@ -103,7 +143,7 @@ echo "Direction: $CURRENT_BRANCH -> $MAIN_BRANCH"
 
 - `$MAIN_REPO` = the main repository path (where main branch lives)
 - `$CURRENT_PATH` = the current worktree path
-- `$CURRENT_BRANCH` = the branch being synced (e.g., `dev/improvements`, `Reading-System`)
+- `$CURRENT_BRANCH` = the branch being synced (e.g., `feature-1`, `feature-2`)
 - `$MAIN_BRANCH` = typically `main`
 
 ---
@@ -207,10 +247,16 @@ git push origin "$CURRENT_BRANCH"
 
 ---
 
-## MODE SPLIT: Check `$ARGUMENTS` now
+## MODE SPLIT: Check for PR mode
 
-- If `$ARGUMENTS` contains `pr` -> Go to **Step 6A (PR Mode)**
+- If `$ARGUMENTS` contains `pr` or `:pr` -> Go to **Step 6A (PR Mode)**
 - Otherwise -> Go to **Step 6B (Standard Mode)**
+
+Examples:
+
+- `/sync 1` → Standard mode for feature-1
+- `/sync 2:pr` → PR mode for feature-2
+- `/sync:pr` → PR mode for current worktree
 
 ---
 

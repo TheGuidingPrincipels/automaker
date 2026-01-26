@@ -9,11 +9,22 @@ This repository uses git worktrees for isolated development:
 ```
 /Users/ruben/Documents/GitHub/automaker/              # main repo
 /Users/ruben/Documents/GitHub/automaker/.worktrees/
-├── dev-improvements/                                  # port 3017/3018
-└── reading-system/                                    # port 3027/3028
+├── feature-1/                                         # port 3017/3018
+└── feature-2/                                         # port 3027/3028
 ```
 
 Each worktree has its own branch, uncommitted changes, and port configuration.
+
+## Quick Selection
+
+Use numbers for fast worktree selection:
+
+| Shorthand | Worktree  | Branch    |
+| --------- | --------- | --------- |
+| `1`       | feature-1 | feature-1 |
+| `2`       | feature-2 | feature-2 |
+
+Example: `/sync 1` syncs feature-1, `/review 2` reviews feature-2.
 
 ## Detection Commands
 
@@ -31,7 +42,8 @@ Output example:
 
 ```
 /Users/ruben/Documents/GitHub/automaker              abc1234 [main]
-/Users/ruben/Documents/GitHub/automaker/.worktrees/dev-improvements  def5678 [dev/improvements]
+/Users/ruben/Documents/GitHub/automaker/.worktrees/feature-1  def5678 [feature-1]
+/Users/ruben/Documents/GitHub/automaker/.worktrees/feature-2  ghi9012 [feature-2]
 ```
 
 ### Get Current Worktree Context
@@ -48,17 +60,25 @@ echo "Path: $(git rev-parse --show-toplevel)"
 echo "Branch: $(git branch --show-current)"
 ```
 
-### Find Worktree by Name
+### Find Worktree by Name or Number
 
 Use exact matching to avoid ambiguity:
 
 ```bash
-# Find worktree path by name (searches the last path component)
+# Find worktree path by name or number
 find_worktree() {
-  local name="$1"
+  local selector="$1"
+  local main_repo="/Users/ruben/Documents/GitHub/automaker"
+
+  # Handle numeric shortcuts
+  case "$selector" in
+    1) echo "$main_repo/.worktrees/feature-1"; return 0 ;;
+    2) echo "$main_repo/.worktrees/feature-2"; return 0 ;;
+  esac
+
+  # Search by name
   git worktree list | while read path hash branch; do
-    # Check if path ends with the worktree name
-    if [[ "$path" == *"/$name" ]] || [[ "$path" == *"$name" && "$path" != *"/"* ]]; then
+    if [[ "$path" == *"/$selector" ]]; then
       echo "$path"
       return 0
     fi
@@ -66,27 +86,37 @@ find_worktree() {
 }
 
 # Usage
-WORKTREE_PATH=$(find_worktree "dev-improvements")
+WORKTREE_PATH=$(find_worktree "1")        # Returns feature-1 path
+WORKTREE_PATH=$(find_worktree "feature-2") # Returns feature-2 path
 ```
 
 ### Validate Worktree Exists
 
 ```bash
 validate_worktree() {
-  local name="$1"
-  local found=""
+  local selector="$1"
+  local main_repo="/Users/ruben/Documents/GitHub/automaker"
 
+  # Handle numeric shortcuts
+  case "$selector" in
+    1) selector="feature-1" ;;
+    2) selector="feature-2" ;;
+  esac
+
+  local found=""
   while IFS= read -r line; do
     path=$(echo "$line" | awk '{print $1}')
-    if [[ "$path" == *"/$name" ]]; then
+    if [[ "$path" == *"/$selector" ]]; then
       found="$path"
       break
     fi
   done < <(git worktree list)
 
   if [ -z "$found" ]; then
-    echo "Error: Worktree '$name' not found."
+    echo "Error: Worktree '$selector' not found."
     echo "Available worktrees:"
+    echo "  1 = feature-1"
+    echo "  2 = feature-2"
     git worktree list
     return 1
   fi
@@ -97,35 +127,38 @@ validate_worktree() {
 
 ## Command Argument Patterns
 
-All worktree-aware commands accept optional worktree names:
+All worktree-aware commands accept optional worktree selectors:
 
-| Command                    | No Argument                          | With Argument                 |
-| -------------------------- | ------------------------------------ | ----------------------------- |
-| `/review`                  | Reviews current worktree             | Reviews specified worktree    |
-| `/review dev-improvements` | -                                    | Reviews dev-improvements      |
-| `/deepreview`              | Current worktree, auto-detect branch | Worktree and/or branch        |
-| `/smart-commit`            | Commits in current worktree          | Commits in specified worktree |
+| Command         | No Argument           | With Number               | With Name                    |
+| --------------- | --------------------- | ------------------------- | ---------------------------- |
+| `/sync`         | Sync current worktree | `/sync 1` syncs feature-1 | `/sync feature-2`            |
+| `/review`       | Reviews current       | `/review 1`               | `/review feature-2`          |
+| `/deepreview`   | Current, auto-detect  | `/deepreview 1`           | `/deepreview feature-1 main` |
+| `/smart-commit` | Commits in current    | `/smart-commit 1`         | `/smart-commit feature-2`    |
 
-### Argument Parsing for Deepreview
+### Argument Parsing for Commands
 
-The `/deepreview` command supports two optional arguments:
+The commands support flexible arguments:
 
-- Worktree name (path component like `dev-improvements`)
-- Target branch (git ref like `main`, `develop`)
+- Number (`1`, `2`) → maps to worktree
+- Worktree name (`feature-1`, `feature-2`) → exact match
+- Branch name (`main`, `develop`) → target branch for comparison
 
 **Detection logic:**
 
-1. If argument matches a known worktree name → use as worktree
-2. If argument matches a branch name → use as target branch
-3. If both provided → first is worktree, second is branch
+1. If argument is `1` or `2` → use as worktree selector
+2. If argument matches a known worktree name → use as worktree
+3. If argument matches a branch name → use as target branch
+4. If both provided → first is worktree, second is branch
 
 **Examples:**
 
 ```
-/deepreview                           # Current worktree, auto-detect main/master
-/deepreview dev-improvements          # dev-improvements worktree, auto-detect branch
-/deepreview develop                   # Current worktree, compare to develop
-/deepreview dev-improvements develop  # dev-improvements worktree, compare to develop
+/deepreview                    # Current worktree, auto-detect main/master
+/deepreview 1                  # feature-1 worktree, auto-detect branch
+/deepreview 2                  # feature-2 worktree, auto-detect branch
+/deepreview develop            # Current worktree, compare to develop
+/deepreview 1 develop          # feature-1 worktree, compare to develop
 ```
 
 ## Running Commands in a Worktree
@@ -135,17 +168,25 @@ When a worktree is specified, change to that directory before running git comman
 ```bash
 # Pattern for worktree-aware commands
 run_in_worktree() {
-  local worktree_name="$1"
+  local selector="$1"
   shift
   local cmd="$@"
+  local main_repo="/Users/ruben/Documents/GitHub/automaker"
 
-  if [ -n "$worktree_name" ]; then
+  if [ -n "$selector" ]; then
+    # Handle numeric shortcuts
+    case "$selector" in
+      1) selector="feature-1" ;;
+      2) selector="feature-2" ;;
+    esac
+
     # Find worktree path
     local worktree_path
-    worktree_path=$(git worktree list | grep "/$worktree_name " | awk '{print $1}')
+    worktree_path=$(git worktree list | grep "/$selector " | awk '{print $1}')
 
     if [ -z "$worktree_path" ]; then
-      echo "Error: Worktree '$worktree_name' not found"
+      echo "Error: Worktree '$selector' not found"
+      echo "Use: 1 (feature-1) or 2 (feature-2)"
       git worktree list
       return 1
     fi
@@ -159,8 +200,9 @@ run_in_worktree() {
 }
 
 # Usage
-run_in_worktree "dev-improvements" "git diff HEAD"
-run_in_worktree "" "git status"  # Current directory
+run_in_worktree "1" "git diff HEAD"      # feature-1
+run_in_worktree "feature-2" "git status" # feature-2
+run_in_worktree "" "git status"          # Current directory
 ```
 
 ## Context Reporting
@@ -169,8 +211,8 @@ Always report the worktree context at the start of operations:
 
 ```markdown
 === WORKTREE CONTEXT ===
-Path: /Users/ruben/Documents/GitHub/automaker/.worktrees/dev-improvements
-Branch: dev/improvements
+Path: /Users/ruben/Documents/GitHub/automaker/.worktrees/feature-1
+Branch: feature-1
 Port Config: 3017/3018
 ========================
 ```
@@ -199,16 +241,18 @@ get_worktree_ports() {
 When a worktree is not found:
 
 1. Report the error clearly
-2. List all available worktrees
-3. Ask for clarification
+2. List available shortcuts
+3. List all available worktrees
 
 ```bash
-echo "Error: Worktree '$name' not found."
+echo "Error: Worktree '$selector' not found."
+echo ""
+echo "Quick shortcuts:"
+echo "  1 = feature-1 (port 3017)"
+echo "  2 = feature-2 (port 3027)"
 echo ""
 echo "Available worktrees:"
 git worktree list
-echo ""
-echo "Did you mean one of these?"
 ```
 
 ## Cross-Worktree Operations
@@ -220,6 +264,11 @@ Some operations may need to compare across worktrees:
 compare_worktrees() {
   local wt1="$1"
   local wt2="$2"
+  local main_repo="/Users/ruben/Documents/GitHub/automaker"
+
+  # Handle numeric shortcuts
+  case "$wt1" in 1) wt1="feature-1" ;; 2) wt1="feature-2" ;; esac
+  case "$wt2" in 1) wt2="feature-1" ;; 2) wt2="feature-2" ;; esac
 
   local path1=$(git worktree list | grep "/$wt1 " | awk '{print $1}')
   local path2=$(git worktree list | grep "/$wt2 " | awk '{print $1}')
@@ -232,9 +281,10 @@ compare_worktrees() {
 
 ## Best Practices
 
-1. **Always validate worktree exists** before attempting operations
-2. **Use exact matching** - require full worktree name to avoid ambiguity
-3. **Report context clearly** - show path, branch, and ports at operation start
-4. **Default to current** - when no argument provided, use current directory
-5. **Handle errors gracefully** - list available worktrees when target not found
-6. **Preserve working directory** - use subshells `(cd path && cmd)` to avoid changing cwd
+1. **Use numeric shortcuts** - `1` and `2` are faster than full names
+2. **Always validate worktree exists** before attempting operations
+3. **Use exact matching** - require full worktree name to avoid ambiguity
+4. **Report context clearly** - show path, branch, and ports at operation start
+5. **Default to current** - when no argument provided, use current directory
+6. **Handle errors gracefully** - list available worktrees when target not found
+7. **Preserve working directory** - use subshells `(cd path && cmd)` to avoid changing cwd

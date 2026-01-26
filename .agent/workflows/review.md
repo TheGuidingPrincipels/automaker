@@ -8,10 +8,11 @@ This workflow performs a deep analysis of your current uncommitted changes. It a
 
 ## Worktree Support
 
-This command accepts an optional worktree name argument via `$ARGUMENTS`:
+This command accepts an optional worktree selector via `$ARGUMENTS`:
 
 - `/review` - Reviews current worktree
-- `/review dev-improvements` - Reviews the dev-improvements worktree
+- `/review 1` or `/review feature-1` - Reviews feature-1 worktree
+- `/review 2` or `/review feature-2` - Reviews feature-2 worktree
 
 ## Steps
 

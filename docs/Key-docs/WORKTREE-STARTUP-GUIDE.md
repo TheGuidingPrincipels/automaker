@@ -2,11 +2,11 @@
 
 ## Port Allocation (Verified)
 
-| Location         | UI Port | Server Port | URL                   |
-| ---------------- | ------- | ----------- | --------------------- |
-| Main repo        | 3007    | 3008        | http://localhost:3007 |
-| dev-improvements | 3017    | 3018        | http://localhost:3017 |
-| reading-system   | 3027    | 3028        | http://localhost:3027 |
+| Location  | UI Port | Server Port | URL                   |
+| --------- | ------- | ----------- | --------------------- |
+| Main repo | 3007    | 3008        | http://localhost:3007 |
+| feature-1 | 3017    | 3018        | http://localhost:3017 |
+| feature-2 | 3027    | 3028        | http://localhost:3027 |
 
 ## How It Works
 
@@ -22,12 +22,12 @@
 cd /Users/ruben/Documents/GitHub/automaker
 npm run dev:web
 
-# dev-improvements Worktree (ports 3017/3018)
-cd /Users/ruben/Documents/GitHub/automaker/.worktrees/dev-improvements
+# feature-1 Worktree (ports 3017/3018)
+cd /Users/ruben/Documents/GitHub/automaker/.worktrees/feature-1
 npm run dev:web
 
-# reading-system Worktree (ports 3027/3028)
-cd /Users/ruben/Documents/GitHub/automaker/.worktrees/reading-system
+# feature-2 Worktree (ports 3027/3028)
+cd /Users/ruben/Documents/GitHub/automaker/.worktrees/feature-2
 npm run dev:web
 ```
 
@@ -35,15 +35,15 @@ npm run dev:web
 
 You can run any two environments at once - they use different ports.
 
-**Example: Main + dev-improvements**
+**Example: Main + feature-1**
 
 ```bash
 # Terminal 1: Start main repo
 cd /Users/ruben/Documents/GitHub/automaker && npm run dev:web
 # Opens http://localhost:3007
 
-# Terminal 2: Start dev-improvements
-cd /Users/ruben/Documents/GitHub/automaker/.worktrees/dev-improvements && npm run dev:web
+# Terminal 2: Start feature-1
+cd /Users/ruben/Documents/GitHub/automaker/.worktrees/feature-1 && npm run dev:web
 # Opens http://localhost:3017
 ```
 
@@ -67,8 +67,8 @@ DATA_DIR           → Shared across all worktrees
 
 ```bash
 lsof -i :3008  # main
-lsof -i :3018  # dev-improvements
-lsof -i :3028  # reading-system
+lsof -i :3018  # feature-1
+lsof -i :3028  # feature-2
 ```
 
 **Kill a specific port:**

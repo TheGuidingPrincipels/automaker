@@ -275,18 +275,18 @@ This repository uses git worktrees for isolated development. **Each worktree has
 
 ### Port Allocation Table
 
-| Location             | UI Port | Server Port | Access URL            |
-| -------------------- | ------- | ----------- | --------------------- |
-| **Main repo**        | 3007    | 3008        | http://localhost:3007 |
-| **dev-improvements** | 3017    | 3018        | http://localhost:3017 |
-| **reading-system**   | 3027    | 3028        | http://localhost:3027 |
+| Location      | UI Port | Server Port | Access URL            |
+| ------------- | ------- | ----------- | --------------------- |
+| **Main repo** | 3007    | 3008        | http://localhost:3007 |
+| **feature-1** | 3017    | 3018        | http://localhost:3017 |
+| **feature-2** | 3027    | 3028        | http://localhost:3027 |
 
 ### How It Works
 
 Each worktree has a `.env` file with pre-configured ports:
 
 ```bash
-# Example: dev-improvements worktree
+# Example: feature-1 worktree
 PORT=3018              # Backend server
 TEST_PORT=3017         # Frontend dev server
 TEST_SERVER_PORT=3018  # Vite proxy target
@@ -299,7 +299,7 @@ CORS_ORIGIN=http://localhost:3017
 **Start the WebUI:**
 
 ```bash
-cd /Users/ruben/Documents/GitHub/automaker/.worktrees/dev-improvements
+cd /Users/ruben/Documents/GitHub/automaker/.worktrees/feature-1
 npm run dev:web
 # Opens at http://localhost:3017 (NOT 3007!)
 ```
@@ -307,7 +307,7 @@ npm run dev:web
 **Run E2E Tests:**
 
 ```bash
-cd /Users/ruben/Documents/GitHub/automaker/.worktrees/dev-improvements
+cd /Users/ruben/Documents/GitHub/automaker/.worktrees/feature-1
 npm run test
 # Uses ports 3017/3018 automatically
 ```

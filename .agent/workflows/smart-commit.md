@@ -8,10 +8,11 @@ This workflow streamlines the commit process by ensuring code quality, generatin
 
 ## Worktree Support
 
-This command accepts an optional worktree name argument via `$ARGUMENTS`:
+This command accepts an optional worktree selector via `$ARGUMENTS`:
 
 - `/smart-commit` - Commits in current worktree
-- `/smart-commit dev-improvements` - Commits in the dev-improvements worktree
+- `/smart-commit 1` or `/smart-commit feature-1` - Commits in feature-1 worktree
+- `/smart-commit 2` or `/smart-commit feature-2` - Commits in feature-2 worktree
 
 ## Steps
 

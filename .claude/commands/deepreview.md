@@ -17,15 +17,16 @@ Then automatically fixes any issues found.
 
 This command supports two optional arguments via `$ARGUMENTS`:
 
-- **Worktree name**: Name of a worktree to review (e.g., `dev-improvements`)
+- **Worktree selector**: `1` for feature-1, `2` for feature-2, or full name
 - **Target branch**: Branch name to compare against (e.g., `develop`, `main`)
 
 **Examples:**
 
 - `/deepreview` - Current worktree, auto-detect main/master
-- `/deepreview dev-improvements` - Reviews dev-improvements worktree, auto-detect branch
+- `/deepreview 1` - Reviews feature-1 worktree, auto-detect branch
+- `/deepreview 2` - Reviews feature-2 worktree, auto-detect branch
 - `/deepreview develop` - Current worktree, compare to develop branch
-- `/deepreview dev-improvements develop` - Reviews dev-improvements worktree, compare to develop
+- `/deepreview 1 develop` - Reviews feature-1 worktree, compare to develop
 
 **Argument Detection:**
 
