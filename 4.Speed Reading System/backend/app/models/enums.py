@@ -19,7 +19,10 @@ class Language(str, Enum):
 
 
 class BreakType(str, Enum):
-    """Enum for break types before a token."""
+    """Type of structural break in the text.
+
+    Used to indicate paragraph and heading boundaries for RSVP timing.
+    """
 
     PARAGRAPH = "paragraph"
     HEADING = "heading"

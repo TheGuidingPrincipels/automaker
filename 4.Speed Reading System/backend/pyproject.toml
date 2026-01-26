@@ -31,6 +31,10 @@ namespaces = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+addopts = "-m 'not benchmark'"
+markers = [
+    "benchmark: performance benchmarks (run with '-m benchmark')",
+]
 asyncio_mode = "auto"
 
 [tool.ruff]
