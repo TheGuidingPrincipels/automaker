@@ -93,8 +93,8 @@ Updates an existing concept. Only provided fields are updated.
 | `concept_id` | string | Yes |
 | `name` | string | No |
 | `explanation` | string | No |
-| `area` | string | No |
-| `topic` | string | No |
+| `area` | string | Yes |
+| `topic` | string | Yes |
 | `subtopic` | string | No |
 | `source_urls` | string | No |
 
