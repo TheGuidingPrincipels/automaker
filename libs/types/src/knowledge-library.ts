@@ -134,6 +134,8 @@ export interface KLCleanupItemResponse {
   content_preview: string;
   suggested_disposition: KLCleanupDisposition;
   suggestion_reason: string;
+  /** AI confidence score (0.0-1.0) */
+  confidence: number;
   final_disposition: KLCleanupDisposition | null;
 }
 

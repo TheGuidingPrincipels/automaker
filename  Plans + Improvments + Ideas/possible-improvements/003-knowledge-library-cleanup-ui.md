@@ -293,7 +293,7 @@ export interface KLCleanupItemResponse {
 
 #### Step 3.1: Create ConfidenceBar component
 
-**File:** `apps/ui/src/components/views/knowledge-library/components/input-mode/components/confidence-bar.tsx`
+**File:** `apps/ui/src/components/ui/confidence-bar.tsx`
 
 ```tsx
 import { cn } from '@/lib/utils';
@@ -330,11 +330,11 @@ export function ConfidenceBar({ confidence, disposition }: ConfidenceBarProps) {
 
 #### Step 3.2: Create AIRecommendationBox component
 
-**File:** `apps/ui/src/components/views/knowledge-library/components/input-mode/components/ai-recommendation-box.tsx`
+**File:** `apps/ui/src/components/ui/ai-recommendation-box.tsx`
 
 ```tsx
 import { cn } from '@/lib/utils';
-import { ConfidenceBar } from './confidence-bar';
+import { ConfidenceBar } from '@/components/ui/confidence-bar';
 import { Bot, Check, Trash2 } from 'lucide-react';
 import type { KLCleanupDisposition } from '@automaker/types';
 
@@ -503,8 +503,8 @@ items.append(
 
 | File                                                                                                        | Purpose                             |
 | ----------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| `apps/ui/src/components/views/knowledge-library/components/input-mode/components/confidence-bar.tsx`        | Confidence percentage visualization |
-| `apps/ui/src/components/views/knowledge-library/components/input-mode/components/ai-recommendation-box.tsx` | AI suggestion display with colors   |
+| `apps/ui/src/components/ui/confidence-bar.tsx`        | Confidence percentage visualization |
+| `apps/ui/src/components/ui/ai-recommendation-box.tsx` | AI suggestion display with colors   |
 | `apps/ui/src/components/views/knowledge-library/components/input-mode/components/content-preview-box.tsx`   | Expandable content display          |
 
 ## Files to Modify

@@ -21,6 +21,11 @@ from ..models.cleanup_plan import CleanupPlan, CleanupItem, CleanupDisposition
 from ..models.routing_plan import RoutingPlan, BlockRoutingItem, validate_overview_text
 from ..extraction.parser import parse_markdown_file
 from .storage import SessionStorage
+import logging
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_CONFIDENCE = 0.5
 
 
 class SessionManager:
@@ -113,6 +118,7 @@ class SessionManager:
                     content_preview=block.content[:200],
                     suggested_disposition=CleanupDisposition.KEEP,
                     suggestion_reason="Default: keep all content",
+                    confidence=DEFAULT_CONFIDENCE,  # Lower confidence for non-AI default
                     final_disposition=None,  # User must decide
                 )
             )

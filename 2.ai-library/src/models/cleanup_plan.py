@@ -2,8 +2,14 @@
 
 from enum import Enum
 from datetime import datetime
-from typing import Optional, List
-from pydantic import BaseModel, Field
+import logging
+from typing import Any, Optional, List
+from pydantic import BaseModel, Field, field_validator
+
+from ..utils.validation import normalize_confidence
+
+
+logger = logging.getLogger(__name__)
 
 
 class CleanupDisposition(str, Enum):
@@ -19,9 +25,18 @@ class CleanupItem(BaseModel):
     # Model suggestion (never executed automatically)
     suggested_disposition: str = CleanupDisposition.KEEP
     suggestion_reason: str = ""
+    confidence: float = Field(
+        default=0.5, description="AI confidence in the suggestion (0.0 to 1.0)"
+    )
 
     # User decision
     final_disposition: Optional[str] = None  # "keep" or "discard"
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def normalize_confidence_validator(cls, v: Any) -> float:
+        """Normalize and clamp confidence value to valid range [0.0, 1.0]."""
+        return normalize_confidence(v, log=logger)
 
 
 class CleanupPlan(BaseModel):

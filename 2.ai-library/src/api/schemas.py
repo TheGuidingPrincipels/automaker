@@ -167,6 +167,7 @@ class CleanupItemResponse(BaseModel):
     content_preview: str
     suggested_disposition: str
     suggestion_reason: str
+    confidence: float
     final_disposition: Optional[str] = None
 
     @classmethod
@@ -178,6 +179,7 @@ class CleanupItemResponse(BaseModel):
             content_preview=item.content_preview,
             suggested_disposition=item.suggested_disposition,
             suggestion_reason=item.suggestion_reason,
+            confidence=item.confidence,
             final_disposition=item.final_disposition,
         )
 
