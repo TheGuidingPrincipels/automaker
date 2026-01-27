@@ -8,6 +8,9 @@ from app.services.tokenizer import (
     TokenizerResult,
     TokenData,
     tokenize,
+    tokenize_text,
+    get_tokenizer_version,
+    calculate_orp_display,
 )
 from app.services.tokenizer.tokenizer import _validate_token_invariants
 from app.services.tokenizer.constants import TOKENIZER_VERSION
@@ -336,6 +339,38 @@ class TestConvenienceFunction:
         """Convenience function should return TokenizerResult."""
         result = tokenize("Test")
         assert isinstance(result, TokenizerResult)
+
+
+class TestSession2PublicApi:
+    """Tests for the Session 2 public API surface (as referenced by Session 3)."""
+
+    def test_get_tokenizer_version(self):
+        """get_tokenizer_version should return the exported tokenizer version."""
+        assert get_tokenizer_version() == TOKENIZER_VERSION
+
+    def test_tokenize_text_returns_tuple(self):
+        """tokenize_text should return (normalized_text, tokens)."""
+        normalized_text, tokens = tokenize_text("Hello world.")
+        assert normalized_text == "Hello world."
+        assert len(tokens) == 2
+        assert tokens[0].display_text == "Hello"
+        assert tokens[1].display_text == "world."
+
+    def test_calculate_orp_display(self):
+        """calculate_orp_display should return ORP index in display_text."""
+        assert calculate_orp_display('"Hello!"', "Hello") == 2
+
+    def test_unknown_language_falls_back_to_english(self):
+        """Unknown language should fall back to English behavior (see module-level tests)."""
+        # 'vgl' is not in English abbreviations, so "Vgl." ends a sentence -> "das" is a sentence start.
+        _, tokens = tokenize_text("Vgl. das Beispiel.", language="fr")
+        assert tokens[1].is_sentence_start is True
+
+    def test_unknown_source_type_defaults_to_paste(self):
+        """Unknown source types default to plain-text parsing."""
+        normalized_text, tokens = tokenize_text("# Not a heading", source_type="unknown")
+        assert normalized_text == "# Not a heading"
+        assert [t.display_text for t in tokens] == ["Not", "a", "heading"]
 
 
 class TestHelperMethods:

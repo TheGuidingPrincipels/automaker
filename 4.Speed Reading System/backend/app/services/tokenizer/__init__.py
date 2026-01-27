@@ -18,6 +18,8 @@ Primary usage:
     >>> result = tokenize("Hello world.")
 """
 
+from typing import Literal
+
 # Import type definitions
 from .types import BreakType
 
@@ -88,6 +90,37 @@ from .constants import (
     HEADING_PATTERN,
 )
 
+
+def get_tokenizer_version() -> str:
+    """Return the current tokenizer version string."""
+    return TOKENIZER_VERSION
+
+
+def tokenize_text(
+    text: str,
+    *,
+    source_type: Literal["paste", "md", "pdf"] = "paste",
+    language: str = "en",
+) -> tuple[str, list[TokenData]]:
+    """
+    Tokenize text and return (normalized_text, tokens).
+
+    This is a thin compatibility wrapper used by Session 3+ plans.
+    """
+    result = tokenize(text, source_type=source_type, language=language)
+    return result.normalized_text, result.tokens
+
+
+def calculate_orp_display(
+    display_text: str,
+    clean_text: str,
+    language: str = "en",
+) -> int:
+    """Calculate ORP index within display_text for the given clean_text."""
+    calculator = ORPCalculator(language=language)
+    return calculator.calculate_for_display(display_text, clean_text)
+
+
 __all__ = [
     # Type definitions
     "BreakType",
@@ -96,6 +129,10 @@ __all__ = [
     "TokenizerResult",
     "TokenData",
     "tokenize",
+    # Session 2 public API (referenced by Session 3+)
+    "tokenize_text",
+    "get_tokenizer_version",
+    "calculate_orp_display",
     # Legacy tokenizer class (backward compatibility)
     "Tokenizer",
     # Normalizer

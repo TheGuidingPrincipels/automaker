@@ -29,9 +29,8 @@ config = context.config
 
 settings = get_settings()
 
-# Override sqlalchemy.url with the value from settings if not set via command line
-if not config.get_main_option("sqlalchemy.url"):
-    config.set_main_option("sqlalchemy.url", settings.database_url)
+# Always use the database URL from application settings (.env / environment).
+config.set_main_option("sqlalchemy.url", settings.database_url)
 
 # Interpret the config file for Python logging
 if config.config_file_name is not None:
