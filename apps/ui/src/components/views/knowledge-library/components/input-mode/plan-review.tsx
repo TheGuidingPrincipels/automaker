@@ -118,6 +118,7 @@ export function PlanReview({
 
         {workflowState === 'cleanup_review' && (
           <CleanupReview
+            sessionId={sessionId}
             data={cleanupPlan.data}
             isLoading={cleanupPlan.isLoading}
             onApprove={onApproveCleanup}

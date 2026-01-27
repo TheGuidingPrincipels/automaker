@@ -12,6 +12,7 @@ File writes are NEVER performed by the SDK - only by our verified writer.
 import json
 import os
 import asyncio
+import logging
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 try:
@@ -24,8 +25,13 @@ else:  # pragma: no cover
     _CLAUDE_CODE_SDK_IMPORT_ERROR = None
 
 from ..utils.async_helpers import _run_sync
+from ..utils.validation import normalize_confidence
 
-from ..models.cleanup_plan import CleanupPlan, CleanupItem, CleanupDisposition
+from ..models.cleanup_plan import (
+    CleanupPlan,
+    CleanupItem,
+    CleanupDisposition,
+)
 from ..models.routing_plan import (
     RoutingPlan,
     BlockRoutingItem,
@@ -34,6 +40,9 @@ from ..models.routing_plan import (
 )
 from .prompts.cleanup_mode import CLEANUP_SYSTEM_PROMPT, build_cleanup_prompt
 from .prompts.routing_mode import ROUTING_SYSTEM_PROMPT, build_routing_prompt
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -245,6 +254,7 @@ class ClaudeCodeClient:
                     "suggested_disposition", CleanupDisposition.KEEP
                 )
                 suggestion_reason = item_data.get("suggestion_reason", "")
+                confidence = normalize_confidence(item_data.get("confidence"), log=logger)
             else:
                 suggested_disposition = CleanupDisposition.KEEP
                 suggestion_reason = (
@@ -252,6 +262,12 @@ class ClaudeCodeClient:
                     if response.success
                     else "Default: keep all content"
                 )
+                confidence = 0.5
+                if response.success:
+                    logger.debug(
+                        "Cleanup item omitted for block %s; defaulting confidence to 0.5",
+                        block_id,
+                    )
 
             items.append(
                 CleanupItem(
@@ -260,6 +276,7 @@ class ClaudeCodeClient:
                     content_preview=block["content"][:200],
                     suggested_disposition=suggested_disposition,
                     suggestion_reason=suggestion_reason,
+                    confidence=confidence,
                 )
             )
 
@@ -320,7 +337,7 @@ class ClaudeCodeClient:
                             destination_file=opt.get("destination_file", ""),
                             destination_section=opt.get("destination_section"),
                             action=opt.get("action", "append"),
-                            confidence=opt.get("confidence", 0.5),
+                            confidence=normalize_confidence(opt.get("confidence"), log=logger),
                             reasoning=opt.get("reasoning", ""),
                             proposed_file_title=opt.get("proposed_file_title"),
                             proposed_file_overview=opt.get("proposed_file_overview"),
