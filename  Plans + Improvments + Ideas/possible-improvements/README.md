@@ -24,8 +24,11 @@ This folder tracks potential improvements, refactoring opportunities, and techni
    - Shows full block content, confidence bars, color-coded recommendations
    - Users can see exactly what will be removed
 
-2. **Plan 004 (AI)** - Implement second (~9 hours)
-   - Better decision criteria, signal detection
+2. **Plan 004 (AI)** - Implement second (~12 hours)
+   - Three cleanup modes: Conservative, Balanced, Aggressive
+   - Mode-specific prompts with token-efficient loading (only selected mode sent to AI)
+   - Signal detection with 35 criteria (20 discard + 15 keep)
+   - Frontend mode selector UI with persistence
    - Requires Plan 003 to display the improved AI output
 
 ---

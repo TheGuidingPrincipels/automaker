@@ -46,7 +46,7 @@ All development → Test in dev → Merge to main when verified
 │   ├── apps/
 │   ├── libs/
 │   ├── .automaker/               ← For other projects (not self-development)
-│   └── Automaker.app runs FROM here (ports 3017/3018)
+│   └── Launch-Automaker.command runs FROM here (ports 3017/3018)
 │
 └── automaker-dev/                ← DEVELOPMENT (dev/improvements branch)
     ├── apps/
@@ -66,7 +66,7 @@ All development → Test in dev → Merge to main when verified
 │                                                                              │
 │   ┌─────────────────────────────────────────────────────────────────────┐   │
 │   │  automaker/ (main branch)                                            │   │
-│   │  • Automaker.app runs from here                                      │   │
+│   │  • Launch-Automaker.command runs from here                           │   │
 │   │  • Ports: 3017 (UI), 3018 (Server)                                   │   │
 │   │  • Only receives TESTED, VERIFIED code                               │   │
 │   └─────────────────────────────────────────────────────────────────────┘   │
@@ -104,8 +104,8 @@ All development → Test in dev → Merge to main when verified
 ### Prerequisites
 
 - Git installed
-- Node.js 18+ installed
-- Automaker.app on Desktop (already configured)
+- Node.js 22+ installed
+- Launcher: `scripts/Launchers/Launch-Automaker.command` (optional Desktop shortcut)
 
 ### One-Time Setup
 
@@ -174,7 +174,7 @@ cd /Users/ruben/Documents/GitHub/automaker-dev
 Option B - Using Automaker UI:
 
 ```
-1. Launch Automaker.app
+1. Launch Automaker (stable) via `scripts/Launchers/Launch-Automaker.command`
 2. Open project: /Users/ruben/Documents/GitHub/automaker-dev
 3. Create features for improvements
 4. Agent works in isolated sub-worktrees
@@ -197,8 +197,8 @@ git push origin main
 
 **5. Restart Stable**
 
-- Close Automaker.app
-- Reopen Automaker.app (from Desktop)
+- Stop the launcher Terminal window (`Ctrl+C`)
+- Relaunch `scripts/Launchers/Launch-Automaker.command`
 - New code is now active
 
 ---
@@ -228,7 +228,7 @@ cd /Users/ruben/Documents/GitHub/automaker-dev
 Use Automaker itself to develop features.
 
 ```
-1. Launch Automaker.app
+1. Launch Automaker (stable) via `scripts/Launchers/Launch-Automaker.command`
 2. Open project: /Users/ruben/Documents/GitHub/automaker-dev
 3. Create feature in Kanban board
 4. Move to "In Progress" - agent starts
@@ -328,7 +328,7 @@ cd /Users/ruben/Documents/GitHub/automaker-dev && PORT=3028 TEST_PORT=3027 npm r
 
 **Yes, you CAN run both instances at the same time:**
 
-- Stable Automaker.app continues running on ports 3017/3018
+- Stable Automaker continues running on ports 3017/3018
 - Dev testing instance runs on ports 3027/3028
 - No conflicts - they are completely independent
 
@@ -340,11 +340,11 @@ cd /Users/ruben/Documents/GitHub/automaker-dev && PORT=3028 TEST_PORT=3027 npm r
 
 ### Port Reference
 
-| Instance               | UI Port | Server Port | Purpose         |
-| ---------------------- | ------- | ----------- | --------------- |
-| Stable (Automaker.app) | 3017    | 3018        | Daily use       |
-| Dev worktree testing   | 3027    | 3028        | Testing changes |
-| Docker (if used)       | 3007    | 3008        | Container       |
+| Instance             | UI Port | Server Port | Purpose         |
+| -------------------- | ------- | ----------- | --------------- |
+| Stable (launcher)    | 3017    | 3018        | Daily use       |
+| Dev worktree testing | 3027    | 3028        | Testing changes |
+| Docker (if used)     | 3007    | 3008        | Container       |
 
 ### Test Checklist
 
@@ -403,13 +403,13 @@ git push origin main
 cd /Users/ruben/Documents/GitHub/automaker-dev
 git merge origin/main
 
-# 5. Restart Automaker.app
-# Close and reopen the app
+# 5. Restart Automaker (launcher)
+# Stop (Ctrl+C) and relaunch `scripts/Launchers/Launch-Automaker.command`
 ```
 
 ### After Merge
 
-- Restart Automaker.app to use new code
+- Restart the launcher to use new code
 - Verify stable version works
 - Both repos should now be in sync
 
@@ -589,7 +589,7 @@ DEVELOP:         cd automaker-dev && (make changes)
 TEST:            PORT=3028 TEST_PORT=3027 npm run dev:electron
 COMMIT:          git add . && git commit -m "message"
 MERGE TO MAIN:   cd automaker && git merge dev/improvements && git push
-RESTART STABLE:  Close & reopen Automaker.app
+RESTART STABLE:  Stop (Ctrl+C) & relaunch `scripts/Launchers/Launch-Automaker.command`
 SYNC BACK:       cd automaker-dev && git merge origin/main
 
 UPSTREAM:        /upstream-check → merge to dev → test → merge to main
@@ -603,5 +603,5 @@ UPSTREAM:        /upstream-check → merge to dev → test → merge to main
 2. **Never work with uncommitted changes** - Commit or stash first
 3. **Test before merging to main** - Use PORT=3028
 4. **Upstream → Dev → Main** - Always test upstream changes in dev first
-5. **Restart after merge** - Automaker.app needs restart for new code
+5. **Restart after merge** - Launcher needs restart for new code
 6. **Keep dev tracking main** - Sync dev back after merging to main

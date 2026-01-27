@@ -45,6 +45,31 @@ const KL_STALE_TIMES = {
 // Health Check
 // ============================================================================
 
+const KL_HEALTH_REFETCH_INTERVAL_MS = {
+  CONNECTED: 30000,
+  DISCONNECTED: 5000,
+} as const;
+
+type KLHealthQueryStatus = 'pending' | 'error' | 'success';
+
+export const getKLHealthRefetchIntervalMs = (params: {
+  queryStatus?: KLHealthQueryStatus;
+  dataStatus?: string;
+  error?: unknown;
+}): number => {
+  // TanStack Query can keep the last successful data even when later refetches fail,
+  // so make sure we react to the query's error state (not just cached data).
+  if (params.queryStatus === 'error' || params.error != null) {
+    return KL_HEALTH_REFETCH_INTERVAL_MS.DISCONNECTED;
+  }
+
+  if (params.dataStatus === 'healthy' || params.dataStatus === 'ok') {
+    return KL_HEALTH_REFETCH_INTERVAL_MS.CONNECTED;
+  }
+
+  return KL_HEALTH_REFETCH_INTERVAL_MS.DISCONNECTED;
+};
+
 /**
  * Check Knowledge Library service health
  *
@@ -61,8 +86,16 @@ export function useKLHealth() {
     queryKey: queryKeys.knowledgeLibrary.health(),
     queryFn: () => knowledgeLibraryApi.getHealth(),
     staleTime: KL_STALE_TIMES.HEALTH,
-    retry: false, // Don't retry health checks
+    retry: 3, // Retry 3 times before giving up
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
     refetchOnWindowFocus: true,
+    // Dynamic interval: faster when disconnected, slower when connected
+    refetchInterval: (query) =>
+      getKLHealthRefetchIntervalMs({
+        queryStatus: query.state.status,
+        dataStatus: query.state.data?.status,
+        error: query.state.error,
+      }),
   });
 }
 

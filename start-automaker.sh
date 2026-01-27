@@ -330,6 +330,75 @@ check_running_electron() {
     return 0
 }
 
+check_running_vite() {
+    local vite_pids=""
+
+    # Find running Vite/Node dev server processes (but not this script's children)
+    if [ "$IS_WINDOWS" = true ]; then
+        vite_pids=$(tasklist 2>/dev/null | grep -iE "node.*vite" | awk '{print $2}' | tr '\n' ' ' || true)
+    else
+        # Find node processes running vite, excluding current process tree
+        vite_pids=$(pgrep -f "node.*vite" 2>/dev/null | tr '\n' ' ' || true)
+    fi
+
+    if [ -n "$vite_pids" ] && [ "$vite_pids" != " " ]; then
+        get_term_size
+        echo ""
+        center_print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" "$C_GRAY"
+        center_print "Running Vite Dev Server Detected" "$C_YELLOW"
+        center_print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" "$C_GRAY"
+        echo ""
+        center_print "Vite process(es): $vite_pids" "$C_MUTE"
+        echo ""
+        center_print "This may cause port conflicts or stale state." "$C_WHITE"
+        center_print "What would you like to do?" "$C_WHITE"
+        echo ""
+        center_print "[K] Kill Vite processes and continue (Recommended)" "$C_GREEN"
+        center_print "[I] Ignore and continue anyway" "$C_MUTE"
+        center_print "[C] Cancel" "$C_RED"
+        echo ""
+
+        while true; do
+            local choice_pad=$(( (TERM_COLS - 20) / 2 ))
+            printf "%${choice_pad}s" ""
+            read -r -p "Choice: " choice
+
+            case "$choice" in
+                [kK]|[kK][iI][lL][lL])
+                    echo ""
+                    center_print "Killing Vite processes..." "$C_YELLOW"
+                    if [ "$IS_WINDOWS" = true ]; then
+                        taskkill //F //IM "node.exe" 2>/dev/null || true
+                    else
+                        pkill -f "node.*vite" 2>/dev/null || true
+                    fi
+                    sleep 1
+                    center_print "✓ Vite processes stopped" "$C_GREEN"
+                    echo ""
+                    return 0
+                    ;;
+                [iI]|[iI][gG][nN][oO][rR][eE])
+                    echo ""
+                    center_print "Continuing without stopping Vite..." "$C_MUTE"
+                    echo ""
+                    return 0
+                    ;;
+                [cC]|[cC][aA][nN][cC][eE][lL])
+                    echo ""
+                    center_print "Cancelled." "$C_MUTE"
+                    echo ""
+                    exit 0
+                    ;;
+                *)
+                    center_print "Invalid choice. Please enter K, I, or C." "$C_RED"
+                    ;;
+            esac
+        done
+    fi
+
+    return 0
+}
+
 check_running_containers() {
     local compose_file="$1"
     local running_containers=""
@@ -599,10 +668,51 @@ cleanup() {
     show_cursor
     # Restore terminal settings (echo and canonical mode)
     stty echo icanon 2>/dev/null || true
-    # Kill server process if running in production mode
+
+    # Helper function to gracefully kill a process
+    graceful_kill() {
+        local pid=$1
+        local name=${2:-"process"}
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            # Send SIGTERM for graceful shutdown
+            kill "$pid" 2>/dev/null || true
+            # Wait briefly for graceful exit
+            local i=0
+            while [ $i -lt 5 ] && kill -0 "$pid" 2>/dev/null; do
+                sleep 0.1 2>/dev/null || sleep 1
+                i=$((i + 1))
+            done
+            # Force kill if still running
+            if kill -0 "$pid" 2>/dev/null; then
+                kill -9 "$pid" 2>/dev/null || true
+            fi
+        fi
+    }
+
+    # Kill server process if running
     if [ -n "${SERVER_PID:-}" ]; then
-        kill $SERVER_PID 2>/dev/null || true
+        graceful_kill $SERVER_PID "server"
     fi
+
+    # Kill Knowledge Library if running
+    if [ -n "${KL_PID:-}" ]; then
+        graceful_kill $KL_PID "knowledge-library"
+    fi
+    if [ -f "2.ai-library/.kl.pid" ]; then
+        local stored_pid
+        stored_pid=$(cat "2.ai-library/.kl.pid" 2>/dev/null)
+        if [ -n "$stored_pid" ]; then
+            graceful_kill "$stored_pid" "knowledge-library-stored"
+        fi
+        rm -f "2.ai-library/.kl.pid"
+    fi
+
+    # Clean up any orphaned Vite processes started by this session
+    # (Only kill processes that might be orphaned, not all vite processes)
+    if [ -n "${VITE_SESSION_MARKER:-}" ]; then
+        pkill -f "node.*vite.*$VITE_SESSION_MARKER" 2>/dev/null || true
+    fi
+
     printf "${RESET}\n"
 }
 
@@ -1203,10 +1313,32 @@ case $MODE in
             kill $SERVER_PID 2>/dev/null || true
         else
             # Development: build packages, start server, then start UI with Vite dev server
+
+            # Check for stale Vite processes that might cause conflicts
+            check_running_vite
+
             echo ""
             center_print "Building shared packages..." "$C_YELLOW"
             npm run build:packages
             center_print "✓ Packages built" "$C_GREEN"
+            echo ""
+
+            # Start Knowledge Library (optional service - warn but continue if fails)
+            center_print "Starting Knowledge Library..." "$C_YELLOW"
+            export VITE_KNOWLEDGE_LIBRARY_API="http://localhost:8002"
+            export CORS_ORIGINS="http://localhost:$WEB_PORT,http://localhost:$SERVER_PORT,http://127.0.0.1:$WEB_PORT,http://127.0.0.1:$SERVER_PORT"
+            if [ -f "2.ai-library/start-with-automaker.sh" ]; then
+                (cd 2.ai-library && ./start-with-automaker.sh --quiet) &
+                KL_PID=$!
+                sleep 2
+                if curl -s --max-time 2 "http://localhost:8002/health" > /dev/null 2>&1; then
+                    center_print "✓ Knowledge Library started on port 8002" "$C_GREEN"
+                else
+                    center_print "⚠ Knowledge Library starting (optional service)" "$C_YELLOW"
+                fi
+            else
+                center_print "⚠ Knowledge Library not found (optional)" "$C_MUTE"
+            fi
             echo ""
 
             # Start backend server in dev mode (background)

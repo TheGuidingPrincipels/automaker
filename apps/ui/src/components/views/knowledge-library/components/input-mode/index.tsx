@@ -41,19 +41,19 @@ export function InputMode() {
       <div className="h-full flex flex-col">
         {/* Error alert */}
         {error && (
-          <div className="mx-4 mt-4 p-4 rounded-lg border border-destructive/50 bg-destructive/10 flex items-start gap-3">
+          <div className="mx-4 mt-4 p-4 rounded-lg border border-destructive/50 bg-destructive/10 flex items-start gap-3 shrink-0">
             <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
             <p className="text-sm text-destructive">{error}</p>
           </div>
         )}
 
         {/* Session list */}
-        <div className="mx-4 mt-4">
+        <div className="mx-4 mt-4 shrink-0">
           <SessionList activeSessionId={sessionId} onSelectSession={actions.selectSession} />
         </div>
 
         {/* Top area: Review content or empty state */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-hidden">
           {/* Empty/idle state - show when no session and no staged file */}
           {(workflowState === 'idle' || workflowState === 'file_staged') && <EmptyState />}
 

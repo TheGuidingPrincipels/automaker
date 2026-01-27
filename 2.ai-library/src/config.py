@@ -61,7 +61,7 @@ class SourceConfig(BaseModel):
 class APIConfig(BaseModel):
     """Configuration for REST API server."""
     host: str = "0.0.0.0"
-    port: int = 8001
+    port: int = 8002
     # Both localhost and 127.0.0.1 variants are needed because browsers treat them
     # as different origins - some browsers resolve 'localhost' to the hostname while
     # others resolve it to the IP address 127.0.0.1. CORS requires exact origin match.
@@ -74,7 +74,10 @@ class APIConfig(BaseModel):
         "http://127.0.0.1:3008",   # Automaker backend (IP variant)
     ])
     cors_methods: list[str] = Field(default_factory=lambda: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
-    cors_headers: list[str] = Field(default_factory=lambda: ["Content-Type", "Authorization", "X-Request-ID"])
+    cors_headers: list[str] = Field(default_factory=lambda: [
+        "Content-Type", "Authorization", "X-Request-ID",
+        "X-API-Key", "X-Session-Token"
+    ])
     debug: bool = False
 
 
@@ -189,6 +192,13 @@ def _apply_env_overrides(config: Config) -> Config:
     sessions_path = _get_env_value("SESSIONS_PATH")
     if sessions_path is not None:
         config.sessions.path = sessions_path
+
+    # CORS_ORIGINS: comma-separated list of allowed origins (overrides config file)
+    cors_origins = _get_env_value("CORS_ORIGINS")
+    if cors_origins is not None:
+        origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
+        if origins:
+            config.api.cors_origins = origins
 
     return config
 

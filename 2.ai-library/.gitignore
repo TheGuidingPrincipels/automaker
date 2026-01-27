@@ -16,5 +16,12 @@ env/
 # Local runtime/session artifacts (Cipher MCP writes here)
 data/
 
+# Knowledge Library runtime artifacts
+.kl.pid
+
+# Runtime sessions (keep placeholder file)
+sessions/**
+!sessions/.gitkeep
+
 # OS files
 .DS_Store

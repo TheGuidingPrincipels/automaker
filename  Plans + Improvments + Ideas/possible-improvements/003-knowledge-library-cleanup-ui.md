@@ -8,18 +8,24 @@
 
 ## Summary
 
-Improve the cleanup review UI in the Knowledge Library to show full block content, AI confidence percentages, color-coded recommendations, and clearer visual distinction between keep/discard suggestions. Currently, users see truncated 2-line previews and cannot easily understand what content they're deciding on.
+Improve the cleanup review UI in the Knowledge Library to show full block content (expandable), AI confidence percentages, color-coded recommendations, and clearer block boundaries (block type + source line range). Preserve the existing “change my mind” workflow so users can safely revise decisions after initially choosing Keep/Discard. Currently, users see truncated 2-line previews and cannot easily understand what content they're deciding on.
+
+## Design Decisions (to keep this safe + scalable)
+
+1. **Do not embed full block content in the cleanup plan payload.** Instead, fetch full content and boundary metadata from the existing Blocks endpoint (`GET /api/sessions/{session_id}/blocks`) and join by `block_id`. This avoids duplicating large text in session storage and avoids inflating WebSocket streaming payloads.
+2. **Confidence is an end-to-end contract.** The cleanup prompt already requests `confidence`, but the backend currently drops it. This plan adds confidence to models/schemas/types and clamps values to `[0.0, 1.0]`.
+3. **No workflow regressions.** Keep the current tabbed review experience and the ability to switch decisions in “All” and move items between Keep/Discard tabs.
 
 ## Problem Statement
 
 ### Current Issues
 
 1. **Content visibility**: Only ~2 lines shown (`line-clamp-2`), users can't see full block
-2. **No confidence indicator**: Backend returns confidence scores but UI ignores them
+2. **No confidence indicator**: Cleanup prompt requests `confidence`, but backend/SDK drops it so UI cannot display it
 3. **AI suggestion not prominent**: Shown as small italic text at bottom
 4. **No pre-decision color coding**: Colors only appear after user decides
 5. **Recommended action unclear**: Both Keep/Discard buttons have equal visual weight
-6. **Block boundaries unclear**: Users can't understand what exactly constitutes "this block"
+6. **Block boundaries unclear**: UI doesn’t show block type or source line range, so users can’t tell what the system considers “this block”
 
 ### User Impact
 
@@ -104,7 +110,7 @@ Improve the cleanup review UI in the Knowledge Library to show full block conten
 
 ## Data Model Changes
 
-### Backend: Add `confidence` field
+### Backend: Add `confidence` field (no `full_content` on cleanup items)
 
 **File:** `2.ai-library/src/models/cleanup_plan.py`
 
@@ -113,12 +119,11 @@ class CleanupItem(BaseModel):
     block_id: str
     heading_path: List[str] = Field(default_factory=list)
     content_preview: str
-    full_content: str = ""  # NEW: Full block content for display
 
     # Model suggestion (never executed automatically)
     suggested_disposition: str = CleanupDisposition.KEEP
     suggestion_reason: str = ""
-    confidence: float = 0.8  # NEW: AI confidence score (0.0-1.0)
+    confidence: float = 0.5  # NEW: AI confidence score (0.0-1.0), clamped
 
     # User decision
     final_disposition: Optional[str] = None
@@ -131,10 +136,9 @@ class CleanupItemResponse(BaseModel):
     block_id: str
     heading_path: List[str]
     content_preview: str
-    full_content: str  # NEW
     suggested_disposition: str
     suggestion_reason: str
-    confidence: float  # NEW
+    confidence: float  # NEW (0.0-1.0)
     final_disposition: Optional[str] = None
 ```
 
@@ -147,35 +151,41 @@ export interface KLCleanupItemResponse {
   block_id: string;
   heading_path: string[];
   content_preview: string;
-  full_content: string; // NEW
   suggested_disposition: KLCleanupDisposition;
   suggestion_reason: string;
-  confidence: number; // NEW: 0.0 to 1.0
+  confidence: number; // NEW: 0.0 to 1.0 (clamped)
   final_disposition: KLCleanupDisposition | null;
 }
 ```
 
+### UI data source for “full content” + block boundaries (no new backend fields needed)
+
+- Use `GET /api/sessions/{session_id}/blocks` (already implemented) to obtain, per block:
+  - `content` (full text)
+  - `block_type`
+  - `source_line_start` / `source_line_end`
+- Join this data to cleanup items by `block_id` in the UI.
+
 ## Implementation Plan
 
-### Phase 1: Backend Data Enhancement
+### Phase 1: Backend confidence propagation (keep payloads small)
 
 #### Step 1.1: Update CleanupItem model
 
 **File:** `2.ai-library/src/models/cleanup_plan.py`
 
-Add `confidence` and `full_content` fields:
+Add a `confidence` field (default 0.5) and validate/clamp to `[0.0, 1.0]`:
 
 ```python
 class CleanupItem(BaseModel):
     block_id: str
     heading_path: List[str] = Field(default_factory=list)
     content_preview: str
-    full_content: str = ""  # Full content for UI display
 
     # Model suggestion
     suggested_disposition: str = CleanupDisposition.KEEP
     suggestion_reason: str = ""
-    confidence: float = 0.8  # Default confidence
+    confidence: float = 0.5  # Default confidence (clamped to 0.0-1.0)
 
     # User decision
     final_disposition: Optional[str] = None
@@ -193,10 +203,9 @@ class CleanupItemResponse(BaseModel):
     block_id: str
     heading_path: List[str]
     content_preview: str
-    full_content: str = ""  # NEW
     suggested_disposition: str
     suggestion_reason: str
-    confidence: float = 0.8  # NEW
+    confidence: float = 0.5  # NEW
     final_disposition: Optional[str] = None
 
     @classmethod
@@ -205,7 +214,6 @@ class CleanupItemResponse(BaseModel):
             block_id=item.block_id,
             heading_path=item.heading_path,
             content_preview=item.content_preview,
-            full_content=item.full_content,  # NEW
             suggested_disposition=item.suggested_disposition,
             suggestion_reason=item.suggestion_reason,
             confidence=item.confidence,  # NEW
@@ -225,7 +233,7 @@ if item_data:
         "suggested_disposition", CleanupDisposition.KEEP
     )
     suggestion_reason = item_data.get("suggestion_reason", "")
-    confidence = item_data.get("confidence", 0.8)  # NEW
+    confidence = item_data.get("confidence", 0.5)  # NEW
 else:
     suggested_disposition = CleanupDisposition.KEEP
     suggestion_reason = "Default: keep all content (model omitted this block)"
@@ -236,13 +244,17 @@ items.append(
         block_id=block_id,
         heading_path=block.get("heading_path", []),
         content_preview=block["content"][:200],
-        full_content=block["content"],  # NEW: Full content
         suggested_disposition=suggested_disposition,
         suggestion_reason=suggestion_reason,
         confidence=confidence,  # NEW
     )
 )
 ```
+
+**Normalization rules (avoid silent fallbacks):**
+
+- Coerce `confidence` to a float, clamp to `[0.0, 1.0]`.
+- If `confidence` is missing or invalid (NaN/string/out of range), default to `0.5` and emit a debug log entry (so prompt/LLM issues are visible during tuning).
 
 ### Phase 2: Frontend Type Updates
 
@@ -256,7 +268,6 @@ export interface KLCleanupItemResponse {
   block_id: string;
   heading_path: string[];
   content_preview: string;
-  full_content: string; // NEW: Full block content
   suggested_disposition: KLCleanupDisposition;
   suggestion_reason: string;
   confidence: number; // NEW: AI confidence (0.0 to 1.0)
@@ -264,7 +275,21 @@ export interface KLCleanupItemResponse {
 }
 ```
 
-### Phase 3: UI Component Enhancements
+### Phase 3: UI Enhancements (full content via Blocks API + better hierarchy)
+
+#### Step 3.0: Fetch full block content + metadata for cleanup review
+
+**Files to modify:**
+
+- `apps/ui/src/components/views/knowledge-library/components/input-mode/components/cleanup-review.tsx` (add `sessionId` prop, fetch blocks, build lookup map)
+- `apps/ui/src/components/views/knowledge-library/components/input-mode/plan-review.tsx` (pass `sessionId` into `CleanupReview`)
+
+**Implementation notes:**
+
+- Use the existing hook `useKLBlocks(sessionId)` (already available in `apps/ui/src/hooks/queries/use-knowledge-library.ts`).
+- Build a lookup map keyed by `block.id` and join by `item.block_id`:
+  - `block.content` → full text for expansion
+  - `block.block_type`, `source_line_start`, `source_line_end` → boundary clarity
 
 #### Step 3.1: Create ConfidenceBar component
 
@@ -279,7 +304,8 @@ interface ConfidenceBarProps {
 }
 
 export function ConfidenceBar({ confidence, disposition }: ConfidenceBarProps) {
-  const percentage = Math.round(confidence * 100);
+  const safe = Number.isFinite(confidence) ? Math.min(1, Math.max(0, confidence)) : 0;
+  const percentage = Math.round(safe * 100);
   const isKeep = disposition === 'keep';
 
   const barColor = isKeep ? 'bg-green-500' : 'bg-red-500';
@@ -424,112 +450,32 @@ export function ContentPreviewBox({
 
 **File:** `apps/ui/src/components/views/knowledge-library/components/input-mode/components/cleanup-review.tsx`
 
-Replace the existing `CleanupItemCard` function:
+Enhance the existing `CleanupItemCard` and preserve current behaviors:
+
+- Keep tabbed views (`all/pending/keep/discard`)
+- Keep “Switch to …” for decided items in All
+- Keep “Move to Keep/Discard” in Keep/Discard tabs
+- Add pre-decision accent based on `suggested_disposition`
+- Add “Recommended” styling without hiding the alternative action
+- Add block boundary metadata (type + line range) from the Blocks API
+
+**Implementation notes (minimal diffs; keep the existing tab logic):**
+
+- Add `sessionId: string` to `CleanupReviewProps` and pass it from `PlanReview`.
+- Fetch blocks via `useKLBlocks(sessionId)` and build `blockById` (`Map<string, KLBlockResponse>`).
+- Pass the matched `block` into `CleanupItemCard` (e.g., `block={blockById.get(item.block_id)}`).
+- Derive full content + boundary label from the block:
 
 ```tsx
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { SkeletonPulse } from '@/components/ui/skeleton';
-import { CheckCircle2, Trash2, Loader2, FolderOpen } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { AIRecommendationBox } from './ai-recommendation-box';
-import { ContentPreviewBox } from './content-preview-box';
-import type { useKLCleanupPlan } from '@/hooks/queries/use-knowledge-library';
-
-interface CleanupItemCardProps {
-  item: NonNullable<ReturnType<typeof useKLCleanupPlan>['data']>['items'][number];
-  isDeciding: boolean;
-  onDecide: (blockId: string, disposition: 'keep' | 'discard') => void;
-}
-
-function CleanupItemCard({ item, isDeciding, onDecide }: CleanupItemCardProps) {
-  const isDecided = item.final_disposition !== null;
-  const isKeep = item.final_disposition === 'keep';
-  const isRecommendKeep = item.suggested_disposition === 'keep';
-
-  return (
-    <Card
-      className={cn(
-        'transition-all',
-        isDecided && 'opacity-60',
-        !isDecided && !isRecommendKeep && 'border-red-200'
-      )}
-    >
-      <CardContent className="pt-4">
-        {/* Header with path and status */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <FolderOpen className="h-4 w-4 text-muted-foreground" />
-            <Badge variant="outline" className="text-xs font-normal">
-              {item.heading_path.join(' > ') || 'Document Root'}
-            </Badge>
-          </div>
-          {isDecided && (
-            <Badge variant={isKeep ? 'default' : 'destructive'} className="text-xs">
-              {item.final_disposition === 'keep' ? '✓ Keeping' : '✗ Discarding'}
-            </Badge>
-          )}
-        </div>
-
-        {/* Content preview box */}
-        <ContentPreviewBox
-          content={item.content_preview}
-          fullContent={item.full_content || item.content_preview}
-          suggestedDisposition={item.suggested_disposition}
-        />
-
-        {/* AI Recommendation */}
-        <AIRecommendationBox
-          disposition={item.suggested_disposition}
-          reason={item.suggestion_reason}
-          confidence={item.confidence ?? 0.8}
-        />
-
-        {/* Action buttons */}
-        {!isDecided && (
-          <div className="flex gap-2 mt-4">
-            <Button
-              variant={isRecommendKeep ? 'default' : 'outline'}
-              size="sm"
-              className={cn(
-                'flex-1',
-                isRecommendKeep
-                  ? 'bg-green-600 hover:bg-green-700 text-white'
-                  : 'text-green-600 hover:bg-green-50'
-              )}
-              onClick={() => onDecide(item.block_id, 'keep')}
-              disabled={isDeciding}
-            >
-              <CheckCircle2 className="h-4 w-4 mr-1" />
-              Keep{isRecommendKeep && ' (Recommended)'}
-            </Button>
-            <Button
-              variant={!isRecommendKeep ? 'default' : 'outline'}
-              size="sm"
-              className={cn(
-                'flex-1',
-                !isRecommendKeep
-                  ? 'bg-red-600 hover:bg-red-700 text-white'
-                  : 'text-red-600 hover:bg-red-50'
-              )}
-              onClick={() => onDecide(item.block_id, 'discard')}
-              disabled={isDeciding}
-            >
-              <Trash2 className="h-4 w-4 mr-1" />
-              Discard{!isRecommendKeep && ' (Recommended)'}
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-// ... rest of CleanupReview component remains the same
+const fullContent = block?.content ?? item.content_preview;
+const boundaryLabel = block
+  ? `${block.block_type} • L${block.source_line_start}-L${block.source_line_end}`
+  : '—';
 ```
+
+- Use `ContentPreviewBox` with `fullContent={fullContent}`.
+- Use `AIRecommendationBox` with `confidence={item.confidence ?? 0.5}`.
+- Keep the existing `renderButtons()` logic for Pending/Keep/Discard/All (no regression).
 
 ### Phase 4: Non-AI Mode Fallback
 
@@ -545,7 +491,6 @@ items.append(
         block_id=block_id,
         heading_path=block.heading_path,
         content_preview=block.content[:200],
-        full_content=block.content,  # NEW
         suggested_disposition=CleanupDisposition.KEEP,
         suggestion_reason="Default: keep all content",
         confidence=0.5,  # Lower confidence for non-AI default
@@ -564,14 +509,15 @@ items.append(
 
 ## Files to Modify
 
-| File                                                                                                 | Changes                                                |
-| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `2.ai-library/src/models/cleanup_plan.py`                                                            | Add `confidence` and `full_content` fields             |
-| `2.ai-library/src/api/schemas.py`                                                                    | Add fields to response schema                          |
-| `2.ai-library/src/sdk/client.py`                                                                     | Extract confidence from AI response, pass full content |
-| `2.ai-library/src/session/manager.py`                                                                | Set default confidence for non-AI mode                 |
-| `libs/types/src/knowledge-library.ts`                                                                | Add TypeScript types                                   |
-| `apps/ui/src/components/views/knowledge-library/components/input-mode/components/cleanup-review.tsx` | Complete UI overhaul                                   |
+| File                                                                                                 | Changes                                     |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `2.ai-library/src/models/cleanup_plan.py`                                                            | Add `confidence` field (validated/clamped)  |
+| `2.ai-library/src/api/schemas.py`                                                                    | Add `confidence` to cleanup item response   |
+| `2.ai-library/src/sdk/client.py`                                                                     | Extract + clamp confidence from AI response |
+| `2.ai-library/src/session/manager.py`                                                                | Set default confidence for non-AI mode      |
+| `libs/types/src/knowledge-library.ts`                                                                | Add `confidence` to cleanup item type       |
+| `apps/ui/src/components/views/knowledge-library/components/input-mode/components/cleanup-review.tsx` | UI enhancements (no workflow regressions)   |
+| `apps/ui/src/components/views/knowledge-library/components/input-mode/plan-review.tsx`               | Pass `sessionId` into `CleanupReview`       |
 
 ## Testing Checklist
 
@@ -580,17 +526,16 @@ items.append(
 - [ ] CleanupItem model accepts confidence field
 - [ ] CleanupItemResponse includes confidence in JSON
 - [ ] SDK client extracts confidence from AI response
-- [ ] Omitted blocks get 0.5 confidence
-- [ ] Full content is passed through pipeline
+- [ ] Confidence is clamped to `[0.0, 1.0]` for invalid/out-of-range model output
+- [ ] Omitted blocks get 0.5 confidence (and a clear “omitted” reason)
 
-### Frontend Tests
+### Frontend Tests (Playwright-first; component unit tests optional)
 
-- [ ] ConfidenceBar renders correct percentage
-- [ ] ConfidenceBar uses green for keep, red for discard
-- [ ] AIRecommendationBox shows correct icon and colors
-- [ ] ContentPreviewBox expands/collapses properly
-- [ ] CleanupItemCard shows recommended button prominently
-- [ ] Decided items show correct status badge
+- [ ] Cleanup review renders without truncation (expand shows full content)
+- [ ] Confidence is displayed and never overflows/underflows (clamped)
+- [ ] AI recommendation has clear icon + color + “Recommended” label
+- [ ] Users can revise decisions after initial selection (All + Keep/Discard tabs)
+- [ ] Block boundary metadata (type + line range) is visible for clarity
 
 ### E2E Tests
 
@@ -598,6 +543,7 @@ items.append(
 - [ ] Expand content preview and verify full content shows
 - [ ] Click Keep/Discard and verify state updates
 - [ ] Verify confidence bar matches AI response
+- [ ] Switch decisions after deciding (ensure no workflow regression)
 
 ## Acceptance Criteria
 
@@ -605,19 +551,20 @@ items.append(
 - [ ] Confidence percentage displayed as visual bar + number
 - [ ] AI recommendation has colored background (green=keep, red=discard)
 - [ ] Recommended action button is visually prominent
-- [ ] Block boundaries clear with content in bordered box
+- [ ] Block boundaries clear with block type + line range visible
 - [ ] Cards for discard recommendations have red/orange accent
+- [ ] Users can change decisions after initially deciding (safety)
 
 ## Dependencies
 
-- None (this plan can be implemented independently)
+- None new (uses existing Blocks API endpoint for full content + boundary metadata)
 
 ## Estimated Effort
 
-- Backend changes: ~2 hours
-- New UI components: ~3 hours
-- Integration & testing: ~2 hours
-- **Total: ~7 hours**
+- Backend changes: ~1.5–2 hours
+- UI enhancements: ~3–4 hours
+- Integration & Playwright E2E: ~1.5–2 hours
+- **Total: ~6–8 hours**
 
 ## Follow-up Work
 

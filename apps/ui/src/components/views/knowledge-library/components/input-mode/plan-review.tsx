@@ -73,7 +73,7 @@ export function PlanReview({
   return (
     <div className="h-full flex flex-col p-4">
       {/* Phase indicator */}
-      <div className="flex flex-col gap-4 mb-6">
+      <div className="flex flex-col gap-4 mb-4 shrink-0">
         <div className="flex items-center justify-center gap-4">
           <PhaseStep
             label="Cleanup"
@@ -106,7 +106,7 @@ export function PlanReview({
       </div>
 
       {/* Content area */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-hidden">
         {workflowState === 'cleanup_generating' && (
           <div className="h-full flex items-center justify-center">
             <div className="text-center">

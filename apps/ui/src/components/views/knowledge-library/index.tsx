@@ -33,7 +33,7 @@ export function KnowledgeLibrary() {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b">
+      <div className="flex items-center justify-between p-4 border-b shrink-0">
         <div className="flex items-center gap-2">
           <Library className="h-6 w-6" />
           <h1 className="text-2xl font-bold">Knowledge Library</h1>
@@ -41,7 +41,7 @@ export function KnowledgeLibrary() {
         <KLConnectionStatus showRefresh data-testid="kl-connection-status" />
       </div>
       {isDisconnected && (
-        <div className="mx-4 mt-2 rounded-md border border-amber-300/60 bg-amber-50/80 px-3 py-2 text-sm text-amber-700">
+        <div className="mx-4 mt-2 rounded-md border border-amber-300/60 bg-amber-50/80 px-3 py-2 text-sm text-amber-700 shrink-0">
           Knowledge Library disconnected
         </div>
       )}
@@ -50,9 +50,9 @@ export function KnowledgeLibrary() {
       <Tabs
         value={activeView}
         onValueChange={(v) => setActiveView(v as KLActiveView)}
-        className="flex-1 flex flex-col"
+        className="flex-1 flex flex-col min-h-0"
       >
-        <TabsList className="mx-4 mt-4">
+        <TabsList className="mx-4 mt-4 shrink-0">
           <TabsTrigger value="input" className="gap-2">
             <Upload className="h-4 w-4" />
             Input
@@ -67,7 +67,7 @@ export function KnowledgeLibrary() {
           </TabsTrigger>
         </TabsList>
 
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-hidden">
           <TabsContent value="input" className="h-full m-0">
             <InputMode />
           </TabsContent>

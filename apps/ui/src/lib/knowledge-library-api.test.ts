@@ -27,6 +27,6 @@ describe('knowledgeLibraryApi', () => {
     const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
     const [url] = fetchMock.mock.calls[0] ?? [];
 
-    expect(url).toBe('http://localhost:8001/api/library/files/tech/auth.md/content');
+    expect(url).toBe('http://localhost:8002/api/library/files/tech/auth.md/content');
   });
 });

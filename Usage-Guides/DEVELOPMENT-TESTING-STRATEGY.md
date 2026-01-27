@@ -7,6 +7,7 @@ This guide describes how to develop ON Automaker while simultaneously USING it a
 ## Quick Start
 
 ### Recommended: Electron Mode
+
 ```bash
 cd /Users/ruben/Documents/GitHub/automaker
 npm run dev:electron
@@ -15,18 +16,23 @@ npm run dev:electron
 This launches Automaker as a desktop application with an embedded server.
 
 ### Alternative: Web Mode
+
 ```bash
 cd /Users/ruben/Documents/GitHub/automaker
 npm run dev:web
 ```
+
 - UI: http://localhost:3007
 - Server: http://localhost:3008
 
 ### Interactive Launcher
+
 ```bash
 ./start-automaker.sh
 ```
+
 Presents a TUI menu with options:
+
 1. Web App (browser mode)
 2. Electron (desktop app)
 3. Docker (containerized)
@@ -38,14 +44,15 @@ Presents a TUI menu with options:
 
 For developing ON Automaker while USING it:
 
-| Instance | Purpose | UI Port | Server Port | Location |
-|----------|---------|---------|-------------|----------|
-| **STABLE** | Production-like tool | 3007 | 3008 | Main repo |
-| **DEV** | Code being modified | 4007 | 4008 | Git worktree |
+| Instance   | Purpose              | UI Port | Server Port | Location     |
+| ---------- | -------------------- | ------- | ----------- | ------------ |
+| **STABLE** | Production-like tool | 3007    | 3008        | Main repo    |
+| **DEV**    | Code being modified  | 4007    | 4008        | Git worktree |
 
 ### Setting Up DEV Instance
 
 1. **Create a worktree for feature development:**
+
    ```bash
    cd /Users/ruben/Documents/GitHub/automaker
    git worktree add ../automaker-dev feature/my-feature
@@ -54,6 +61,7 @@ For developing ON Automaker while USING it:
    ```
 
 2. **Run DEV instance on different ports:**
+
    ```bash
    TEST_PORT=4007 PORT=4008 VITE_SERVER_URL="http://localhost:4008" CORS_ORIGIN="http://localhost:4007" npm run dev:web
    ```
@@ -67,6 +75,7 @@ For developing ON Automaker while USING it:
 ## Key Commands Reference
 
 ### Development
+
 ```bash
 # Interactive launcher (recommended)
 npm run dev                    # or ./start-automaker.sh
@@ -79,6 +88,7 @@ npm run dev:full              # Server + Web concurrently
 ```
 
 ### Building
+
 ```bash
 npm run build:packages        # Build shared packages (required before dev)
 npm run build                 # Build everything
@@ -86,6 +96,7 @@ npm run build:electron        # Build Electron distributable
 ```
 
 ### Testing
+
 ```bash
 npm run test                  # UI tests
 npm run test:server           # Server tests
@@ -98,10 +109,12 @@ npm run test:all              # All tests
 ## Port Configuration
 
 Default ports:
+
 - **Web UI**: 3007
 - **Server API**: 3008
 
 ### Custom ports via environment variables:
+
 ```bash
 TEST_PORT=4007        # Vite UI port
 PORT=4008             # Express server port
@@ -121,6 +134,7 @@ Automaker includes built-in MCP server management. When developing features, you
 4. **Read page elements** to verify rendering
 
 ### Example workflow with Claude Code:
+
 ```
 1. Start Automaker DEV instance (port 4007)
 2. Use Chrome MCP to navigate to http://localhost:4007
@@ -134,6 +148,7 @@ Automaker includes built-in MCP server management. When developing features, you
 ## Feature Development Workflow
 
 1. **Create feature branch/worktree**
+
    ```bash
    git worktree add ../automaker-feature feature/my-feature
    ```
@@ -145,6 +160,7 @@ Automaker includes built-in MCP server management. When developing features, you
 4. **Test using STABLE instance** or Chrome MCP
 
 5. **Run tests**
+
    ```bash
    npm run test
    ```
@@ -156,26 +172,32 @@ Automaker includes built-in MCP server management. When developing features, you
 ## Troubleshooting
 
 ### Port Conflicts
+
 The launcher script (`start-automaker.sh`) automatically detects and offers to kill processes on ports 3007/3008.
 
 Manual check:
+
 ```bash
 lsof -i :3007
 lsof -i :3008
 ```
 
 ### Hot Reload Issues
+
 If changes aren't reflecting:
+
 1. Check terminal for errors
 2. Try `npm run build:packages` to rebuild shared code
 3. Restart the dev server
 
 ### Electron Not Starting
+
 - Ensure ports are available
 - Try `npm run dev:electron:debug` for verbose output
 - Check that node_modules are installed
 
 ### Docker Mode Issues
+
 - Verify Docker is running: `docker info`
 - First run takes time (building images)
 - Use `docker compose logs` to debug
@@ -193,20 +215,22 @@ If changes aren't reflecting:
 
 ## Desktop Launcher
 
-### macOS - Terminal Launcher
-File: `Start-Automaker.command`
+### macOS - Launcher Script
+
+File: `scripts/Launchers/Launch-Automaker.command`
 
 To use:
-1. Make executable: `chmod +x Start-Automaker.command`
-2. Double-click to launch in Terminal
 
-### macOS - AppleScript App
-File: `Automaker-Launcher.applescript`
+1. Double-click to launch in Terminal (or run `./scripts/Launchers/Launch-Automaker.command`)
+2. Press `Ctrl+C` to stop all services
 
-To create app:
-1. Open in Script Editor
-2. File > Export > Application
-3. Save to Desktop
+### macOS - Optional Desktop Shortcut (Symlink)
+
+From the repo root:
+
+```bash
+ln -sf "$(pwd)/scripts/Launchers/Launch-Automaker.command" "$HOME/Desktop/Launch-Automaker.command"
+```
 
 ---
 
