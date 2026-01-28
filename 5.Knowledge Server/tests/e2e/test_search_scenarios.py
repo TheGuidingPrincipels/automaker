@@ -12,18 +12,17 @@ class TestSearchScenarios:
     """Test search-based workflows with async/await."""
 
     @pytest.mark.asyncio
-    async def test_semantic_search_basic(self, mock_neo4j, mock_chromadb, mock_embedding_service):
+    async def test_semantic_search_basic(self, e2e_configured_container):
         """
         Basic semantic search workflow.
         Validates: Search returns results in correct format.
         """
-        # Inject services
-        search_tools.chromadb_service = mock_chromadb
-        search_tools.neo4j_service = mock_neo4j
-        search_tools.embedding_service = mock_embedding_service
+        # Services are automatically available via get_container()
+        mock_embedding = e2e_configured_container.embedding_service
+        mock_chromadb = e2e_configured_container.chromadb_service
 
         # Mock embedding generation
-        mock_embedding_service.generate_embedding.return_value = [0.1] * 384
+        mock_embedding.generate_embedding.return_value = [0.1] * 384
 
         # Create a proper mock for the query method
         from unittest.mock import MagicMock
@@ -57,13 +56,12 @@ class TestSearchScenarios:
         assert result["data"]["total"] >= 0
 
     @pytest.mark.asyncio
-    async def test_exact_search_with_filters(self, mock_neo4j):
+    async def test_exact_search_with_filters(self, e2e_configured_container):
         """
         Exact search with multiple filters.
         Validates: Filtering works correctly.
         """
-        # Inject services
-        search_tools.neo4j_service = mock_neo4j
+        mock_neo4j = e2e_configured_container.neo4j_service
 
         # Mock filtered results
         mock_neo4j.execute_read.return_value = [
@@ -88,13 +86,12 @@ class TestSearchScenarios:
         assert "results" in result["data"]
 
     @pytest.mark.asyncio
-    async def test_recent_concepts_retrieval(self, mock_neo4j):
+    async def test_recent_concepts_retrieval(self, e2e_configured_container):
         """
         Recent concepts workflow.
         Validates: Time-based filtering works.
         """
-        # Inject services
-        search_tools.neo4j_service = mock_neo4j
+        mock_neo4j = e2e_configured_container.neo4j_service
 
         # Mock recent concepts
         mock_neo4j.execute_read.return_value = [
@@ -117,13 +114,12 @@ class TestSearchScenarios:
         assert result["data"]["total"] >= 0
 
     @pytest.mark.asyncio
-    async def test_hierarchy_listing(self, mock_neo4j):
+    async def test_hierarchy_listing(self, e2e_configured_container):
         """
         Hierarchy listing workflow.
         Validates: Hierarchy structure is correct.
         """
-        # Inject services
-        analytics_tools.neo4j_service = mock_neo4j
+        mock_neo4j = e2e_configured_container.neo4j_service
 
         # Mock hierarchy
         mock_neo4j.execute_read.return_value = [
@@ -137,13 +133,12 @@ class TestSearchScenarios:
         assert result["data"]["total_concepts"] >= 0
 
     @pytest.mark.asyncio
-    async def test_confidence_range_search(self, mock_neo4j):
+    async def test_confidence_range_search(self, e2e_configured_container):
         """
         Certainty range filtering workflow.
         Validates: Certainty filtering works.
         """
-        # Inject services
-        analytics_tools.neo4j_service = mock_neo4j
+        mock_neo4j = e2e_configured_container.neo4j_service
 
         # Mock low confidence concepts
         mock_neo4j.execute_read.return_value = [

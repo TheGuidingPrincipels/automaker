@@ -4,6 +4,7 @@ Security tests to ensure no hardcoded credentials are present in the codebase.
 This test module validates CWE-798 (Hardcoded Credentials) remediation.
 """
 
+import os
 import re
 from pathlib import Path
 

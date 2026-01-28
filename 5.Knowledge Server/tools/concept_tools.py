@@ -8,9 +8,11 @@ import json
 import logging
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from services.container import get_container, ServiceContainer
+from services.confidence.models import Success
+from config.domains import is_predefined_area, AREA_SLUGS
 from .responses import (
     ErrorType,
     success_response,
@@ -49,8 +51,18 @@ class ConceptCreate(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=200, description="Concept name")
     explanation: str = Field(..., min_length=1, description="Detailed explanation of the concept")
-    area: Optional[str] = Field(None, max_length=100, description="Subject area (e.g., 'Programming')")
-    topic: Optional[str] = Field(None, max_length=100, description="Topic within area (e.g., 'Python')")
+    area: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Subject area (required, e.g., 'coding-development', 'ai-llms')"
+    )
+    topic: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Topic within area (required, e.g., 'Python', 'Memory Techniques')"
+    )
     subtopic: Optional[str] = Field(None, max_length=100, description="Subtopic (e.g., 'For Loops')")
     source_urls: Optional[str] = Field(None, description="JSON string containing array of source URL objects")
     # confidence_score is calculated automatically by the confidence service
@@ -67,6 +79,13 @@ class ConceptCreate(BaseModel):
     def explanation_must_not_be_empty(cls, v: str) -> str:
         if not v or not v.strip():
             raise ValueError("Explanation cannot be empty or whitespace")
+        return v.strip()
+
+    @field_validator("area", "topic")
+    @classmethod
+    def area_topic_must_not_be_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Value cannot be empty or whitespace")
         return v.strip()
 
     @field_validator("source_urls")
@@ -129,8 +148,8 @@ class ConceptUpdate(BaseModel):
 async def create_concept(
     name: str,
     explanation: str,
-    area: Optional[str] = None,
-    topic: Optional[str] = None,
+    area: str,
+    topic: str,
     subtopic: Optional[str] = None,
     source_urls: Optional[str] = None
     # NOTE: confidence_score is calculated automatically, not a parameter
@@ -144,8 +163,8 @@ async def create_concept(
     Args:
         name: Name of the concept (required, 1-200 chars)
         explanation: Detailed explanation of the concept (required)
-        area: Subject area (optional, e.g., "Programming", "Mathematics")
-        topic: Topic within area (optional, e.g., "Python", "Algebra")
+        area: Subject area (required, e.g., "coding-development", "ai-llms")
+        topic: Topic within area (required, e.g., "Python", "Memory Techniques")
         subtopic: More specific classification (optional, e.g., "For Loops")
         source_urls: Optional JSON string containing array of source URL objects.
             Format: '[{"url": "https://...", "title": "...", "quality_score": 0.8, "domain_category": "official"}]'
@@ -158,18 +177,25 @@ async def create_concept(
     Returns:
         {
             "success": bool,
-            "concept_id": str,
-            "message": str
+            "message": str,
+            "data": {
+                "concept_id": str,
+                "warnings": [str]  # optional
+            }
         }
 
     Examples:
         >>> create_concept(
         ...     name="Python For Loops",
         ...     explanation="For loops iterate over sequences...",
-        ...     area="Programming",
+        ...     area="coding-development",
         ...     topic="Python"
         ... )
-        {"success": true, "concept_id": "uuid-...", "message": "Created"}
+        {
+            "success": true,
+            "message": "Created",
+            "data": {"concept_id": "uuid-...", "warnings": []}
+        }
     """
     try:
         # Validate inputs using Pydantic model
@@ -211,6 +237,15 @@ async def create_concept(
                 invalid_value={"existing_concept_id": duplicate_check["concept_id"]}
             )
 
+        # Soft validation: warn if using a custom (non-predefined) area
+        warnings: list[str] = []
+        if not is_predefined_area(concept_data.area):
+            warnings.append(
+                f"Area '{concept_data.area}' is not a predefined area. "
+                f"Recommended areas: {', '.join(sorted(AREA_SLUGS))}. "
+                "Custom areas are allowed but may affect discoverability."
+            )
+
         # Convert to dict and parse JSON to native list for internal storage
         concept_dict = concept_data.model_dump(exclude_none=True)
         if source_urls:
@@ -220,6 +255,8 @@ async def create_concept(
         success, error, concept_id = repo.create_concept(concept_dict)
 
         if success:
+            if warnings:
+                return success_response("Created", concept_id=concept_id, warnings=warnings)
             return success_response("Created", concept_id=concept_id)
         else:
             # Database error from repository
@@ -228,6 +265,13 @@ async def create_concept(
                 "error": error
             })
             return database_error(operation="create")
+
+    except ValidationError as e:
+        logger.warning(f"Validation error creating concept: {e}", extra={
+            "operation": "create_concept",
+            "error": str(e)
+        })
+        return validation_error(str(e))
 
     except ValueError as e:
         # Validation error (from Pydantic or custom validators)

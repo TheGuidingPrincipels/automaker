@@ -139,8 +139,7 @@ class ToolTester:
                 name="Test Concept",
                 explanation="A test concept for verification created by test_all_tools.py",
                 area="Testing",
-                topic="Verification",
-                confidence_score=85.0
+                topic="Verification"
             )
             passed = result.get("success") is True
             if passed and "concept_id" in result.get("data", {}):
@@ -165,8 +164,7 @@ class ToolTester:
                 name="Related Test Concept",
                 explanation="A related test concept for relationship testing",
                 area="Testing",
-                topic="Verification",
-                confidence_score=90.0
+                topic="Verification"
             )
             if result.get("success") and "concept_id" in result.get("data", {}):
                 self.test_concept_ids.append(result["data"]["concept_id"])

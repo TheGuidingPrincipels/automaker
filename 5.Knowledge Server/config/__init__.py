@@ -21,7 +21,18 @@ from config.settings import (
     reset_settings,
 )
 
+from config.domains import (
+    Area,
+    PREDEFINED_AREAS,
+    AREA_SLUGS,
+    AREAS_BY_SLUG,
+    is_predefined_area,
+    get_area,
+    get_all_areas,
+)
+
 __all__ = [
+    # Settings
     "AppSettings",
     "Neo4jSettings",
     "ChromaDbSettings",
@@ -31,6 +42,14 @@ __all__ = [
     "get_settings",
     "reset_settings",
     "Config",  # Legacy shim
+    # Domains
+    "Area",
+    "PREDEFINED_AREAS",
+    "AREA_SLUGS",
+    "AREAS_BY_SLUG",
+    "is_predefined_area",
+    "get_area",
+    "get_all_areas",
 ]
 
 

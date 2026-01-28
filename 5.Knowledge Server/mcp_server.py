@@ -29,7 +29,7 @@ from services.container import get_container, reset_container
 
 # Import tools
 from tools import analytics_tools, concept_tools, relationship_tools, search_tools
-from tools.responses import ErrorType, internal_error
+from tools.responses import ErrorType, internal_error, success_response
 from tools.service_utils import requires_services, get_available_tools, get_service_status
 
 # Setup logging
@@ -312,7 +312,7 @@ async def initialize():
         logger.info(f"   • Neo4j: {Config.NEO4J_URI}")
         logger.info(f"   • ChromaDB: {Config.CHROMA_PERSIST_DIRECTORY}")
         logger.info(f"   • Embedding Model: {Config.EMBEDDING_MODEL}")
-        logger.info("   • Tools: 16 concept management tools available")
+        logger.info("   • Tools: 17 concept management tools available")
 
     except Exception as e:
         logger.error(f"❌ Failed to initialize server: {e}", exc_info=True)
@@ -466,8 +466,8 @@ async def get_tool_availability() -> dict[str, Any]:
 async def create_concept(
     name: str,
     explanation: str,
-    area: str | None = None,
-    topic: str | None = None,
+    area: str,
+    topic: str,
     subtopic: str | None = None,
     source_urls: str | None = None,
 ) -> dict[str, Any]:
@@ -480,14 +480,21 @@ async def create_concept(
     Args:
         name: Concept name (required)
         explanation: Detailed explanation (required)
-        area: Subject area (optional)
-        topic: Topic within area (optional)
+        area: Subject area (required, e.g., "coding-development", "ai-llms")
+        topic: Topic within area (required, e.g., "Python", "Memory Techniques")
         subtopic: More specific classification (optional)
         source_urls: Optional JSON string containing array of source URL objects (optional)
             Format: '[{"url": "https://...", "title": "...", "quality_score": 0.8, "domain_category": "official"}]'
 
     Returns:
-        {"success": bool, "concept_id": str, "message": str}
+        {
+            "success": bool,
+            "message": str,
+            "data": {
+                "concept_id": str,
+                "warnings": [str]  # optional
+            }
+        }
     """
     return await concept_tools.create_concept(
         name=name,
@@ -811,24 +818,59 @@ async def list_hierarchy() -> dict[str, Any]:
     Returns:
         {
             "success": bool,
-            "areas": [
-                {
-                    "name": str,
-                    "concept_count": int,
-                    "topics": [
-                        {
-                            "name": str,
-                            "concept_count": int,
-                            "subtopics": [{"name": str, "concept_count": int}]
-                        }
-                    ]
-                }
-            ],
-            "total_concepts": int,
             "message": str
+            "data": {
+                "areas": [
+                    {
+                        "name": str,  # slug
+                        "label": str,
+                        "description": str,
+                        "is_predefined": bool,
+                        "concept_count": int,
+                        "topics": [
+                            {
+                                "name": str,
+                                "concept_count": int,
+                                "subtopics": [{"name": str, "concept_count": int}]
+                            }
+                        ]
+                    }
+                ],
+                "total_concepts": int
+            }
         }
     """
     return await analytics_tools.list_hierarchy()
+
+
+@mcp.tool()
+async def list_areas() -> dict[str, Any]:
+    """
+    Get list of all knowledge areas with concept counts.
+
+    Returns a flat list of top-level areas without nested topics/subtopics.
+    More lightweight than list_hierarchy() when only area-level info is needed.
+
+    Returns:
+        {
+            "success": bool,
+            "message": str,
+            "data": {
+                "areas": [
+                    {
+                        "name": str,
+                        "label": str,
+                        "description": str,
+                        "concept_count": int,
+                        "is_predefined": bool
+                    }
+                ],
+                "total_areas": int,
+                "total_concepts": int
+            }
+        }
+    """
+    return await analytics_tools.list_areas()
 
 
 @mcp.tool()

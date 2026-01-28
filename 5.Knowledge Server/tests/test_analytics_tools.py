@@ -7,7 +7,11 @@ from unittest.mock import Mock
 
 import pytest
 
+from config import PREDEFINED_AREAS
 from tools import analytics_tools
+
+# Number of predefined areas (used in tests)
+NUM_PREDEFINED_AREAS = len(PREDEFINED_AREAS)
 
 
 @pytest.fixture
@@ -26,14 +30,14 @@ class TestListHierarchy:
 
     @pytest.mark.asyncio
     async def test_list_hierarchy_success(self, setup_services):
-        """Test successful hierarchy retrieval"""
+        """Test successful hierarchy retrieval - includes all predefined areas"""
         services = setup_services
 
         mock_results = [
-            {"area": "Programming", "topic": "Python", "subtopic": "Functions", "count": 5},
-            {"area": "Programming", "topic": "Python", "subtopic": "Classes", "count": 3},
-            {"area": "Programming", "topic": "JavaScript", "subtopic": "ES6", "count": 4},
-            {"area": "Math", "topic": "Algebra", "subtopic": "Linear", "count": 2},
+            {"area": "coding-development", "topic": "Python", "subtopic": "Functions", "count": 5},
+            {"area": "coding-development", "topic": "Python", "subtopic": "Classes", "count": 3},
+            {"area": "coding-development", "topic": "JavaScript", "subtopic": "ES6", "count": 4},
+            {"area": "learning", "topic": "Memory", "subtopic": "Techniques", "count": 2},
         ]
         services["neo4j"].execute_read = Mock(return_value=mock_results)
 
@@ -41,9 +45,17 @@ class TestListHierarchy:
 
         assert result["success"] is True
         assert result["data"]["total_concepts"] == 14  # 5 + 3 + 4 + 2
-        assert len(result["data"]["areas"]) == 2  # Programming and Math
-        assert result["data"]["areas"][0]["name"] == "Math"  # Alphabetically sorted
-        assert result["data"]["areas"][1]["name"] == "Programming"
+        # All predefined areas should be included (even those with 0 concepts)
+        assert len(result["data"]["areas"]) == NUM_PREDEFINED_AREAS
+        # Check areas with concepts have correct counts
+        coding_area = next(a for a in result["data"]["areas"] if a["name"] == "coding-development")
+        assert coding_area["concept_count"] == 12  # 5 + 3 + 4
+        assert coding_area["label"] == "Coding & Development"
+        assert coding_area["is_predefined"] is True
+        learning_area = next(a for a in result["data"]["areas"] if a["name"] == "learning")
+        assert learning_area["concept_count"] == 2
+        assert learning_area["label"] == "Learning"
+        assert learning_area["is_predefined"] is True
 
     @pytest.mark.asyncio
     async def test_list_hierarchy_nested_structure(self, setup_services):
@@ -51,22 +63,23 @@ class TestListHierarchy:
         services = setup_services
 
         mock_results = [
-            {"area": "Programming", "topic": "Python", "subtopic": "Functions", "count": 5},
-            {"area": "Programming", "topic": "Python", "subtopic": "Classes", "count": 3},
+            {"area": "coding-development", "topic": "Python", "subtopic": "Functions", "count": 5},
+            {"area": "coding-development", "topic": "Python", "subtopic": "Classes", "count": 3},
         ]
         services["neo4j"].execute_read = Mock(return_value=mock_results)
 
         result = await analytics_tools.list_hierarchy()
 
         assert result["success"] is True
-        # Check area level
-        programming = result["data"]["areas"][0]
-        assert programming["name"] == "Programming"
-        assert programming["concept_count"] == 8  # 5 + 3
+        # Check area level - find the specific area by name
+        coding_area = next(a for a in result["data"]["areas"] if a["name"] == "coding-development")
+        assert coding_area["concept_count"] == 8  # 5 + 3
+        assert coding_area["label"] == "Coding & Development"
+        assert coding_area["is_predefined"] is True
 
         # Check topic level
-        assert len(programming["topics"]) == 1
-        python_topic = programming["topics"][0]
+        assert len(coding_area["topics"]) == 1
+        python_topic = coding_area["topics"][0]
         assert python_topic["name"] == "Python"
         assert python_topic["concept_count"] == 8
 
@@ -78,13 +91,32 @@ class TestListHierarchy:
         assert python_topic["subtopics"][1]["concept_count"] == 5
 
     @pytest.mark.asyncio
+    async def test_list_hierarchy_normalizes_legacy_labels(self, setup_services):
+        """Test that legacy area labels map to canonical slugs without duplication."""
+        services = setup_services
+
+        mock_results = [
+            {"area": "Coding & Development", "topic": "Python", "subtopic": "Functions", "count": 2},
+            {"area": "coding-development", "topic": "Python", "subtopic": "Classes", "count": 3},
+        ]
+        services["neo4j"].execute_read = Mock(return_value=mock_results)
+
+        result = await analytics_tools.list_hierarchy()
+
+        assert result["success"] is True
+        coding_area = next(a for a in result["data"]["areas"] if a["name"] == "coding-development")
+        assert coding_area["concept_count"] == 5
+        assert coding_area["label"] == "Coding & Development"
+        assert len([a for a in result["data"]["areas"] if a["label"] == "Coding & Development"]) == 1
+
+    @pytest.mark.asyncio
     async def test_list_hierarchy_handles_nulls(self, setup_services):
         """Test handling of null values in area/topic/subtopic"""
         services = setup_services
 
         mock_results = [
             {"area": None, "topic": None, "subtopic": None, "count": 2},
-            {"area": "Programming", "topic": None, "subtopic": "Functions", "count": 3},
+            {"area": "coding-development", "topic": None, "subtopic": "Functions", "count": 3},
         ]
         services["neo4j"].execute_read = Mock(return_value=mock_results)
 
@@ -92,11 +124,13 @@ class TestListHierarchy:
 
         assert result["success"] is True
         # Nulls should be replaced with defaults
-        assert any(area["name"] == "Uncategorized" for area in result["data"]["areas"])
+        uncategorized = next(a for a in result["data"]["areas"] if a["name"] == "Uncategorized")
+        assert uncategorized["label"] == "Uncategorized"
+        assert uncategorized["is_predefined"] is False
 
     @pytest.mark.asyncio
     async def test_list_hierarchy_empty_result(self, setup_services):
-        """Test with no concepts in database"""
+        """Test with no concepts in database - still shows all predefined areas"""
         services = setup_services
         services["neo4j"].execute_read = Mock(return_value=[])
 
@@ -104,7 +138,44 @@ class TestListHierarchy:
 
         assert result["success"] is True
         assert result["data"]["total_concepts"] == 0
-        assert result["data"]["areas"] == []
+        # All predefined areas should still be present (with 0 counts)
+        assert len(result["data"]["areas"]) == NUM_PREDEFINED_AREAS
+        # All areas should have 0 concepts
+        for area in result["data"]["areas"]:
+            assert area["concept_count"] == 0
+            assert area["topics"] == []
+            assert area["is_predefined"] is True
+
+    @pytest.mark.asyncio
+    async def test_list_hierarchy_includes_all_predefined_areas(self, setup_services):
+        """Test that all 13 predefined areas are always included in hierarchy"""
+        services = setup_services
+
+        # Only one area has concepts
+        mock_results = [
+            {"area": "coding-development", "topic": "Python", "subtopic": "Basics", "count": 5},
+        ]
+        services["neo4j"].execute_read = Mock(return_value=mock_results)
+
+        result = await analytics_tools.list_hierarchy()
+
+        assert result["success"] is True
+        # All 13 predefined areas should be present
+        assert len(result["data"]["areas"]) == NUM_PREDEFINED_AREAS
+
+        # Verify all predefined areas are included
+        area_names = {area["name"] for area in result["data"]["areas"]}
+        for predefined_area in PREDEFINED_AREAS:
+            assert predefined_area.slug in area_names, f"Missing predefined area: {predefined_area.slug}"
+
+        # Verify only the one with concepts has a non-zero count
+        for area in result["data"]["areas"]:
+            if area["name"] == "coding-development":
+                assert area["concept_count"] == 5
+                assert len(area["topics"]) == 1
+            else:
+                assert area["concept_count"] == 0
+                assert area["topics"] == []
 
     @pytest.mark.asyncio
     async def test_list_hierarchy_cache_behavior(self, setup_services):
@@ -112,7 +183,7 @@ class TestListHierarchy:
         services = setup_services
 
         mock_results = [
-            {"area": "Programming", "topic": "Python", "subtopic": "Functions", "count": 5},
+            {"area": "coding-development", "topic": "Python", "subtopic": "Functions", "count": 5},
         ]
         services["neo4j"].execute_read = Mock(return_value=mock_results)
 
@@ -134,7 +205,7 @@ class TestListHierarchy:
         from datetime import timedelta
 
         mock_results = [
-            {"area": "Programming", "topic": "Python", "subtopic": "Functions", "count": 5},
+            {"area": "coding-development", "topic": "Python", "subtopic": "Functions", "count": 5},
         ]
         services["neo4j"].execute_read = Mock(return_value=mock_results)
 
@@ -177,7 +248,7 @@ class TestGetConceptsByConfidence:
             {
                 "concept_id": "concept-001",
                 "name": "Low Certainty Concept",
-                "area": "Programming",
+                "area": "coding-development",
                 "topic": "Python",
                 "subtopic": "Functions",
                 "confidence_score": 25.0,
@@ -186,7 +257,7 @@ class TestGetConceptsByConfidence:
             {
                 "concept_id": "concept-002",
                 "name": "Medium Certainty Concept",
-                "area": "Math",
+                "area": "physics",
                 "topic": "Algebra",
                 "subtopic": "Linear",
                 "confidence_score": 50.0,
@@ -215,7 +286,7 @@ class TestGetConceptsByConfidence:
             {
                 "concept_id": "concept-001",
                 "name": "Uncertain Concept",
-                "area": "Programming",
+                "area": "coding-development",
                 "topic": "Python",
                 "subtopic": "Functions",
                 "confidence_score": 10.0,
@@ -248,7 +319,7 @@ class TestGetConceptsByConfidence:
             {
                 "concept_id": "concept-001",
                 "name": "High Certainty Concept",
-                "area": "Programming",
+                "area": "coding-development",
                 "topic": "Python",
                 "subtopic": "Functions",
                 "confidence_score": 95.0,
@@ -449,3 +520,313 @@ class TestGetConceptsByConfidence:
         assert params["min_confidence"] == 0
         assert params["max_confidence"] == 100
         assert params["limit"] == 20
+
+
+class TestListAreas:
+    """Tests for list_areas tool"""
+
+    @pytest.mark.asyncio
+    async def test_list_areas_success(self, setup_services):
+        """Test successful areas retrieval - includes all predefined areas plus custom ones"""
+        services = setup_services
+
+        mock_results = [
+            {"area": "learning", "count": 5},
+            {"area": "coding-development", "count": 8},
+            {"area": "CustomArea", "count": 3},  # Non-predefined custom area
+        ]
+        services["neo4j"].execute_read = Mock(return_value=mock_results)
+
+        result = await analytics_tools.list_areas()
+
+        assert result["success"] is True
+        assert result["data"]["total_concepts"] == 16  # 5 + 8 + 3
+        # Predefined areas + 1 custom area
+        assert result["data"]["total_areas"] == NUM_PREDEFINED_AREAS + 1
+        assert len(result["data"]["areas"]) == NUM_PREDEFINED_AREAS + 1
+        # Check specific areas have correct counts
+        learning_area = next(a for a in result["data"]["areas"] if a["name"] == "learning")
+        assert learning_area["concept_count"] == 5
+        assert learning_area["label"] == "Learning"
+        assert learning_area["is_predefined"] is True
+        coding_area = next(a for a in result["data"]["areas"] if a["name"] == "coding-development")
+        assert coding_area["concept_count"] == 8
+        assert coding_area["label"] == "Coding & Development"
+        assert coding_area["is_predefined"] is True
+        custom_area = next(a for a in result["data"]["areas"] if a["name"] == "CustomArea")
+        assert custom_area["concept_count"] == 3
+        assert custom_area["is_predefined"] is False
+
+    @pytest.mark.asyncio
+    async def test_list_areas_handles_nulls(self, setup_services):
+        """Test handling of null values in area"""
+        services = setup_services
+
+        mock_results = [
+            {"area": None, "count": 2},
+            {"area": "coding-development", "count": 5},
+        ]
+        services["neo4j"].execute_read = Mock(return_value=mock_results)
+
+        result = await analytics_tools.list_areas()
+
+        assert result["success"] is True
+        # Nulls should be replaced with "Uncategorized"
+        uncategorized = next(a for a in result["data"]["areas"] if a["name"] == "Uncategorized")
+        assert uncategorized["label"] == "Uncategorized"
+        assert uncategorized["is_predefined"] is False
+        assert result["data"]["total_concepts"] == 7
+
+    @pytest.mark.asyncio
+    async def test_list_areas_empty_result(self, setup_services):
+        """Test with no concepts in database - still shows all predefined areas"""
+        services = setup_services
+        services["neo4j"].execute_read = Mock(return_value=[])
+
+        result = await analytics_tools.list_areas()
+
+        assert result["success"] is True
+        assert result["data"]["total_concepts"] == 0
+        # All predefined areas should still be present
+        assert result["data"]["total_areas"] == NUM_PREDEFINED_AREAS
+        assert len(result["data"]["areas"]) == NUM_PREDEFINED_AREAS
+        # All areas should have 0 concepts
+        for area in result["data"]["areas"]:
+            assert area["concept_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_list_areas_includes_all_predefined_areas(self, setup_services):
+        """Test that all 13 predefined areas are always included"""
+        services = setup_services
+
+        # Only one predefined area has concepts
+        mock_results = [
+            {"area": "health", "count": 10},
+        ]
+        services["neo4j"].execute_read = Mock(return_value=mock_results)
+
+        result = await analytics_tools.list_areas()
+
+        assert result["success"] is True
+        # All 13 predefined areas should be present
+        assert len(result["data"]["areas"]) == NUM_PREDEFINED_AREAS
+
+        # Verify all predefined areas are included
+        area_names = {area["name"] for area in result["data"]["areas"]}
+        for predefined_area in PREDEFINED_AREAS:
+            assert predefined_area.slug in area_names, f"Missing predefined area: {predefined_area.slug}"
+
+        # Verify only Health has concepts
+        for area in result["data"]["areas"]:
+            if area["name"] == "health":
+                assert area["concept_count"] == 10
+            else:
+                assert area["concept_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_list_areas_cache_behavior(self, setup_services):
+        """Test that results are cached properly"""
+        services = setup_services
+
+        mock_results = [
+            {"area": "coding-development", "count": 5},
+        ]
+        services["neo4j"].execute_read = Mock(return_value=mock_results)
+
+        # First call should query Neo4j
+        result1 = await analytics_tools.list_areas()
+        assert services["neo4j"].execute_read.call_count == 1
+
+        # Second call should use cache (within 5 min TTL)
+        result2 = await analytics_tools.list_areas()
+        assert services["neo4j"].execute_read.call_count == 1  # Still only 1 call
+
+        # Results should be identical
+        assert result1 == result2
+
+    @pytest.mark.asyncio
+    async def test_list_areas_cache_expiry(self, setup_services):
+        """Test that cache expires after TTL"""
+        services = setup_services
+        from datetime import timedelta
+
+        mock_results = [
+            {"area": "coding-development", "count": 5},
+        ]
+        services["neo4j"].execute_read = Mock(return_value=mock_results)
+
+        # First call
+        await analytics_tools.list_areas()
+        assert services["neo4j"].execute_read.call_count == 1
+
+        # Manually expire cache by accessing internal cache entry and setting old timestamp
+        cache_entry = analytics_tools._query_cache._cache.get('areas')
+        if cache_entry:
+            cache_entry.timestamp = datetime.now() - timedelta(seconds=301)
+
+        # Second call should re-query Neo4j
+        await analytics_tools.list_areas()
+        assert services["neo4j"].execute_read.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_list_areas_error_handling(self, setup_services):
+        """Test error handling for database failures"""
+        services = setup_services
+        services["neo4j"].execute_read = Mock(side_effect=Exception("Database error"))
+
+        result = await analytics_tools.list_areas()
+
+        assert result["success"] is False
+        assert "error" in result
+        assert result["error"]["type"] in ["internal_error", "unexpected_error", "database_error"]
+
+    @pytest.mark.asyncio
+    async def test_list_areas_correct_counts(self, setup_services):
+        """Test that concept counts are correctly reported"""
+        services = setup_services
+
+        mock_results = [
+            {"area": "physics", "count": 10},
+            {"area": "coding-development", "count": 25},
+        ]
+        services["neo4j"].execute_read = Mock(return_value=mock_results)
+
+        result = await analytics_tools.list_areas()
+
+        assert result["success"] is True
+        # Verify individual area counts
+        physics_area = next(a for a in result["data"]["areas"] if a["name"] == "physics")
+        assert physics_area["concept_count"] == 10
+
+        prog_area = next(a for a in result["data"]["areas"] if a["name"] == "coding-development")
+        assert prog_area["concept_count"] == 25
+
+    @pytest.mark.asyncio
+    async def test_list_areas_single_area(self, setup_services):
+        """Test with a single custom area in the database - includes all predefined areas"""
+        services = setup_services
+
+        mock_results = [
+            {"area": "CustomTesting", "count": 42},  # Non-predefined custom area
+        ]
+        services["neo4j"].execute_read = Mock(return_value=mock_results)
+
+        result = await analytics_tools.list_areas()
+
+        assert result["success"] is True
+        assert result["data"]["total_concepts"] == 42
+        # All predefined areas + 1 custom area
+        assert result["data"]["total_areas"] == NUM_PREDEFINED_AREAS + 1
+        assert len(result["data"]["areas"]) == NUM_PREDEFINED_AREAS + 1
+        # Check the custom area has correct count
+        custom_area = next(a for a in result["data"]["areas"] if a["name"] == "CustomTesting")
+        assert custom_area["concept_count"] == 42
+
+    @pytest.mark.asyncio
+    async def test_list_areas_message_format(self, setup_services):
+        """Test that the response message is correctly formatted"""
+        services = setup_services
+
+        mock_results = [
+            {"area": "learning", "count": 5},
+            {"area": "health", "count": 10},
+        ]
+        services["neo4j"].execute_read = Mock(return_value=mock_results)
+
+        result = await analytics_tools.list_areas()
+
+        assert result["success"] is True
+        assert "message" in result
+        # Should include all predefined areas in the count
+        assert f"{NUM_PREDEFINED_AREAS} areas" in result["message"]
+        assert "15 concepts" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_list_areas_query_filters_deleted(self, setup_services):
+        """Test that the query filters out deleted concepts"""
+        services = setup_services
+        services["neo4j"].execute_read = Mock(return_value=[])
+
+        await analytics_tools.list_areas()
+
+        # Verify query includes deleted filter
+        call_args = services["neo4j"].execute_read.call_args
+        query = call_args[0][0]
+        assert "deleted IS NULL OR c.deleted = false" in query
+
+    @pytest.mark.asyncio
+    async def test_list_areas_cache_invalidation_on_service_change(self, setup_services):
+        """Test that cache is invalidated when neo4j service instance changes"""
+        services = setup_services
+
+        mock_results = [
+            {"area": "coding-development", "count": 5},
+        ]
+        services["neo4j"].execute_read = Mock(return_value=mock_results)
+
+        # First call caches result
+        result1 = await analytics_tools.list_areas()
+        assert services["neo4j"].execute_read.call_count == 1
+
+        # Create a new mock Neo4j service (simulating service restart)
+        new_neo4j = Mock()
+        new_neo4j.execute_read = Mock(return_value=[
+            {"area": "NewCustomArea", "count": 10},
+        ])
+
+        # Update container with new service
+        from services.container import get_container
+        container = get_container()
+        container.neo4j_service = new_neo4j
+
+        # Clear cache to simulate service change detection
+        analytics_tools._query_cache.clear()
+
+        # Second call should use new service
+        result2 = await analytics_tools.list_areas()
+        assert new_neo4j.execute_read.call_count == 1
+        # The new custom area should be present
+        new_area = next(a for a in result2["data"]["areas"] if a["name"] == "NewCustomArea")
+        assert new_area["concept_count"] == 10
+
+    @pytest.mark.asyncio
+    async def test_list_areas_none_count_treated_as_zero(self, setup_services):
+        """Test that None count values are defensively treated as zero.
+
+        Note: The Neo4j query uses COUNT(*) which should never return None,
+        so this edge case shouldn't occur in production. However, the code
+        defensively handles this by treating None as 0 to prevent TypeError.
+        """
+        services = setup_services
+
+        mock_results = [
+            {"area": "coding-development", "count": None},  # None count treated as 0
+        ]
+        services["neo4j"].execute_read = Mock(return_value=mock_results)
+
+        result = await analytics_tools.list_areas()
+
+        # Defensive behavior: None count is treated as 0, operation succeeds
+        assert result["success"] is True
+        assert result["data"]["total_concepts"] == 0
+
+    @pytest.mark.asyncio
+    async def test_list_areas_zero_count_handled(self, setup_services):
+        """Test that areas with zero concepts are handled correctly"""
+        services = setup_services
+
+        mock_results = [
+            {"area": "CustomEmptyArea", "count": 0},
+            {"area": "CustomPopulatedArea", "count": 5},
+        ]
+        services["neo4j"].execute_read = Mock(return_value=mock_results)
+
+        result = await analytics_tools.list_areas()
+
+        assert result["success"] is True
+        assert result["data"]["total_concepts"] == 5
+        # Predefined areas + 2 custom areas
+        assert result["data"]["total_areas"] == NUM_PREDEFINED_AREAS + 2
+
+        empty_area = next(a for a in result["data"]["areas"] if a["name"] == "CustomEmptyArea")
+        assert empty_area["concept_count"] == 0

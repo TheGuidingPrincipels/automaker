@@ -12,35 +12,18 @@ from tools import search_tools
 
 
 @pytest.fixture
-def mock_services():
-    """Setup mock services for integration testing"""
-    # Mock ChromaDB service
-    mock_chromadb = Mock()
+def mock_services(configured_container):
+    """Setup mock services for integration testing using the container pattern."""
+    # Setup a mock collection for ChromaDB queries
     mock_collection = Mock()
-    mock_chromadb.get_collection = Mock(return_value=mock_collection)
+    configured_container.chromadb_service.get_collection = Mock(return_value=mock_collection)
 
-    # Mock Neo4j service
-    mock_neo4j = Mock()
-
-    # Mock Embedding service
-    mock_embedding = Mock()
-
-    # Inject mocks
-    search_tools.chromadb_service = mock_chromadb
-    search_tools.neo4j_service = mock_neo4j
-    search_tools.embedding_service = mock_embedding
-
-    yield {
-        "chromadb": mock_chromadb,
+    return {
+        "chromadb": configured_container.chromadb_service,
         "collection": mock_collection,
-        "neo4j": mock_neo4j,
-        "embedding": mock_embedding,
+        "neo4j": configured_container.neo4j_service,
+        "embedding": configured_container.embedding_service,
     }
-
-    # Cleanup
-    search_tools.chromadb_service = None
-    search_tools.neo4j_service = None
-    search_tools.embedding_service = None
 
 
 class TestSemanticSearchIntegration:

@@ -1,6 +1,4 @@
----
-description: Comprehensive codebase review (Quality, Security, Speed)
----
+
 
 ## Your Mission
 

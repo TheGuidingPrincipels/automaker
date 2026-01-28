@@ -85,8 +85,8 @@ class EmbeddingSettings(BaseSettings):
         extra="ignore"
     )
 
-    model: str = Field(default="mistral-embed")
-    backend: str = Field(default="mistral")  # "mistral" or "sentence-transformers"
+    model: str = Field(default="all-MiniLM-L6-v2")
+    backend: str = Field(default="sentence-transformers")  # "mistral" or "sentence-transformers"
     cache_dir: str = Field(default="./data/embeddings")
     device: str = Field(default="cpu")
     batch_size: int = Field(default=32, ge=1)

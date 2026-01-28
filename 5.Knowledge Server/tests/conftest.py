@@ -7,6 +7,9 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock
 
+import pytest
+import redis.asyncio as redis
+
 from config import reset_settings, get_settings
 from config.testing import override_settings
 from services.container import (
@@ -82,9 +85,6 @@ def configured_container(mock_container):
 def test_settings():
     """Provide isolated test settings."""
     return get_settings()
-
-import pytest
-import redis.asyncio as redis
 
 
 @pytest.fixture

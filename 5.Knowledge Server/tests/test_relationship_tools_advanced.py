@@ -12,29 +12,17 @@ from tools import relationship_tools
 
 
 @pytest.fixture
-def mock_services():
-    """Mock the injected services"""
-    # Mock Neo4j service
-    neo4j_mock = Mock()
-    neo4j_mock.execute_read = Mock()
-    neo4j_mock.execute_write = Mock()
+def mock_services(configured_container):
+    """Mock the injected services using the configured_container fixture.
 
-    # Mock Event Store
-    event_store_mock = Mock()
-    event_store_mock.append_event = Mock()
-
-    # Mock Outbox
-    outbox_mock = Mock()
-    outbox_mock.add_entry = Mock()
-    outbox_mock.get_pending = Mock(return_value=[])
-    outbox_mock.mark_processed = Mock()
-
-    # Inject mocks
-    relationship_tools.neo4j_service = neo4j_mock
-    relationship_tools.event_store = event_store_mock
-    relationship_tools.outbox = outbox_mock
-
-    return {"neo4j": neo4j_mock, "event_store": event_store_mock, "outbox": outbox_mock}
+    Note: Services are accessed via get_container() in relationship_tools,
+    so we use configured_container which sets up the global mock container.
+    """
+    return {
+        "neo4j": configured_container.neo4j_service,
+        "event_store": configured_container.event_store,
+        "outbox": configured_container.outbox
+    }
 
 
 # =============================================================================

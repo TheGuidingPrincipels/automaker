@@ -12,6 +12,7 @@ from services.event_store import EventStore
 from services.outbox import Outbox
 from services.repository import DualStorageRepository
 from tools import concept_tools
+from tools.responses import ErrorType
 
 
 @pytest.fixture
@@ -113,20 +114,48 @@ class TestCreateConceptIntegration:
 
     @pytest.mark.asyncio
     async def test_create_concept_minimal_data(self, repository):
-        """Test creation with minimal required data"""
+        """Test creation with minimal required data (name, explanation, area, topic)"""
         result = await concept_tools.create_concept(
-            name="Minimal Concept", explanation="Minimal explanation"
+            name="Minimal Concept",
+            explanation="Minimal explanation",
+            area="coding-development",
+            topic="General",
         )
 
         assert result["success"] is True
         assert result["data"]["concept_id"] is not None
 
     @pytest.mark.asyncio
+    async def test_create_concept_missing_area_raises_type_error(self, repository):
+        """Missing area should raise TypeError since area is a required parameter."""
+        with pytest.raises(TypeError, match="missing.*required.*argument.*'area'"):
+            await concept_tools.create_concept(
+                name="Missing Area",
+                explanation="Should fail without area",
+                topic="General",
+            )
+
+    @pytest.mark.asyncio
+    async def test_create_concept_missing_topic_raises_type_error(self, repository):
+        """Missing topic should raise TypeError since topic is a required parameter."""
+        with pytest.raises(TypeError, match="missing.*required.*argument.*'topic'"):
+            await concept_tools.create_concept(
+                name="Missing Topic",
+                explanation="Should fail without topic",
+                area="coding-development",
+            )
+
+    @pytest.mark.asyncio
     async def test_create_concept_event_store_failure(self, repository, mock_services):
         """Test handling when event store fails"""
         mock_services["event_store"].append_event = Mock(return_value=False)
 
-        result = await concept_tools.create_concept(name="Test", explanation="Test")
+        result = await concept_tools.create_concept(
+            name="Test",
+            explanation="Test",
+            area="coding-development",
+            topic="General",
+        )
 
         assert result["success"] is False
         assert "error" in result
@@ -141,7 +170,10 @@ class TestGetConceptIntegration:
         """Test retrieving a concept after creation"""
         # First create a concept
         create_result = await concept_tools.create_concept(
-            name="Test Get", explanation="Test retrieval"
+            name="Test Get",
+            explanation="Test retrieval",
+            area="coding-development",
+            topic="General",
         )
 
         concept_id = create_result["data"]["concept_id"]
@@ -183,7 +215,10 @@ class TestUpdateConceptIntegration:
         """Test complete update workflow"""
         # Setup: create a concept first
         create_result = await concept_tools.create_concept(
-            name="Original Name", explanation="Original explanation"
+            name="Original Name",
+            explanation="Original explanation",
+            area="coding-development",
+            topic="General",
         )
 
         concept_id = create_result["data"]["concept_id"]
@@ -206,7 +241,12 @@ class TestUpdateConceptIntegration:
     @pytest.mark.asyncio
     async def test_update_concept_partial(self, repository, mock_services):
         """Test partial update (single field)"""
-        create_result = await concept_tools.create_concept(name="Test", explanation="Original")
+        create_result = await concept_tools.create_concept(
+            name="Test",
+            explanation="Original",
+            area="coding-development",
+            topic="General",
+        )
 
         result = await concept_tools.update_concept(
             concept_id=create_result["data"]["concept_id"],
@@ -226,7 +266,10 @@ class TestDeleteConceptIntegration:
         """Test complete delete workflow"""
         # Setup: create a concept
         create_result = await concept_tools.create_concept(
-            name="To Delete", explanation="Will be deleted"
+            name="To Delete",
+            explanation="Will be deleted",
+            area="coding-development",
+            topic="General",
         )
 
         concept_id = create_result["data"]["concept_id"]
@@ -254,7 +297,10 @@ class TestEndToEndWorkflow:
         """Test complete CRUD workflow"""
         # 1. Create
         create_result = await concept_tools.create_concept(
-            name="Workflow Test", explanation="Testing full workflow", area="Testing"
+            name="Workflow Test",
+            explanation="Testing full workflow",
+            area="coding-development",
+            topic="Workflow",
         )
 
         assert create_result["success"] is True
@@ -288,7 +334,10 @@ class TestEndToEndWorkflow:
 
         for i in range(5):
             result = await concept_tools.create_concept(
-                name=f"Concept {i}", explanation=f"Explanation {i}"
+                name=f"Concept {i}",
+                explanation=f"Explanation {i}",
+                area="coding-development",
+                topic=f"Topic {i}",
             )
             results.append(result)
 
@@ -310,7 +359,12 @@ class TestErrorHandling:
         """Test handling when Neo4j projection fails"""
         mock_services["neo4j_projection"].project_event = Mock(return_value=False)
 
-        result = await concept_tools.create_concept(name="Test", explanation="Test")
+        result = await concept_tools.create_concept(
+            name="Test",
+            explanation="Test",
+            area="coding-development",
+            topic="General",
+        )
 
         # Should still return concept_id (event stored)
         # But may indicate partial success
@@ -321,7 +375,12 @@ class TestErrorHandling:
         """Test handling when ChromaDB projection fails"""
         mock_services["chromadb_projection"].project_event = Mock(return_value=False)
 
-        result = await concept_tools.create_concept(name="Test", explanation="Test")
+        result = await concept_tools.create_concept(
+            name="Test",
+            explanation="Test",
+            area="coding-development",
+            topic="General",
+        )
 
         # Should still return concept_id (event stored)
         assert result["data"]["concept_id"] is not None
@@ -339,13 +398,67 @@ class TestErrorHandling:
         assert result["success"] is False or result.get("data", {}).get("concept_id") is not None
 
 
+class TestCreateConceptWithSoftValidation:
+    """Test concept creation with soft validation warnings for custom areas."""
+
+    @pytest.mark.asyncio
+    async def test_create_concept_with_predefined_area_has_no_warnings(self, repository):
+        """Creating with a predefined area should not produce warnings."""
+        result = await concept_tools.create_concept(
+            name="Test Concept Predefined",
+            explanation="Test explanation",
+            area="coding-development",
+            topic="Python",
+        )
+
+        assert result["success"] is True
+        assert "warnings" not in (result.get("data") or {})
+
+    @pytest.mark.asyncio
+    async def test_create_concept_with_custom_area_has_warning(self, repository):
+        """Creating with a custom (non-predefined) area should produce a warning."""
+        result = await concept_tools.create_concept(
+            name="Test Concept Custom Area",
+            explanation="Test explanation",
+            area="my-custom-area",
+            topic="Custom Topic",
+        )
+
+        assert result["success"] is True
+        assert "warnings" in result["data"]
+        assert len(result["data"]["warnings"]) == 1
+        assert "not a predefined area" in result["data"]["warnings"][0]
+        assert "my-custom-area" in result["data"]["warnings"][0]
+        assert "Recommended areas" in result["data"]["warnings"][0]
+
+    @pytest.mark.asyncio
+    async def test_create_concept_custom_area_still_succeeds(self, repository):
+        """Custom areas should still create the concept successfully (soft validation)."""
+        result = await concept_tools.create_concept(
+            name="Another Custom Area Test",
+            explanation="This should work",
+            area="experimental-science",
+            topic="Quantum Computing",
+        )
+
+        assert result["success"] is True
+        assert result["data"]["concept_id"] is not None
+        # Warning present but concept still created
+        assert "warnings" in result["data"]
+
+
 class TestTokenEfficiency:
     """Test token efficiency of responses"""
 
     @pytest.mark.asyncio
     async def test_create_response_token_count(self, repository):
         """Test create response is under 50 tokens"""
-        result = await concept_tools.create_concept(name="Test", explanation="Test")
+        result = await concept_tools.create_concept(
+            name="Test",
+            explanation="Test",
+            area="coding-development",
+            topic="General",
+        )
 
         response_str = str(result)
         estimated_tokens = len(response_str) / 4
@@ -355,7 +468,12 @@ class TestTokenEfficiency:
     async def test_update_response_token_count(self, repository):
         """Test update response is under 50 tokens"""
         # Create first
-        create_result = await concept_tools.create_concept(name="Test", explanation="Test")
+        create_result = await concept_tools.create_concept(
+            name="Test",
+            explanation="Test",
+            area="coding-development",
+            topic="General",
+        )
 
         # Update
         result = await concept_tools.update_concept(
@@ -371,7 +489,12 @@ class TestTokenEfficiency:
     async def test_delete_response_token_count(self, repository):
         """Test delete response is under 30 tokens"""
         # Create first
-        create_result = await concept_tools.create_concept(name="Test", explanation="Test")
+        create_result = await concept_tools.create_concept(
+            name="Test",
+            explanation="Test",
+            area="coding-development",
+            topic="General",
+        )
 
         # Delete
         result = await concept_tools.delete_concept(

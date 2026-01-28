@@ -5,6 +5,7 @@ Tests error response consistency, error types, logging, and user-friendly messag
 across all MCP tools to ensure Task 5.5 acceptance criteria are met.
 """
 
+import pytest
 from unittest.mock import Mock, patch
 from tools import concept_tools, search_tools, relationship_tools, analytics_tools
 from tools.responses import ErrorType
@@ -19,7 +20,7 @@ class TestErrorResponseConsistency:
         configured_container.repository = Mock()
 
         result = await concept_tools.create_concept(
-            name="", explanation="Test"  # Invalid: empty name
+            name="", explanation="Test", area="Testing", topic="Validation"  # Invalid: empty name
         )
 
         assert result["success"] is False
@@ -99,7 +100,7 @@ class TestUserFriendlyMessages:
             side_effect=Exception("Database connection failed with trace...")
         )
 
-        result = await concept_tools.create_concept(name="Test", explanation="Test")
+        result = await concept_tools.create_concept(name="Test", explanation="Test", area="Testing", topic="Errors")
 
         # Should not contain technical details like "trace", "stack", etc.
         assert "trace" not in result["error"]["message"].lower()
@@ -112,7 +113,7 @@ class TestUserFriendlyMessages:
         """Test that validation errors provide helpful guidance"""
         configured_container.repository = Mock()
 
-        result = await concept_tools.create_concept(name="", explanation="Test")
+        result = await concept_tools.create_concept(name="", explanation="Test", area="Testing", topic="Validation")
 
         # Message should indicate the issue
         assert "error" in result
@@ -145,7 +146,7 @@ class TestErrorTypeClassification:
         """Test validation errors use VALIDATION_ERROR type"""
         configured_container.repository = Mock()
 
-        result = await concept_tools.create_concept(name="", explanation="Test")
+        result = await concept_tools.create_concept(name="", explanation="Test", area="Testing", topic="Validation")
 
         assert result["error"]["type"] == ErrorType.VALIDATION_ERROR.value
 
@@ -201,7 +202,7 @@ class TestErrorLogging:
         configured_container.repository = Mock()
 
         with patch("tools.concept_tools.logger") as mock_logger:
-            await concept_tools.create_concept(name="", explanation="Test")
+            await concept_tools.create_concept(name="", explanation="Test", area="Testing", topic="Validation")
 
             # Check that warning was called (validation errors use warning level)
             assert mock_logger.warning.called
@@ -219,7 +220,7 @@ class TestErrorLogging:
         )
 
         with patch("tools.concept_tools.logger") as mock_logger:
-            await concept_tools.create_concept(name="Test", explanation="Test")
+            await concept_tools.create_concept(name="Test", explanation="Test", area="Testing", topic="Errors")
 
             # Check that error was called with exc_info=True
             assert mock_logger.error.called
@@ -261,7 +262,7 @@ class TestAllToolsHaveErrorHandling:
         configured_container.repository.delete_concept = Mock(side_effect=Exception("Error"))
 
         # All should return error responses, not raise exceptions
-        result1 = await concept_tools.create_concept("Test", "Test")
+        result1 = await concept_tools.create_concept(name="Test", explanation="Test", area="Testing", topic="Errors")
         result2 = await concept_tools.get_concept("test-id")
         result3 = await concept_tools.update_concept("test-id", name="New")
         result4 = await concept_tools.delete_concept("test-id")
@@ -328,7 +329,7 @@ class TestValidationErrorDetails:
         """Test that validation errors can include field details"""
         configured_container.repository = Mock()
 
-        result = await concept_tools.create_concept(name="", explanation="Test")  # Invalid
+        result = await concept_tools.create_concept(name="", explanation="Test", area="Testing", topic="Validation")  # Invalid
 
         assert result["success"] is False
         assert result["error"]["type"] == ErrorType.VALIDATION_ERROR.value
@@ -364,7 +365,7 @@ class TestNoSensitiveDataLogged:
 
         with patch("tools.concept_tools.logger") as mock_logger:
             await concept_tools.create_concept(
-                name="Test", explanation="Test with password: secret123"
+                name="Test", explanation="Test with password: secret123", area="Testing", topic="Security"
             )
 
             # The explanation might contain sensitive data,

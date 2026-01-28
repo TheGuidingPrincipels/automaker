@@ -48,8 +48,8 @@ class EmbeddingConfig:
         mistral_api_key_env: Environment variable name for Mistral API key
     """
 
-    model_name: str = "mistral-embed"
-    backend: Literal["sentence-transformers", "mistral"] = "mistral"
+    model_name: str = "all-MiniLM-L6-v2"
+    backend: Literal["sentence-transformers", "mistral"] = "sentence-transformers"
     device: str = "cpu"
     batch_size: int = 32
     normalize: bool = True

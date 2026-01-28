@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs/promises';
 
 import {
+  TEST_DATA_DIR,
   TEST_SESSIONS_PATH,
   cleanupTestSessions,
   ensureTestDataDir,
@@ -10,12 +11,22 @@ import {
 } from '../../utils/database.js';
 
 describe('tests/utils/database sessions helpers', () => {
+  const originalDataDir = process.env.DATA_DIR;
+
   beforeEach(async () => {
+    // Set DATA_DIR to test data directory so auth.ts loadSessions() reads from the right place
+    process.env.DATA_DIR = TEST_DATA_DIR;
     await cleanupTestSessions();
   });
 
   afterEach(async () => {
     await cleanupTestSessions();
+    // Restore original DATA_DIR
+    if (originalDataDir === undefined) {
+      delete process.env.DATA_DIR;
+    } else {
+      process.env.DATA_DIR = originalDataDir;
+    }
   });
 
   it('writes .sessions using auth.ts on-disk format (array of [token, session] tuples)', async () => {

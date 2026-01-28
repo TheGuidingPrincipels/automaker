@@ -2,7 +2,7 @@
 Unit tests for concept management MCP tools
 """
 
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -35,7 +35,7 @@ class TestCreateConcept:
         setup_repository.create_concept = Mock(return_value=(True, None, "concept-123"))
 
         result = await concept_tools.create_concept(
-            name="Test Concept", explanation="Test explanation", area="Programming", topic="Python"
+            name="Test Concept", explanation="Test explanation", area="coding-development", topic="Python"
         )
 
         assert result["success"] is True
@@ -53,7 +53,7 @@ class TestCreateConcept:
         result = await concept_tools.create_concept(
             name="Advanced Concept",
             explanation="Detailed explanation",
-            area="Mathematics",
+            area="physics",
             topic="Algebra",
             subtopic="Linear Equations",
         )
@@ -64,7 +64,7 @@ class TestCreateConcept:
         # Verify all fields passed to repository (no confidence_score)
         call_args = setup_repository.create_concept.call_args[0][0]
         assert call_args["name"] == "Advanced Concept"
-        assert call_args["area"] == "Mathematics"
+        assert call_args["area"] == "physics"
         assert call_args["topic"] == "Algebra"
         assert call_args["subtopic"] == "Linear Equations"
         # confidence_score should NOT be in call_args
@@ -76,7 +76,7 @@ class TestCreateConcept:
         setup_repository.create_concept = Mock(return_value=(True, None, "concept-789"))
 
         result = await concept_tools.create_concept(
-            name="Minimal", explanation="Minimal explanation"
+            name="Minimal", explanation="Minimal explanation", area="learning", topic="Basics"
         )
 
         assert result["success"] is True
@@ -89,7 +89,7 @@ class TestCreateConcept:
             return_value=(False, "Database error", "concept-999")
         )
 
-        result = await concept_tools.create_concept(name="Test", explanation="Test")
+        result = await concept_tools.create_concept(name="Test", explanation="Test", area="coding-development", topic="Errors")
 
         assert result["success"] is False
         assert "error" in result
@@ -99,7 +99,7 @@ class TestCreateConcept:
     @pytest.mark.asyncio
     async def test_create_concept_empty_name(self, setup_repository):
         """Test validation error for empty name"""
-        result = await concept_tools.create_concept(name="   ", explanation="Test explanation")
+        result = await concept_tools.create_concept(name="   ", explanation="Test explanation", area="coding-development", topic="Validation")
 
         assert result["success"] is False
         assert "error" in result
@@ -109,7 +109,7 @@ class TestCreateConcept:
     @pytest.mark.asyncio
     async def test_create_concept_empty_explanation(self, setup_repository):
         """Test validation error for empty explanation"""
-        result = await concept_tools.create_concept(name="Test", explanation="   ")
+        result = await concept_tools.create_concept(name="Test", explanation="   ", area="coding-development", topic="Validation")
 
         assert result["success"] is False
         assert "error" in result
@@ -120,7 +120,7 @@ class TestCreateConcept:
         """Test handling of unexpected errors"""
         setup_repository.create_concept = Mock(side_effect=Exception("Unexpected error"))
 
-        result = await concept_tools.create_concept(name="Test", explanation="Test")
+        result = await concept_tools.create_concept(name="Test", explanation="Test", area="coding-development", topic="Errors")
 
         assert result["success"] is False
         assert "error" in result
@@ -131,7 +131,7 @@ class TestCreateConcept:
         """Test response is token-efficient (<50 tokens)"""
         setup_repository.create_concept = Mock(return_value=(True, None, "concept-123"))
 
-        result = await concept_tools.create_concept(name="Test", explanation="Test")
+        result = await concept_tools.create_concept(name="Test", explanation="Test", area="coding-development", topic="Efficiency")
 
         # Estimate token count (rough: ~4 chars per token)
         response_str = str(result)
@@ -154,7 +154,7 @@ class TestGetConcept:
             "concept_id": "concept-123",
             "name": "Test Concept",
             "explanation": "Test explanation",
-            "area": "Programming",
+            "area": "coding-development",
             "topic": "Python",
             "confidence_score": 95.0,  # 0-100 scale for API response
             "created_at": "2025-01-01T00:00:00",
@@ -252,7 +252,7 @@ class TestUpdateConcept:
         setup_repository.update_concept = Mock(return_value=(True, None))
 
         result = await concept_tools.update_concept(
-            concept_id="concept-123", explanation="New explanation", area="Updated Area"
+            concept_id="concept-123", explanation="New explanation", area="productivity"
         )
 
         assert result["success"] is True
@@ -271,7 +271,7 @@ class TestUpdateConcept:
             concept_id="concept-123",
             name="New Name",
             explanation="New explanation",
-            area="New Area",
+            area="marketing",
             topic="New Topic",
             subtopic="New Subtopic",
         )
@@ -397,21 +397,24 @@ class TestPydanticModels:
         from tools.concept_tools import ConceptCreate
 
         data = ConceptCreate(
-            name="Test Concept", explanation="Test explanation", area="Programming"
+            name="Test Concept", explanation="Test explanation", area="coding-development", topic="Python"
         )
 
         assert data.name == "Test Concept"
         assert data.explanation == "Test explanation"
-        assert data.area == "Programming"
+        assert data.area == "coding-development"
+        assert data.topic == "Python"
 
     def test_concept_create_strips_whitespace(self):
         """Test that whitespace is stripped from strings"""
         from tools.concept_tools import ConceptCreate
 
-        data = ConceptCreate(name="  Test  ", explanation="  Explanation  ")
+        data = ConceptCreate(name="  Test  ", explanation="  Explanation  ", area="  coding-development  ", topic="  Whitespace  ")
 
         assert data.name == "Test"
         assert data.explanation == "Explanation"
+        assert data.area == "coding-development"
+        assert data.topic == "Whitespace"
 
     def test_concept_update_valid(self):
         """Test ConceptUpdate with valid data (no manual confidence_score)"""
