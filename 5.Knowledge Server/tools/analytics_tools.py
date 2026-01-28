@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
+from config import PREDEFINED_AREAS, AREAS_BY_SLUG
 from services.container import get_container, ServiceContainer
 from .responses import (
     ErrorType,
@@ -115,6 +116,103 @@ class QueryCache:
 _CACHE_TTL_SECONDS = 300
 _query_cache = QueryCache(default_ttl=_CACHE_TTL_SECONDS)
 
+# Predefined area lookups (slug and label normalization)
+_PREDEFINED_SLUGS = [area.slug for area in PREDEFINED_AREAS]
+_PREDEFINED_LABEL_TO_SLUG = {area.label: area.slug for area in PREDEFINED_AREAS}
+
+# Default area for concepts without area assignment
+UNCATEGORIZED_AREA = "Uncategorized"
+
+
+def _normalize_area_value(raw_area: Optional[str]) -> tuple[str, dict[str, Any]]:
+    """
+    Normalize a raw area value to a canonical slug and metadata dict.
+
+    Handles the following cases:
+    - None or empty string -> ("Uncategorized", {..., is_predefined: False})
+    - Predefined slug (e.g., "coding-development") -> returns with full metadata
+    - Legacy label (e.g., "Coding & Development") -> maps to canonical slug
+    - Custom area -> pass through with is_predefined: False
+
+    Args:
+        raw_area: The raw area value from the database (may be None, slug, or legacy label)
+
+    Returns:
+        Tuple of (canonical_slug, metadata_dict) where metadata_dict contains:
+        - name: The canonical slug
+        - label: Human-readable label
+        - description: Area description
+        - is_predefined: Whether this is a predefined area
+    """
+    if raw_area is None:
+        return UNCATEGORIZED_AREA, {
+            "name": UNCATEGORIZED_AREA,
+            "label": UNCATEGORIZED_AREA,
+            "description": "",
+            "is_predefined": False,
+        }
+
+    area_value = str(raw_area).strip()
+    if not area_value:
+        return UNCATEGORIZED_AREA, {
+            "name": UNCATEGORIZED_AREA,
+            "label": UNCATEGORIZED_AREA,
+            "description": "",
+            "is_predefined": False,
+        }
+
+    if area_value in AREAS_BY_SLUG:
+        area = AREAS_BY_SLUG[area_value]
+        return area.slug, {
+            "name": area.slug,
+            "label": area.label,
+            "description": area.description,
+            "is_predefined": True,
+        }
+
+    legacy_slug = _PREDEFINED_LABEL_TO_SLUG.get(area_value)
+    if legacy_slug:
+        area = AREAS_BY_SLUG[legacy_slug]
+        return area.slug, {
+            "name": area.slug,
+            "label": area.label,
+            "description": area.description,
+            "is_predefined": True,
+        }
+
+    return area_value, {
+        "name": area_value,
+        "label": area_value,
+        "description": "",
+        "is_predefined": False,
+    }
+
+
+def _ordered_area_keys(areas_dict: dict[str, dict[str, Any]]) -> list[str]:
+    """
+    Return area keys in a consistent display order.
+
+    Ordering rules:
+    1. Predefined areas first (in their defined order from PREDEFINED_AREAS)
+    2. Custom areas alphabetically by label
+    3. "Uncategorized" always last
+
+    Args:
+        areas_dict: Dictionary mapping area slugs to area metadata dicts
+
+    Returns:
+        List of area keys in display order
+    """
+    predefined_keys = [slug for slug in _PREDEFINED_SLUGS if slug in areas_dict]
+    custom_keys = sorted(
+        [key for key in areas_dict if key not in _PREDEFINED_SLUGS and key != UNCATEGORIZED_AREA],
+        key=lambda key: areas_dict[key]["label"],
+    )
+    ordered = predefined_keys + custom_keys
+    if UNCATEGORIZED_AREA in areas_dict:
+        ordered.append(UNCATEGORIZED_AREA)
+    return ordered
+
 
 # =============================================================================
 # MCP Tool Functions
@@ -189,45 +287,61 @@ async def list_hierarchy() -> dict[str, Any]:
 
         results = neo4j.execute_read(query, {})
 
-        # Build nested structure
+        # Build nested structure - initialize with all predefined areas
         areas_dict = {}
         total_concepts = 0
 
+        # Pre-populate with all predefined areas (empty, with no topics)
+        for predefined_area in PREDEFINED_AREAS:
+            areas_dict[predefined_area.slug] = {
+                "name": predefined_area.slug,
+                "label": predefined_area.label,
+                "description": predefined_area.description,
+                "concept_count": 0,
+                "topics": {},
+                "is_predefined": True,
+            }
+
         for record in results:
-            area = record.get("area") or "Uncategorized"
+            area_key, area_meta = _normalize_area_value(record.get("area"))
             topic = record.get("topic") or "General"
             subtopic = record.get("subtopic") or "General"
-            count = record.get("count", 0)
+            count = record.get("count") or 0  # Treats both None and missing key as 0
 
             total_concepts += count
 
             # Ensure area exists
-            if area not in areas_dict:
-                areas_dict[area] = {"name": area, "concept_count": 0, "topics": {}}
+            if area_key not in areas_dict:
+                areas_dict[area_key] = {
+                    **area_meta,
+                    "concept_count": 0,
+                    "topics": {},
+                }
 
             # Ensure topic exists
-            if topic not in areas_dict[area]["topics"]:
-                areas_dict[area]["topics"][topic] = {
+            if topic not in areas_dict[area_key]["topics"]:
+                areas_dict[area_key]["topics"][topic] = {
                     "name": topic,
                     "concept_count": 0,
                     "subtopics": {},
                 }
 
             # Add subtopic
-            if subtopic not in areas_dict[area]["topics"][topic]["subtopics"]:
-                areas_dict[area]["topics"][topic]["subtopics"][subtopic] = {
+            if subtopic not in areas_dict[area_key]["topics"][topic]["subtopics"]:
+                areas_dict[area_key]["topics"][topic]["subtopics"][subtopic] = {
                     "name": subtopic,
                     "concept_count": 0,
                 }
 
             # Update counts
-            areas_dict[area]["topics"][topic]["subtopics"][subtopic]["concept_count"] += count
-            areas_dict[area]["topics"][topic]["concept_count"] += count
-            areas_dict[area]["concept_count"] += count
+            areas_dict[area_key]["topics"][topic]["subtopics"][subtopic]["concept_count"] += count
+            areas_dict[area_key]["topics"][topic]["concept_count"] += count
+            areas_dict[area_key]["concept_count"] += count
 
         # Convert nested dicts to lists
         areas_list = []
-        for _area_name, area_data in sorted(areas_dict.items()):
+        for area_key in _ordered_area_keys(areas_dict):
+            area_data = areas_dict[area_key]
             topics_list = []
             for _topic_name, topic_data in sorted(area_data["topics"].items()):
                 subtopics_list = [
@@ -246,8 +360,11 @@ async def list_hierarchy() -> dict[str, Any]:
             areas_list.append(
                 {
                     "name": area_data["name"],
+                    "label": area_data["label"],
+                    "description": area_data["description"],
                     "concept_count": area_data["concept_count"],
                     "topics": topics_list,
+                    "is_predefined": area_data["is_predefined"],
                 }
             )
 
@@ -270,6 +387,117 @@ async def list_hierarchy() -> dict[str, Any]:
     except Exception as e:
         logger.error(f"Unexpected error in list_hierarchy: {e}", exc_info=True, extra={
             "operation": "list_hierarchy"
+        })
+        return internal_error(str(e))
+
+
+@requires_services("neo4j_service")
+async def list_areas() -> dict[str, Any]:
+    """
+    Get list of all knowledge areas with concept counts.
+
+    Returns a flat list of top-level areas (without nested topics/subtopics).
+    More lightweight than list_hierarchy() when only area-level info is needed.
+
+    Returns:
+        {
+            "success": bool,
+            "areas": [
+                {
+                    "name": str,
+                    "concept_count": int
+                }
+            ],
+            "total_areas": int,
+            "total_concepts": int,
+            "message": str
+        }
+
+    Note:
+        Results are cached for 5 minutes for performance optimization.
+        Cache is thread-safe and automatically invalidates when service changes.
+    """
+    try:
+        # Get Neo4j service from container
+        neo4j = _get_neo4j_service()
+
+        # Check cache (thread-safe, handles service_id for test isolation)
+        current_service_id = id(neo4j)
+        cached_result = _query_cache.get('areas', service_id=current_service_id)
+        if cached_result is not None:
+            logger.info("Returning cached areas list")
+            return cached_result
+
+        logger.info("Building areas list from Neo4j")
+
+        # Query to get all distinct areas with concept counts
+        query = """
+        MATCH (c:Concept)
+        WHERE (c.deleted IS NULL OR c.deleted = false)
+        WITH c.area as area, count(*) as count
+        RETURN area, count
+        ORDER BY area
+        """
+
+        results = neo4j.execute_read(query, {})
+
+        # Build areas dict - initialize with all predefined areas
+        areas_dict = {}
+        total_concepts = 0
+
+        # Pre-populate with all predefined areas (zero counts)
+        for predefined_area in PREDEFINED_AREAS:
+            areas_dict[predefined_area.slug] = {
+                "name": predefined_area.slug,
+                "label": predefined_area.label,
+                "description": predefined_area.description,
+                "concept_count": 0,
+                "is_predefined": True,
+            }
+
+        for record in results:
+            area_key, area_meta = _normalize_area_value(record.get("area"))
+            count = record.get("count") or 0  # Treats both None and missing key as 0
+
+            total_concepts += count
+
+            # Update or add the area
+            if area_key in areas_dict:
+                areas_dict[area_key]["concept_count"] += count
+            else:
+                # Custom area not in predefined list
+                areas_dict[area_key] = {
+                    **area_meta,
+                    "concept_count": count,
+                }
+
+        # Convert to list and apply ordering rules
+        areas_list = [areas_dict[key] for key in _ordered_area_keys(areas_dict)]
+
+        message = f"Found {len(areas_list)} areas with {total_concepts} concepts"
+        result = success_response(
+            message,
+            areas=areas_list,
+            total_areas=len(areas_list),
+            total_concepts=total_concepts
+        )
+
+        # Update cache (thread-safe)
+        _query_cache.set('areas', result, service_id=current_service_id)
+
+        logger.info(f"Areas list built: {len(areas_list)} areas, {total_concepts} concepts")
+
+        return result
+
+    except ValueError as e:
+        logger.warning(f"Validation error in list_areas: {e}", extra={
+            "operation": "list_areas",
+            "error": str(e)
+        })
+        return validation_error(str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error in list_areas: {e}", exc_info=True, extra={
+            "operation": "list_areas"
         })
         return internal_error(str(e))
 

@@ -90,7 +90,8 @@ async def test_create_concept_passes_source_urls_to_backend():
         result = await create_concept_func(
             name="Test Concept",
             explanation="Test explanation",
-            area="Programming",
+            area="coding-development",
+            topic="Python",
             source_urls=source_urls_json,
         )
 
@@ -215,7 +216,10 @@ async def test_create_concept_backward_compatible_without_source_urls():
 
         # Act - call WITHOUT source_urls parameter (backward compatibility)
         result = await create_concept_func(
-            name="Test Concept", explanation="Test explanation", area="Programming"
+            name="Test Concept",
+            explanation="Test explanation",
+            area="coding-development",
+            topic="General",
         )
 
         # Assert - verify it works without errors
@@ -317,6 +321,8 @@ async def test_root_cause_verification_create_concept_accepts_source_urls():
         result = await create_concept_func(
             name="Python asyncio",
             explanation="Asynchronous I/O in Python",
+            area="coding-development",
+            topic="Python",
             source_urls=source_urls_from_issue,
         )
 

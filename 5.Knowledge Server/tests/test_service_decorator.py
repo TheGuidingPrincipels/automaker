@@ -197,7 +197,7 @@ class TestRealToolIntegration:
         # Container has all services as None by default (via null_services_container fixture)
 
         # Call the function - should return error, not crash
-        result = await create_concept(name="Test", explanation="Test explanation")
+        result = await create_concept(name="Test", explanation="Test explanation", area="Testing", topic="Decorator")
 
         # Should get service unavailable error, not AttributeError
         assert result["success"] is False
@@ -317,19 +317,19 @@ class TestServiceStatusUtilities:
         assert tools["available"] == sorted(tools["available"])
         assert tools["unavailable"] == sorted(tools["unavailable"])
 
-    def test_get_available_tools_total_count_is_16(self):
-        """Test that total tool count is 16"""
+    def test_get_available_tools_total_count_is_17(self):
+        """Test that total tool count is 17"""
         tools = get_available_tools()
 
-        assert tools["total_tools"] == 16
+        assert tools["total_tools"] == 17
 
     def test_get_available_tools_includes_all_tools(self):
-        """Test that all 16 tools are accounted for"""
+        """Test that all 17 tools are accounted for"""
         tools = get_available_tools()
 
         # Total should equal available + unavailable
         total = len(tools["available"]) + len(tools["unavailable"])
-        assert total == 16
+        assert total == 17
 
         # Check that key tools are in the list
         all_tools = tools["available"] + tools["unavailable"]
@@ -382,7 +382,7 @@ class TestToolAvailabilityIntegration:
         # Verify it's returning the correct data
         assert isinstance(result["available"], list)
         assert isinstance(result["unavailable"], list)
-        assert result["total_tools"] == 16
+        assert result["total_tools"] == 17
 
 
 if __name__ == "__main__":

@@ -31,7 +31,7 @@ class TestCreateConceptToolSignature:
 
         # Call concept_tools function WITHOUT confidence_score
         result = await concept_tools.create_concept(
-            name="Test Concept", explanation="Test explanation", area="Programming"
+            name="Test Concept", explanation="Test explanation", area="Programming", topic="Python"
         )
 
         assert result["success"] is True

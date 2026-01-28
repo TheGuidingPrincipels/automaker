@@ -6,15 +6,25 @@ including JSON validation, storage in Neo4j and ChromaDB projections.
 """
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from tools.concept_tools import create_concept, update_concept
 
 
+@pytest.fixture
+def setup_repository(configured_container):
+    """Setup mock repository for tests using container fixture."""
+    mock_repository = MagicMock()
+    mock_repository.find_duplicate_concept.return_value = None
+    configured_container.repository = mock_repository
+    configured_container.confidence_runtime = None
+    return mock_repository
+
+
 @pytest.mark.asyncio
-async def test_create_concept_with_source_urls():
+async def test_create_concept_with_source_urls(setup_repository):
     """Test creating concept with source URLs (JSON validation and storage)"""
     # Arrange
     source_urls = json.dumps(
@@ -35,24 +45,23 @@ async def test_create_concept_with_source_urls():
     )
 
     # Mock repository
-    mock_repository = MagicMock()
-    mock_repository.find_duplicate_concept.return_value = None
-    mock_repository.create_concept.return_value = (True, None, "concept-123")
+    setup_repository.create_concept.return_value = (True, None, "concept-123")
 
-    with patch("tools.concept_tools.repository", mock_repository):
-        # Act
-        result = await create_concept(
-            name="python asyncio",
-            explanation="Async programming in Python",
-            source_urls=source_urls,
-        )
+    # Act
+    result = await create_concept(
+        name="python asyncio",
+        explanation="Async programming in Python",
+        area="coding-development",
+        topic="Python",
+        source_urls=source_urls,
+    )
 
     # Assert
     assert result["success"] is True
     assert result["data"]["concept_id"] == "concept-123"
 
     # Verify repository was called with parsed list (not JSON string)
-    call_args = mock_repository.create_concept.call_args[0][0]
+    call_args = setup_repository.create_concept.call_args[0][0]
     assert "source_urls" in call_args
     assert isinstance(call_args["source_urls"], list)
     assert len(call_args["source_urls"]) == 2
@@ -60,46 +69,43 @@ async def test_create_concept_with_source_urls():
 
 
 @pytest.mark.asyncio
-async def test_create_concept_without_source_urls():
+async def test_create_concept_without_source_urls(setup_repository):
     """Test backward compatibility - source_urls is optional"""
     # Arrange
-    mock_repository = MagicMock()
-    mock_repository.find_duplicate_concept.return_value = None
-    mock_repository.create_concept.return_value = (True, None, "concept-456")
+    setup_repository.create_concept.return_value = (True, None, "concept-456")
 
-    with patch("tools.concept_tools.repository", mock_repository):
-        # Act
-        result = await create_concept(
-            name="test concept",
-            explanation="Test explanation",
-            # source_urls not provided - should work
-        )
+    # Act
+    result = await create_concept(
+        name="test concept",
+        explanation="Test explanation",
+        area="coding-development",
+        topic="General",
+        # source_urls not provided - should work
+    )
 
     # Assert
     assert result["success"] is True
     assert result["data"]["concept_id"] == "concept-456"
 
     # Verify repository was called without source_urls
-    call_args = mock_repository.create_concept.call_args[0][0]
+    call_args = setup_repository.create_concept.call_args[0][0]
     assert "source_urls" not in call_args
 
 
 @pytest.mark.asyncio
-async def test_create_concept_invalid_json_source_urls():
+async def test_create_concept_invalid_json_source_urls(setup_repository):
     """Test JSON validation error for malformed source_urls"""
     # Arrange
     invalid_json = "not-valid-json"
 
-    mock_repository = MagicMock()
-    mock_repository.find_duplicate_concept.return_value = None
-
-    with patch('tools.concept_tools.repository', mock_repository):
-        # Act
-        result = await create_concept(
-            name="test concept",
-            explanation="Test explanation",
-            source_urls=invalid_json
-        )
+    # Act
+    result = await create_concept(
+        name="test concept",
+        explanation="Test explanation",
+        area="coding-development",
+        topic="Validation",
+        source_urls=invalid_json
+    )
 
     # Assert
     assert result["success"] is False
@@ -108,21 +114,19 @@ async def test_create_concept_invalid_json_source_urls():
 
 
 @pytest.mark.asyncio
-async def test_create_concept_source_urls_not_array():
+async def test_create_concept_source_urls_not_array(setup_repository):
     """Test validation error when source_urls is not a JSON array"""
     # Arrange
     not_array = json.dumps({"url": "https://example.com"})  # Object, not array
 
-    mock_repository = MagicMock()
-    mock_repository.find_duplicate_concept.return_value = None
-
-    with patch('tools.concept_tools.repository', mock_repository):
-        # Act
-        result = await create_concept(
-            name="test concept",
-            explanation="Test explanation",
-            source_urls=not_array
-        )
+    # Act
+    result = await create_concept(
+        name="test concept",
+        explanation="Test explanation",
+        area="coding-development",
+        topic="Validation",
+        source_urls=not_array
+    )
 
     # Assert
     assert result["success"] is False
@@ -130,45 +134,41 @@ async def test_create_concept_source_urls_not_array():
 
 
 @pytest.mark.asyncio
-async def test_update_concept_add_source_urls():
+async def test_update_concept_add_source_urls(setup_repository):
     """Test adding source URLs to existing concept"""
     # Arrange
     source_urls = json.dumps([{"url": "https://example.com", "title": "Example"}])
 
-    mock_repository = MagicMock()
-    mock_repository.update_concept.return_value = (True, None)
+    setup_repository.update_concept.return_value = (True, None)
 
-    with patch("tools.concept_tools.repository", mock_repository):
-        # Act
-        result = await update_concept(concept_id="concept-789", source_urls=source_urls)
+    # Act
+    result = await update_concept(concept_id="concept-789", source_urls=source_urls)
 
     # Assert
     assert result["success"] is True
     assert "source_urls" in result["data"]["updated_fields"]
 
     # Verify repository was called with parsed list
-    call_args = mock_repository.update_concept.call_args[0][1]
+    call_args = setup_repository.update_concept.call_args[0][1]
     assert "source_urls" in call_args
     assert isinstance(call_args["source_urls"], list)
     assert call_args["source_urls"][0]["url"] == "https://example.com"
 
 
 @pytest.mark.asyncio
-async def test_source_urls_missing_url_field():
+async def test_source_urls_missing_url_field(setup_repository):
     """Test validation error when source URL object lacks 'url' field"""
     # Arrange
     missing_url = json.dumps([{"title": "Example", "quality_score": 0.8}])  # Missing 'url' field
 
-    mock_repository = MagicMock()
-    mock_repository.find_duplicate_concept.return_value = None
-
-    with patch('tools.concept_tools.repository', mock_repository):
-        # Act
-        result = await create_concept(
-            name="test concept",
-            explanation="Test explanation",
-            source_urls=missing_url
-        )
+    # Act
+    result = await create_concept(
+        name="test concept",
+        explanation="Test explanation",
+        area="coding-development",
+        topic="Validation",
+        source_urls=missing_url
+    )
 
     # Assert
     assert result["success"] is False

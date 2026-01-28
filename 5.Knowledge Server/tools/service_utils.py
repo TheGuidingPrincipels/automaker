@@ -150,7 +150,7 @@ def get_available_tools() -> dict[str, Any]:
         {
             "available": ["ping", "create_concept", ...],
             "unavailable": ["search_concepts_semantic"],
-            "total_tools": 16,
+            "total_tools": 17,
             "service_status": {...}
         }
     """
@@ -191,6 +191,9 @@ def get_available_tools() -> dict[str, Any]:
         # Server tools (no dependencies)
         "ping": [],
         "get_server_stats": [],
+
+        # Taxonomy tools
+        "list_areas": ["analytics_tools.neo4j_service"],
     }
 
     available = []

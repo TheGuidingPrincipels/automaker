@@ -4,6 +4,7 @@ Unit tests for DualStorageRepository.
 Tests the repository's coordination logic with mocked dependencies.
 """
 
+import pytest
 from unittest.mock import Mock
 
 from services.repository import (
