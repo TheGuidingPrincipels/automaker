@@ -131,7 +131,10 @@ export function useBoardDragDrop({
           // For main worktree, set branchName to null to indicate it should use main
           // (must use null not undefined so it serializes to JSON for the API call)
           // For other worktrees, set branchName to the target branch
-          const newBranchName = worktreeData.isMain ? null : targetBranch;
+          const newBranchNameForApi: string | null = worktreeData.isMain ? null : targetBranch;
+          const newBranchNameForStore: string | undefined = worktreeData.isMain
+            ? undefined
+            : targetBranch;
 
           // If already on the same branch, nothing to do
           // For main worktree: feature with null/undefined branchName is already on main
@@ -145,8 +148,11 @@ export function useBoardDragDrop({
           }
 
           // Update feature's branchName
-          updateFeature(featureId, { branchName: newBranchName });
-          await persistFeatureUpdate(featureId, { branchName: newBranchName });
+          updateFeature(featureId, { branchName: newBranchNameForStore });
+          await persistFeatureUpdate(featureId, {
+            // Persist uses `null` to force JSON serialization for clearing assignment.
+            branchName: newBranchNameForApi as unknown as string | undefined,
+          });
 
           const branchDisplay = worktreeData.isMain ? targetBranch : targetBranch;
           toast.success('Feature moved to branch', {

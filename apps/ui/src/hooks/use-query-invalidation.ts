@@ -9,7 +9,7 @@ import { useEffect, useRef } from 'react';
 import { useQueryClient, QueryClient } from '@tanstack/react-query';
 import { getElectronAPI } from '@/lib/electron';
 import { queryKeys } from '@/lib/query-keys';
-import type { AutoModeEvent, SpecRegenerationEvent } from '@/types/electron';
+import type { AutoModeEvent, SpecRegenerationEvent, StreamEvent } from '@/types/electron';
 import type { IssueValidationEvent } from '@automaker/types';
 import { debounce, type DebouncedFunction } from '@automaker/utils/debounce';
 import { useEventRecencyStore } from './use-event-recency';
@@ -21,6 +21,30 @@ import { useEventRecencyStore } from './use-event-recency';
  */
 const PROGRESS_DEBOUNCE_WAIT = 150;
 const PROGRESS_DEBOUNCE_MAX_WAIT = 2000;
+
+/**
+ * Valid StreamEvent type values.
+ * Must be kept in sync with StreamEvent union in @/types/electron.d.ts
+ */
+const VALID_STREAM_EVENT_TYPES = new Set<StreamEvent['type']>([
+  'message',
+  'stream',
+  'tool_use',
+  'complete',
+  'error',
+]);
+
+/**
+ * Type guard for StreamEvent.
+ * Validates that an unknown value conforms to the StreamEvent type.
+ */
+function isStreamEvent(event: unknown): event is StreamEvent {
+  if (typeof event !== 'object' || event === null) return false;
+  const maybe = event as { type?: unknown; sessionId?: unknown };
+  if (typeof maybe.type !== 'string' || typeof maybe.sessionId !== 'string') return false;
+
+  return VALID_STREAM_EVENT_TYPES.has(maybe.type as StreamEvent['type']);
+}
 
 /**
  * Creates a unique key for per-feature debounce tracking
@@ -110,6 +134,7 @@ export function useAutoModeQueryInvalidation(projectPath: string | undefined) {
     }
 
     const api = getElectronAPI();
+    if (!api?.autoMode) return;
     const unsubscribe = api.autoMode.onEvent((event: AutoModeEvent) => {
       // Record that we received a WebSocket event (for event recency tracking)
       // This allows polling to be disabled when WebSocket events are flowing
@@ -208,6 +233,7 @@ export function useSpecRegenerationQueryInvalidation(projectPath: string | undef
     if (!projectPath) return;
 
     const api = getElectronAPI();
+    if (!api?.specRegeneration) return;
     const unsubscribe = api.specRegeneration.onEvent((event: SpecRegenerationEvent) => {
       // Only handle events for the current project
       if (event.projectPath !== projectPath) return;
@@ -255,18 +281,16 @@ export function useGitHubValidationQueryInvalidation(projectPath: string | undef
       // Record that we received a WebSocket event
       recordGlobalEvent();
 
-      if (event.type === 'validation_complete' || event.type === 'validation_error') {
+      if (event.type === 'issue_validation_complete' || event.type === 'issue_validation_error') {
         // Invalidate all validations for this project
         queryClient.invalidateQueries({
           queryKey: queryKeys.github.validations(projectPath),
         });
 
         // Also invalidate specific issue validation if we have the issue number
-        if ('issueNumber' in event && event.issueNumber) {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.github.validation(projectPath, event.issueNumber),
-          });
-        }
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.github.validation(projectPath, event.issueNumber),
+        });
       }
     });
 
@@ -287,9 +311,13 @@ export function useSessionQueryInvalidation(sessionId: string | undefined) {
     if (!sessionId) return;
 
     const api = getElectronAPI();
+    if (!api?.agent) return;
+
     const unsubscribe = api.agent.onStream((event) => {
+      if (!isStreamEvent(event)) return;
+
       // Only handle events for the current session
-      if ('sessionId' in event && event.sessionId !== sessionId) return;
+      if (event.sessionId !== sessionId) return;
 
       // Record that we received a WebSocket event
       recordGlobalEvent();

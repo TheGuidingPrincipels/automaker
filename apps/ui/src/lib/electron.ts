@@ -219,6 +219,7 @@ export interface RunningAgent {
   projectPath: string;
   projectName: string;
   isAutoMode: boolean;
+  branchName?: string | null;
   title?: string;
   description?: string;
 }
@@ -1781,6 +1782,24 @@ function createMockWorktreeAPI(): WorktreeAPI {
       };
     },
 
+    addRemote: async (worktreePath: string, remoteName: string, remoteUrl: string) => {
+      console.log('[Mock] Adding remote:', { worktreePath, remoteName, remoteUrl });
+
+      if (remoteName === 'origin') {
+        return { success: false, error: 'Remote already exists', code: 'REMOTE_EXISTS' };
+      }
+
+      return {
+        success: true,
+        result: {
+          remoteName,
+          remoteUrl,
+          fetched: false,
+          message: `Added remote '${remoteName}'`,
+        },
+      };
+    },
+
     openInEditor: async (worktreePath: string, editorCommand?: string) => {
       const ANTIGRAVITY_EDITOR_COMMAND = 'antigravity';
       const ANTIGRAVITY_LEGACY_COMMAND = 'agy';
@@ -2110,7 +2129,7 @@ let mockAutoModeTimeouts = new Map<string, NodeJS.Timeout>(); // Track timeouts 
 
 function createMockAutoModeAPI(): AutoModeAPI {
   return {
-    start: async (projectPath: string, maxConcurrency?: number) => {
+    start: async (projectPath: string, _branchName?: string | null, maxConcurrency?: number) => {
       if (mockAutoModeRunning) {
         return { success: false, error: 'Auto mode is already running' };
       }

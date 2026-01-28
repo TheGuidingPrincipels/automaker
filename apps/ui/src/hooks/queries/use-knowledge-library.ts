@@ -20,6 +20,7 @@ import type {
   KLAskRequest,
   KLCreateSessionRequest,
   KLCleanupDisposition,
+  KLCleanupMode,
   KLContentMode,
 } from '@automaker/types';
 
@@ -227,15 +228,39 @@ export function useKLSetMode(sessionId: string) {
 
 /**
  * Generate cleanup plan for a session
+ *
+ * @param sessionId - The session ID to generate cleanup plan for
+ *
+ * @example
+ * ```tsx
+ * const generateCleanupPlan = useKLGenerateCleanupPlan(sessionId);
+ *
+ * // Generate with defaults (useAi: true, cleanupMode: 'balanced')
+ * generateCleanupPlan.mutate({});
+ *
+ * // Generate with specific mode
+ * generateCleanupPlan.mutate({ cleanupMode: 'aggressive' });
+ *
+ * // Generate without AI
+ * generateCleanupPlan.mutate({ useAi: false });
+ * ```
  */
 export function useKLGenerateCleanupPlan(sessionId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (useAi: boolean = true) =>
-      knowledgeLibraryApi.generateCleanupPlan(sessionId, useAi),
-    onSuccess: (data) => {
-      queryClient.setQueryData(queryKeys.knowledgeLibrary.cleanupPlan(sessionId), data);
+    mutationFn: ({
+      useAi = true,
+      cleanupMode = 'balanced',
+    }: {
+      useAi?: boolean;
+      cleanupMode?: KLCleanupMode;
+    } = {}) => knowledgeLibraryApi.generateCleanupPlan(sessionId, { useAi, cleanupMode }),
+    onSuccess: () => {
+      // Invalidate cleanup plan cache to refetch fresh data
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.knowledgeLibrary.cleanupPlan(sessionId),
+      });
       // Also refresh session (phase may have changed)
       queryClient.invalidateQueries({
         queryKey: queryKeys.knowledgeLibrary.session(sessionId),

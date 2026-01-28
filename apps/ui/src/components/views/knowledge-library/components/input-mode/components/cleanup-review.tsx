@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 import type { useKLCleanupPlan } from '@/hooks/queries/use-knowledge-library';
 import { useKLBlocks } from '@/hooks/queries/use-knowledge-library';
 import type { KLBlockResponse } from '@automaker/types';
+import { SignalBadges } from './signal-badges';
 
 type CleanupTab = 'all' | 'pending' | 'keep' | 'discard';
 
@@ -213,6 +214,11 @@ function CleanupItemCard({ item, block, isDeciding, onDecide, viewMode }: Cleanu
           <Badge variant="outline" className="text-xs text-muted-foreground">
             {item.original_content_length.toLocaleString()} chars (truncated)
           </Badge>
+        )}
+
+        {/* Signal badges from AI analysis */}
+        {item.signals_detected && item.signals_detected.length > 0 && (
+          <SignalBadges signals={item.signals_detected} maxVisible={3} />
         )}
       </div>
 

@@ -164,6 +164,7 @@ export function useSessionWorkflow(): UseSessionWorkflowResult {
     draftUserMessage,
     setDraftUserMessage,
     resetSession,
+    cleanupMode,
   } = useKnowledgeLibraryStore();
 
   // Local state
@@ -580,8 +581,8 @@ export function useSessionWorkflow(): UseSessionWorkflowResult {
       // Connect WebSocket
       await connectWebSocket(session.id);
 
-      // Trigger cleanup generation
-      sendWebSocketCommand('generate_cleanup');
+      // Trigger cleanup generation with the selected mode
+      sendWebSocketCommand('generate_cleanup', { cleanup_mode: cleanupMode });
 
       addTranscriptEntry({
         id: `upload-${Date.now()}`,
@@ -603,6 +604,7 @@ export function useSessionWorkflow(): UseSessionWorkflowResult {
     connectWebSocket,
     sendWebSocketCommand,
     addTranscriptEntry,
+    cleanupMode,
   ]);
 
   const sendMessage = useCallback(
@@ -645,7 +647,10 @@ export function useSessionWorkflow(): UseSessionWorkflowResult {
         if (next.length === 0) {
           const command = getAutoGenerationCommand(workflowState);
           if (command) {
-            sendWebSocketCommand(command);
+            // Pass cleanup_mode when regenerating cleanup plan
+            const payload =
+              command === 'generate_cleanup' ? { cleanup_mode: cleanupMode } : undefined;
+            sendWebSocketCommand(command, payload);
             setWorkflowState(
               command === 'generate_cleanup' ? 'cleanup_generating' : 'routing_generating'
             );
@@ -664,7 +669,7 @@ export function useSessionWorkflow(): UseSessionWorkflowResult {
         return next;
       });
     },
-    [addTranscriptEntry, sendWebSocketCommand, workflowState]
+    [addTranscriptEntry, sendWebSocketCommand, workflowState, cleanupMode]
   );
 
   const approveCleanup = useCallback(async () => {

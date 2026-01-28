@@ -3,7 +3,8 @@
 from .content_mode import ContentMode
 from .content import BlockType, ContentBlock, SourceDocument
 from .library import LibraryFile, LibraryCategory
-from .cleanup_plan import CleanupDisposition, CleanupItem, CleanupPlan
+from .cleanup_plan import CleanupDisposition, CleanupItem, CleanupPlan, DetectedSignal
+from .cleanup_mode_setting import CleanupModeSetting
 from .routing_plan import (
     BlockDestination,
     BlockRoutingItem,
@@ -23,6 +24,8 @@ __all__ = [
     "CleanupDisposition",
     "CleanupItem",
     "CleanupPlan",
+    "DetectedSignal",
+    "CleanupModeSetting",
     "BlockDestination",
     "BlockRoutingItem",
     "MergePreview",

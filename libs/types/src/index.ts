@@ -184,6 +184,8 @@ export type {
   // Claude API profile types (deprecated)
   ClaudeApiProfile,
   ClaudeApiProfileTemplate,
+  // Cleanup automation types
+  CleanupAutomationSetting,
 } from './settings.js';
 export {
   DEFAULT_KEYBOARD_SHORTCUTS,
@@ -203,6 +205,13 @@ export {
   CLAUDE_PROVIDER_TEMPLATES,
   // Claude API profile constants (deprecated)
   CLAUDE_API_PROFILE_TEMPLATES,
+  // Cleanup automation constants
+  CLEANUP_AUTOMATION_THRESHOLDS,
+  CLEANUP_AUTOMATION_LABELS,
+  CLEANUP_AUTOMATION_DESCRIPTIONS,
+  DEFAULT_CLEANUP_AUTOMATION_SETTING,
+  getCleanupConfidenceThreshold,
+  shouldAutoAcceptCleanup,
 } from './settings.js';
 
 // Model display constants
@@ -491,9 +500,20 @@ export type {
   KLSessionListResponse,
   KLBlockResponse,
   KLBlockListResponse,
+  // Cleanup types (including signal detection)
+  KLCleanupMode,
+  KLDetectedSignalResponse,
   KLCleanupItemResponse,
   KLCleanupPlanResponse,
   KLCleanupDecisionRequest,
+} from './knowledge-library.js';
+export {
+  KL_CLEANUP_MODE_CONFIG,
+  KL_DEFAULT_CLEANUP_MODE,
+  getKLCleanupModeOptions,
+} from './knowledge-library.js';
+export type {
+  // Routing types
   KLDestinationOptionResponse,
   KLBlockRoutingItemResponse,
   KLMergePreviewResponse,

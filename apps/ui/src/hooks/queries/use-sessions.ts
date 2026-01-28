@@ -26,6 +26,9 @@ export function useSessions(includeArchived = false) {
     queryKey: queryKeys.sessions.all(includeArchived),
     queryFn: async (): Promise<SessionListItem[]> => {
       const api = getElectronAPI();
+      if (!api?.sessions) {
+        throw new Error('Sessions API not available');
+      }
       const result = await api.sessions.list(includeArchived);
       if (!result.success) {
         throw new Error(result.error || 'Failed to fetch sessions');
@@ -48,6 +51,9 @@ export function useSessionHistory(sessionId: string | undefined) {
     queryFn: async () => {
       if (!sessionId) throw new Error('No session ID');
       const api = getElectronAPI();
+      if (!api?.agent) {
+        throw new Error('Agent API not available');
+      }
       const result = await api.agent.getHistory(sessionId);
       if (!result.success) {
         throw new Error(result.error || 'Failed to fetch session history');
@@ -59,28 +65,5 @@ export function useSessionHistory(sessionId: string | undefined) {
     },
     enabled: !!sessionId,
     staleTime: STALE_TIMES.FEATURES, // Session history changes during conversations
-  });
-}
-
-/**
- * Fetch session message queue
- *
- * @param sessionId - ID of the session
- * @returns Query result with queued messages
- */
-export function useSessionQueue(sessionId: string | undefined) {
-  return useQuery({
-    queryKey: queryKeys.sessions.queue(sessionId ?? ''),
-    queryFn: async () => {
-      if (!sessionId) throw new Error('No session ID');
-      const api = getElectronAPI();
-      const result = await api.agent.queueList(sessionId);
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to fetch queue');
-      }
-      return result.queue ?? [];
-    },
-    enabled: !!sessionId,
-    staleTime: STALE_TIMES.RUNNING_AGENTS, // Queue changes frequently during use
   });
 }

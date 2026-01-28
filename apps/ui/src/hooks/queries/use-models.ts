@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getElectronAPI } from '@/lib/electron';
 import { queryKeys } from '@/lib/query-keys';
 import { STALE_TIMES } from '@/lib/query-client';
+import type { ModelDefinition } from '@automaker/types';
 
 interface CodexModel {
   id: string;
@@ -27,7 +28,7 @@ interface OpencodeModel {
   description: string;
   supportsTools: boolean;
   supportsVision: boolean;
-  tier: string;
+  tier?: 'basic' | 'standard' | 'premium';
   default?: boolean;
 }
 
@@ -39,13 +40,20 @@ interface OpencodeModel {
 export function useAvailableModels() {
   return useQuery({
     queryKey: queryKeys.models.available(),
-    queryFn: async () => {
+    queryFn: async (): Promise<ModelDefinition[]> => {
       const api = getElectronAPI();
+      if (!api?.model) {
+        throw new Error('Model API not available');
+      }
       const result = await api.model.getAvailable();
       if (!result.success) {
         throw new Error(result.error || 'Failed to fetch available models');
       }
-      return result.models ?? [];
+      return (result.models ?? []).map((model) => ({
+        ...model,
+        // Shared @automaker/types requires description.
+        description: model.description ?? '',
+      }));
     },
     staleTime: STALE_TIMES.MODELS,
   });
@@ -62,6 +70,9 @@ export function useCodexModels(refresh = false) {
     queryKey: queryKeys.models.codex(),
     queryFn: async (): Promise<CodexModel[]> => {
       const api = getElectronAPI();
+      if (!api?.codex) {
+        throw new Error('Codex API not available');
+      }
       const result = await api.codex.getModels(refresh);
       if (!result.success) {
         throw new Error(result.error || 'Failed to fetch Codex models');
@@ -123,6 +134,9 @@ export function useModelProviders() {
     queryKey: queryKeys.models.providers(),
     queryFn: async () => {
       const api = getElectronAPI();
+      if (!api?.model) {
+        throw new Error('Model API not available');
+      }
       const result = await api.model.checkProviders();
       if (!result.success) {
         throw new Error(result.error || 'Failed to fetch providers');

@@ -95,12 +95,16 @@ export function useWorktrees({
   );
 
   // fetchWorktrees for backward compatibility - now just triggers a refetch
-  const fetchWorktrees = useCallback(async () => {
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.worktrees.all(projectPath),
-    });
-    return refetch();
-  }, [projectPath, queryClient, refetch]);
+  const fetchWorktrees = useCallback(
+    async (_options?: { silent?: boolean }) => {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.worktrees.all(projectPath),
+      });
+      const result = await refetch();
+      return result.data?.removedWorktrees ?? [];
+    },
+    [projectPath, queryClient, refetch]
+  );
 
   const currentWorktreePath = currentWorktree?.path ?? null;
   const selectedWorktree = currentWorktreePath

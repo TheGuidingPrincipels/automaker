@@ -17,6 +17,22 @@ class CleanupDisposition(str, Enum):
     DISCARD = "discard"   # Only allowed with explicit user approval
 
 
+class DetectedSignal(BaseModel):
+    """A signal detected in the content that influences the keep/discard decision.
+
+    Signals are specific patterns that the AI identifies when analyzing content,
+    such as time-sensitive markers, explicit deletion instructions, or indicators
+    of permanent reference value.
+
+    Examples:
+        - type="date_reference", detail="Contains date '2023-01-15' suggesting time-bound context"
+        - type="explicit_marker", detail="Found 'TODO: delete' indicating temporary content"
+        - type="original_work", detail="Contains original analysis that appears valuable"
+    """
+    type: str
+    detail: str
+
+
 class CleanupItem(BaseModel):
     block_id: str
     heading_path: List[str] = Field(default_factory=list)
@@ -56,6 +72,12 @@ class CleanupItem(BaseModel):
         description="Highest similarity score with another block (0.0-1.0)",
     )
 
+    # Signal detection - specific patterns detected that influence the recommendation
+    signals_detected: List[DetectedSignal] = Field(
+        default_factory=list,
+        description="Signals detected in content (e.g., date_reference, explicit_marker, original_work)",
+    )
+
     @field_validator("confidence", mode="before")
     @classmethod
     def normalize_confidence_validator(cls, v: Any) -> float:
@@ -87,6 +109,18 @@ class CleanupPlan(BaseModel):
     duplicate_groups: List[List[str]] = Field(
         default_factory=list,
         description="Groups of block IDs that appear to be duplicates or near-duplicates",
+    )
+
+    # Cleanup mode used for generation
+    cleanup_mode: str = Field(
+        default="balanced",
+        description="Cleanup aggressiveness mode: conservative, balanced, or aggressive",
+    )
+
+    # Overall notes from AI about the cleanup analysis
+    overall_notes: str = Field(
+        default="",
+        description="Overall notes from AI about the cleanup analysis (e.g., summary of document content)",
     )
 
     @property

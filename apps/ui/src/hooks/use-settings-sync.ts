@@ -576,16 +576,27 @@ export async function refreshSettingsFromServer(): Promise<boolean> {
       sanitizedEnabledOpencodeModels.push(sanitizedOpencodeDefaultModel);
     }
 
+    // Some optional/legacy settings may not be represented in the GlobalSettings type.
+    // Read them from the raw payload when present and fall back to the current store state.
+    const serverSettingsRecord = serverSettings as unknown as Record<string, unknown>;
+
     // Sanitize Codex models
     const validCodexModelIds = new Set(getAllCodexModelIds());
     const DEFAULT_CODEX_MODEL: CodexModelId = 'codex-gpt-5.2-codex';
-    const sanitizedEnabledCodexModels = (serverSettings.enabledCodexModels ?? []).filter(
-      (id): id is CodexModelId => validCodexModelIds.has(id as CodexModelId)
+    const enabledCodexModelsRaw = Array.isArray(serverSettingsRecord.enabledCodexModels)
+      ? (serverSettingsRecord.enabledCodexModels as unknown[])
+      : currentAppState.enabledCodexModels;
+    const sanitizedEnabledCodexModels = enabledCodexModelsRaw.filter(
+      (id): id is CodexModelId =>
+        typeof id === 'string' && validCodexModelIds.has(id as CodexModelId)
     );
-    const sanitizedCodexDefaultModel = validCodexModelIds.has(
-      serverSettings.codexDefaultModel as CodexModelId
-    )
-      ? (serverSettings.codexDefaultModel as CodexModelId)
+
+    const codexDefaultModelRaw =
+      typeof serverSettingsRecord.codexDefaultModel === 'string'
+        ? serverSettingsRecord.codexDefaultModel
+        : currentAppState.codexDefaultModel;
+    const sanitizedCodexDefaultModel = validCodexModelIds.has(codexDefaultModelRaw as CodexModelId)
+      ? (codexDefaultModelRaw as CodexModelId)
       : DEFAULT_CODEX_MODEL;
 
     if (!sanitizedEnabledCodexModels.includes(sanitizedCodexDefaultModel)) {
@@ -594,13 +605,22 @@ export async function refreshSettingsFromServer(): Promise<boolean> {
 
     // Sanitize Gemini models
     const validGeminiModelIds = new Set(getAllGeminiModelIds());
-    const sanitizedEnabledGeminiModels = (serverSettings.enabledGeminiModels ?? []).filter(
-      (id): id is GeminiModelId => validGeminiModelIds.has(id as GeminiModelId)
+    const enabledGeminiModelsRaw = Array.isArray(serverSettingsRecord.enabledGeminiModels)
+      ? (serverSettingsRecord.enabledGeminiModels as unknown[])
+      : currentAppState.enabledGeminiModels;
+    const sanitizedEnabledGeminiModels = enabledGeminiModelsRaw.filter(
+      (id): id is GeminiModelId =>
+        typeof id === 'string' && validGeminiModelIds.has(id as GeminiModelId)
     );
+
+    const geminiDefaultModelRaw =
+      typeof serverSettingsRecord.geminiDefaultModel === 'string'
+        ? serverSettingsRecord.geminiDefaultModel
+        : currentAppState.geminiDefaultModel;
     const sanitizedGeminiDefaultModel = validGeminiModelIds.has(
-      serverSettings.geminiDefaultModel as GeminiModelId
+      geminiDefaultModelRaw as GeminiModelId
     )
-      ? (serverSettings.geminiDefaultModel as GeminiModelId)
+      ? (geminiDefaultModelRaw as GeminiModelId)
       : DEFAULT_GEMINI_MODEL;
 
     if (!sanitizedEnabledGeminiModels.includes(sanitizedGeminiDefaultModel)) {

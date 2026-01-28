@@ -98,6 +98,104 @@ export type OpenaiAuthMode = 'auth_token' | 'api_key';
 /** ThinkingLevel - Extended thinking levels for Claude models (reasoning intensity) */
 export type ThinkingLevel = 'none' | 'low' | 'medium' | 'high' | 'ultrathink';
 
+// ============================================================================
+// Cleanup Automation Settings - Controls for AI-assisted cleanup behavior
+// ============================================================================
+
+/**
+ * CleanupAutomationSetting - User preference for how automatic cleanup decisions are handled
+ *
+ * Controls the UI auto-accept behavior for cleanup suggestions in the Knowledge Library.
+ * This is distinct from KLCleanupMode (in knowledge-library.ts) which controls
+ * the AI's aggressiveness level when generating cleanup suggestions.
+ *
+ * - 'manual': User must manually review all suggestions (never auto-accept)
+ * - 'conservative': Auto-accept only high-confidence suggestions (>=0.90)
+ * - 'balanced': Auto-accept medium+ confidence suggestions (>=0.70)
+ * - 'aggressive': Auto-accept most suggestions (>=0.50)
+ * - 'auto': Auto-accept all suggestions regardless of confidence
+ *
+ * @see CLEANUP_AUTOMATION_THRESHOLDS for confidence threshold mapping
+ * @see KLCleanupMode for AI suggestion generation aggressiveness
+ */
+export type CleanupAutomationSetting =
+  | 'manual'
+  | 'conservative'
+  | 'balanced'
+  | 'aggressive'
+  | 'auto';
+
+/**
+ * Confidence threshold mapping for each cleanup mode.
+ * Values represent the minimum AI confidence score (0.0-1.0) required
+ * for a cleanup suggestion to be automatically accepted.
+ *
+ * - manual: Infinity (never auto-accept)
+ * - conservative: 0.9 (only very high confidence)
+ * - balanced: 0.7 (medium-high confidence)
+ * - aggressive: 0.5 (anything above chance)
+ * - auto: 0.0 (always auto-accept)
+ */
+export const CLEANUP_AUTOMATION_THRESHOLDS: Record<CleanupAutomationSetting, number> = {
+  manual: Infinity, // Never auto-accept
+  conservative: 0.9, // High confidence only
+  balanced: 0.7, // Medium-high confidence
+  aggressive: 0.5, // Low-medium confidence
+  auto: 0.0, // Always auto-accept
+};
+
+/**
+ * Human-readable labels for cleanup mode options
+ */
+export const CLEANUP_AUTOMATION_LABELS: Record<CleanupAutomationSetting, string> = {
+  manual: 'Manual Review',
+  conservative: 'Conservative (High Confidence)',
+  balanced: 'Balanced (Medium Confidence)',
+  aggressive: 'Aggressive (Low Confidence)',
+  auto: 'Fully Automatic',
+};
+
+/**
+ * Descriptions for cleanup mode options (for UI tooltips/help)
+ */
+export const CLEANUP_AUTOMATION_DESCRIPTIONS: Record<CleanupAutomationSetting, string> = {
+  manual: 'Review and approve all cleanup suggestions manually',
+  conservative: 'Auto-accept only high-confidence suggestions (≥90%)',
+  balanced: 'Auto-accept medium and high-confidence suggestions (≥70%)',
+  aggressive: 'Auto-accept most suggestions except low-confidence ones (≥50%)',
+  auto: 'Automatically accept all AI suggestions without review',
+};
+
+/**
+ * Get the confidence threshold for a cleanup mode setting.
+ * Returns the minimum confidence score required for auto-acceptance.
+ *
+ * @param mode - The cleanup mode setting
+ * @returns The confidence threshold (0.0-1.0, or Infinity for manual mode)
+ */
+export function getCleanupConfidenceThreshold(mode: CleanupAutomationSetting): number {
+  return CLEANUP_AUTOMATION_THRESHOLDS[mode];
+}
+
+/**
+ * Check if a cleanup suggestion should be auto-accepted based on the mode and confidence.
+ *
+ * @param mode - The cleanup mode setting
+ * @param confidence - The AI confidence score (0.0-1.0)
+ * @returns True if the suggestion should be auto-accepted
+ */
+export function shouldAutoAcceptCleanup(
+  mode: CleanupAutomationSetting,
+  confidence: number
+): boolean {
+  if (mode === 'manual') return false;
+  if (mode === 'auto') return true;
+  return confidence >= CLEANUP_AUTOMATION_THRESHOLDS[mode];
+}
+
+/** Default cleanup automation setting - balanced provides good automation with reasonable safety */
+export const DEFAULT_CLEANUP_AUTOMATION_SETTING: CleanupAutomationSetting = 'balanced';
+
 /**
  * Thinking token budget mapping based on Claude SDK documentation.
  * @see https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking

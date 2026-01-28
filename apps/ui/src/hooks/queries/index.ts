@@ -73,7 +73,7 @@ export {
 export { useIdeationPrompts, useIdeas, useIdea } from './use-ideation';
 
 // Sessions
-export { useSessions, useSessionHistory, useSessionQueue } from './use-sessions';
+export { useSessions, useSessionHistory } from './use-sessions';
 
 // Git
 export { useGitDiffs } from './use-git';

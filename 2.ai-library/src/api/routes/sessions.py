@@ -43,6 +43,7 @@ from ...models.session import ExtractionSession, SessionPhase, ConversationTurn,
 from ...models.content_mode import ContentMode
 from ...models.routing_plan import validate_overview_text
 from ...models.cleanup_plan import CleanupDisposition
+from ...models.cleanup_mode_setting import CleanupModeSetting
 from ...execution.writer import ContentWriter
 
 
@@ -306,8 +307,15 @@ async def generate_cleanup_plan(
     session_id: str,
     manager: SessionManagerDep,
     use_ai: bool = False,
+    cleanup_mode: CleanupModeSetting = CleanupModeSetting.BALANCED,
 ):
-    """Generate a cleanup plan for the session."""
+    """Generate a cleanup plan for the session.
+
+    Args:
+        session_id: The session ID
+        use_ai: Whether to use AI-powered generation
+        cleanup_mode: Cleanup aggressiveness mode - "conservative", "balanced", or "aggressive"
+    """
     session = await require_session(session_id, manager)
 
     if not session.source:
@@ -319,7 +327,7 @@ async def generate_cleanup_plan(
     try:
         if use_ai:
             # Use AI-powered generation (streams events)
-            async for event in manager.generate_cleanup_plan_with_ai(session_id):
+            async for event in manager.generate_cleanup_plan_with_ai(session_id, cleanup_mode=cleanup_mode):
                 # For non-streaming endpoint, just consume events
                 pass
             # Reload session with updated plan
@@ -995,8 +1003,33 @@ async def session_stream(
                         )
                         continue
 
+                    # Parse cleanup_mode from message (default to balanced)
+                    from ...models.cleanup_mode_setting import CleanupModeSetting
+                    cleanup_mode_raw = message.get("cleanup_mode", "balanced")
+                    if not isinstance(cleanup_mode_raw, str):
+                        await _send_stream_event(
+                            websocket,
+                            "error",
+                            session_id,
+                            {
+                                "message": f"Invalid cleanup_mode: {cleanup_mode_raw}. Must be a string ('conservative', 'balanced', or 'aggressive')",
+                            },
+                        )
+                        continue
+                    cleanup_mode_str = cleanup_mode_raw.strip()
+                    try:
+                        cleanup_mode = CleanupModeSetting(cleanup_mode_str.lower())
+                    except ValueError:
+                        await _send_stream_event(
+                            websocket,
+                            "error",
+                            session_id,
+                            {"message": f"Invalid cleanup_mode: {cleanup_mode_str}. Must be 'conservative', 'balanced', or 'aggressive'"},
+                        )
+                        continue
+
                     # Stream cleanup plan generation
-                    async for event in manager.generate_cleanup_plan_with_ai(session_id):
+                    async for event in manager.generate_cleanup_plan_with_ai(session_id, cleanup_mode=cleanup_mode):
                         sent = await _send_stream_event(
                             websocket,
                             event.type.value if hasattr(event.type, "value") else str(event.type),
