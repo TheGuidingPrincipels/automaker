@@ -10,7 +10,7 @@
 
 ## Summary
 
-Implement a comprehensive cleanup mode system with three selectable modes (Conservative, Balanced, Aggressive). Each mode has its own optimized prompt that is loaded independently - only the selected mode's prompt is sent to the AI, ensuring token efficiency. The system includes structured discard/keep criteria, signal detection, and a frontend settings UI.
+Implement a cleanup mode system with three selectable modes (Conservative, Balanced, Aggressive). Each mode has its own optimized prompt that is loaded independently - only the selected mode's prompt is sent to the AI, ensuring token efficiency. The system includes structured discard/keep criteria, signal detection, and a frontend settings UI. Cleanup mode is selected **pre-session** (persisted) and treated as **locked for the session** (no mid-session changes) to keep implementation simple and deterministic.
 
 ## Problem Statement
 
@@ -455,7 +455,7 @@ Return the appropriate system prompt for the selected cleanup mode.
         cleanup_mode: One of "conservative", "balanced", "aggressive"
 
     Returns:
-        The system prompt string for the selected mode (~800-900 tokens)
+        The system prompt string for the selected mode
     """
     mode = cleanup_mode.lower()
 
@@ -486,6 +486,9 @@ pending_questions: Optional[List[str]] = None,
 """
 Build the user prompt for cleanup plan generation.
 
+    NOTE: Keep preview/truncation metadata aligned with the existing implementation
+    (`CONTENT_PREVIEW_LIMIT = 800` chars and include content length + truncated flag).
+
     Args:
         blocks: List of block dictionaries with id, content, type, heading_path
         source_file: Name of the source file
@@ -501,16 +504,19 @@ Build the user prompt for cleanup plan generation.
 
     for block in blocks:
         heading = " > ".join(block.get("heading_path", [])) or "(no heading)"
-        # Keep previews bounded to control token cost (align with current system defaults)
-        preview = block["content"][:300]
-        if len(block["content"]) > 300:
+        content_length = len(block.get("content", ""))
+        is_truncated = content_length > CONTENT_PREVIEW_LIMIT
+        preview = block.get("content", "")[:CONTENT_PREVIEW_LIMIT]
+        if is_truncated:
             preview += "..."
+        truncation_note = "(truncated)" if is_truncated else "(full)"
 
         block_descriptions.append(
             f"### Block {block['id']}\n"
             f"- Type: {block['type']}\n"
             f"- Heading Path: {heading}\n"
-            f"- Content Preview:\n```\n{preview}\n```\n"
+            f"- Content Length: {content_length} chars {truncation_note}\n"
+            f"- Content:\n```\n{preview}\n```\n"
         )
 
     blocks_text = "\n".join(block_descriptions)
@@ -625,73 +631,57 @@ __all__ = [
 
 **File:** `2.ai-library/src/api/schemas.py`
 
-Update response schemas (keep payloads small; do NOT embed full block content in cleanup plan payloads — rely on `GET /api/sessions/{session_id}/blocks` per Plan 003):
+Update response schemas **additively** (keep payloads small; do NOT embed full block content in cleanup plan payloads — rely on `GET /api/sessions/{session_id}/blocks` per Plan 003). Do **not** remove existing fields already used by the UI (AI status + duplicate detection + analysis tracking).
 
 ```python
+# NEW: add a small response model (near existing Cleanup schemas)
 class DetectedSignalResponse(BaseModel):
     """Response for a detected signal."""
     type: str
     detail: str
 
 
+# UPDATE (additive): extend the existing CleanupItemResponse
 class CleanupItemResponse(BaseModel):
-    """Response for a cleanup item."""
-    block_id: str
-    heading_path: List[str]
-    content_preview: str
-    suggested_disposition: str
-    suggestion_reason: str
-    confidence: float = 0.8
+    # ...existing fields...
+
+    # NEW: signal detection (default empty)
     signals_detected: List[DetectedSignalResponse] = Field(default_factory=list)
-    final_disposition: Optional[str] = None
+
+    # Keep existing fields already present in this repo:
+    # - ai_analyzed, content_truncated, original_content_length
+    # - similar_block_ids, similarity_score
 
     @classmethod
-    def from_item(cls, item) -> "CleanupItemResponse":
-        from ..models.cleanup_plan import CleanupItem
+    def from_item(cls, item: CleanupItem) -> "CleanupItemResponse":
         return cls(
-            block_id=item.block_id,
-            heading_path=item.heading_path,
-            content_preview=item.content_preview,
-            suggested_disposition=item.suggested_disposition,
-            suggestion_reason=item.suggestion_reason,
-            confidence=getattr(item, 'confidence', 0.8),
+            # ...existing mappings...
             signals_detected=[
                 DetectedSignalResponse(type=s.type, detail=s.detail)
-                for s in getattr(item, 'signals_detected', [])
+                for s in getattr(item, "signals_detected", [])
             ],
-            final_disposition=item.final_disposition,
         )
 
 
+# UPDATE (additive): extend the existing CleanupPlanResponse
 class CleanupPlanResponse(BaseModel):
-    """Response with cleanup plan."""
-    session_id: str
-    source_file: str
-    created_at: datetime
+    # ...existing fields...
+
+    # NEW: mode + overall notes (mode chosen pre-session and returned for transparency)
     overall_notes: str = ""
-    cleanup_mode: str = "balanced"  # NEW: Include mode in response
-    items: List[CleanupItemResponse]
-    all_decided: bool
-    approved: bool
-    approved_at: Optional[datetime] = None
-    pending_count: int
-    total_count: int
+    cleanup_mode: str = "balanced"
+
+    # Keep existing fields already present in this repo:
+    # - ai_generated, generation_error, duplicate_groups
+    # - pending_count, total_count
 
     @classmethod
-    def from_plan(cls, plan) -> "CleanupPlanResponse":
-        pending_count = sum(1 for item in plan.items if item.final_disposition is None)
+    def from_plan(cls, plan: CleanupPlan) -> "CleanupPlanResponse":
+        # ...existing pending_count logic...
         return cls(
-            session_id=plan.session_id,
-            source_file=plan.source_file,
-            created_at=plan.created_at,
-            overall_notes=getattr(plan, 'overall_notes', ''),
-            cleanup_mode=getattr(plan, 'cleanup_mode', 'balanced'),
-            items=[CleanupItemResponse.from_item(item) for item in plan.items],
-            all_decided=plan.all_decided,
-            approved=plan.approved,
-            approved_at=plan.approved_at,
-            pending_count=pending_count,
-            total_count=len(plan.items),
+            # ...existing mappings...
+            overall_notes=getattr(plan, "overall_notes", ""),
+            cleanup_mode=getattr(plan, "cleanup_mode", "balanced"),
         )
 ```
 
@@ -699,7 +689,7 @@ class CleanupPlanResponse(BaseModel):
 
 **File:** `2.ai-library/src/api/routes/sessions.py`
 
-Keep the current REST contract (`use_ai` query param), add `cleanup_mode` as a validated query param, and preserve the existing streaming generator architecture.
+Keep the current REST contract (`use_ai` query param), add `cleanup_mode` as a validated query param (FastAPI enum validation => invalid values return **422**), and preserve the existing streaming generator architecture.
 
 ```python
 from ..schemas import CleanupPlanResponse
@@ -986,74 +976,39 @@ if command == "generate_cleanup":
 
 **File:** `2.ai-library/src/models/cleanup_plan.py`
 
+Update the model **additively** (do not remove existing analysis tracking + duplicate detection + AI transparency fields already present in this repo).
+
 ```python
-from enum import Enum
-from datetime import datetime
-from typing import Optional, List
-from pydantic import BaseModel, Field
-
-
-class CleanupDisposition(str, Enum):
-    KEEP = "keep"
-    DISCARD = "discard"
-
-
-class SignalType(str, Enum):
-    """Types of signals detected in content."""
-    # Discard signals
-    TIME_SENSITIVE = "time_sensitive"
-    COMPLETED_ITEMS = "completed_items"
-    EPHEMERAL_LINK = "ephemeral_link"
-    STRUCTURAL_NOISE = "structural_noise"
-    SOURCE_ONLY = "source_only"
-    # Keep signals
-    ORIGINAL_WORK = "original_work"
-    REFERENCE_VALUE = "reference_value"
-    EVERGREEN = "evergreen"
-    CURATED_COLLECTION = "curated_collection"
-
-
+# NEW: add a small Pydantic model (near other cleanup plan models)
 class DetectedSignal(BaseModel):
     """A signal detected in the content."""
     type: str
     detail: str
 
 
+# UPDATE (additive): extend existing CleanupItem
 class CleanupItem(BaseModel):
-    """Single item in cleanup plan."""
-    block_id: str
-    heading_path: List[str] = Field(default_factory=list)
-    content_preview: str
+    # ...existing fields...
 
-    # Model suggestion
-    suggested_disposition: str = CleanupDisposition.KEEP
-    suggestion_reason: str = ""
-    confidence: float = 0.8
+    # NEW: signal detection (default empty)
     signals_detected: List[DetectedSignal] = Field(default_factory=list)
 
-    # User decision
-    final_disposition: Optional[str] = None
+    # Keep existing fields already present in this repo:
+    # - ai_analyzed, content_truncated, original_content_length
+    # - similar_block_ids, similarity_score
 
 
+# UPDATE (additive): extend existing CleanupPlan
 class CleanupPlan(BaseModel):
-    """Complete cleanup plan for a session."""
-    session_id: str
-    source_file: str
-    created_at: datetime = Field(default_factory=datetime.now)
+    # ...existing fields...
+
+    # NEW: mode + overall notes
     overall_notes: str = ""
     cleanup_mode: str = "balanced"
 
-    items: List[CleanupItem] = Field(default_factory=list)
-
-    approved: bool = False
-    approved_at: Optional[datetime] = None
-
-    @property
-    def all_decided(self) -> bool:
-        return all(
-            i.final_disposition in (CleanupDisposition.KEEP, CleanupDisposition.DISCARD)
-            for i in self.items
-        )
+    # Keep existing fields already present in this repo:
+    # - ai_generated, generation_error
+    # - duplicate_groups
 ```
 
 ---
@@ -1074,45 +1029,56 @@ export interface KLDetectedSignal {
   detail: string;
 }
 
-/** Single cleanup item */
+/**
+ * UPDATE (additive): extend existing interfaces (do NOT remove existing fields)
+ *
+ * - KLCleanupItemResponse: add `signals_detected`
+ *   - Preserve existing fields already present in this repo:
+ *     - ai_analyzed, content_truncated, original_content_length
+ *     - similar_block_ids, similarity_score
+ * - KLCleanupPlanResponse: add `cleanup_mode` + `overall_notes`
+ *   - Preserve existing fields already present in this repo:
+ *     - ai_generated, generation_error, duplicate_groups
+ * - KLStreamCommandRequest: add optional `cleanup_mode` (only used for generate_cleanup)
+ */
+
 export interface KLCleanupItemResponse {
-  block_id: string;
-  heading_path: string[];
-  content_preview: string;
-  suggested_disposition: KLCleanupDisposition;
-  suggestion_reason: string;
-  confidence: number;
+  // ...existing fields...
   signals_detected: KLDetectedSignal[];
-  final_disposition: KLCleanupDisposition | null;
 }
 
-/** Cleanup plan response */
 export interface KLCleanupPlanResponse {
-  session_id: string;
-  source_file: string;
-  created_at: string;
+  // ...existing fields...
   overall_notes: string;
   cleanup_mode: KLCleanupMode;
-  items: KLCleanupItemResponse[];
-  all_decided: boolean;
-  approved: boolean;
-  approved_at: string | null;
-  pending_count: number;
-  total_count: number;
 }
 
-/** WebSocket command request (extend existing type) */
 export interface KLStreamCommandRequest {
   command: KLStreamCommand;
 
-  /** NEW: for generate_cleanup */
+  // NEW (generate_cleanup only)
   cleanup_mode?: KLCleanupMode;
 
-  /** Existing command payloads */
+  // Existing command payloads
   message?: string;
   question_id?: string;
   answer?: string;
 }
+```
+
+#### Step 5.1b: Export new types from @automaker/types
+
+**File:** `libs/types/src/index.ts`
+
+Add the new exports so the UI can import them from `@automaker/types`:
+
+```typescript
+// Add to the existing export list from './knowledge-library.js' (do not create a second export block):
+export {
+  // ...existing exports...
+  KLCleanupMode,
+  KLDetectedSignal,
+} from './knowledge-library.js';
 ```
 
 #### Step 5.2: Update Zustand Store
@@ -1155,6 +1121,12 @@ partialize: (state) => ({
   cleanupMode: state.cleanupMode,  // NEW: Persist cleanup mode
 }),
 ```
+
+**Also update the persistence unit test**
+
+**File:** `apps/ui/src/store/knowledge-library-store.test.ts`
+
+Update the “persists only …” assertion to include `cleanupMode` (and adjust the test description accordingly).
 
 #### Step 5.3: Update API Client
 
@@ -1374,25 +1346,20 @@ import { SignalBadges } from './signal-badges';
 <SignalBadges signals={item.signals_detected} />;
 ```
 
-#### Step 5.7: Add CleanupModeSelector to Control Dock
+#### Step 5.7: Add CleanupModeSelector to Control Row (Pre-Session)
 
-**File:** `apps/ui/src/components/views/knowledge-library/components/input-mode/control-dock.tsx`
+**File:** `apps/ui/src/components/views/knowledge-library/components/input-mode/components/control-row.tsx`
 
-Add the selector to the control dock (around line 167):
+Add the selector to the **pre-session** control row (before “Start Session”). Do **not** render it once a session has started (cleanup mode is locked mid-session).
 
 ```tsx
-import { CleanupModeSelector } from './components/cleanup-mode-selector';
+import { CleanupModeSelector } from './cleanup-mode-selector';
 
-// In the left column (pre-session UI), render above the Start button so the user
-// can choose the mode before generation begins:
-{!hasActiveSession ? (
-  <div className="space-y-3">
-    <CleanupModeSelector />
-    {/* existing Start Session UI */}
-  </div>
-) : (
-  /* existing active-session UI */
-)}
+// In the pre-session return branch (when !hasActiveSession):
+<CleanupModeSelector />;
+{
+  /* existing Start Session UI */
+}
 ```
 
 #### Step 5.8: Update Workflow to Use Cleanup Mode
@@ -1402,10 +1369,11 @@ import { CleanupModeSelector } from './components/cleanup-mode-selector';
 Update to pass cleanup mode whenever the UI triggers cleanup generation (initial start + auto-regeneration after answering questions):
 
 ```typescript
-import { useKnowledgeLibraryStore } from '@/store/knowledge-library-store';
-
-// In the hook, get cleanup mode from store
-const { cleanupMode } = useKnowledgeLibraryStore();
+// In the existing store destructuring near the top of the hook:
+const {
+  // ...existing store fields...
+  cleanupMode,
+} = useKnowledgeLibraryStore();
 
 const sendGenerateCleanup = () => {
   sendWebSocketCommand('generate_cleanup', { cleanup_mode: cleanupMode });
@@ -1441,10 +1409,12 @@ sendGenerateCleanup();
 | `2.ai-library/src/conversation/flow.py`                                                              | Pass cleanup_mode to SDK                                        |
 | `2.ai-library/src/sdk/client.py`                                                                     | Use factory function for prompts                                |
 | `libs/types/src/knowledge-library.ts`                                                                | Add cleanup mode + signals + WS payload typing                  |
+| `libs/types/src/index.ts`                                                                            | Export KLCleanupMode + KLDetectedSignal                         |
 | `apps/ui/src/store/knowledge-library-store.ts`                                                       | Add cleanupMode state                                           |
+| `apps/ui/src/store/knowledge-library-store.test.ts`                                                  | Update persistence assertion to include cleanupMode             |
 | `apps/ui/src/lib/knowledge-library-api.ts`                                                           | Pass cleanupMode in request                                     |
 | `apps/ui/src/hooks/queries/use-knowledge-library.ts`                                                 | Update mutation signature                                       |
-| `apps/ui/src/components/views/knowledge-library/components/input-mode/control-dock.tsx`              | Add mode selector                                               |
+| `apps/ui/src/components/views/knowledge-library/components/input-mode/components/control-row.tsx`    | Add mode selector (pre-session only)                            |
 | `apps/ui/src/components/views/knowledge-library/components/input-mode/components/cleanup-review.tsx` | Render SignalBadges on items                                    |
 | `apps/ui/src/components/views/knowledge-library/hooks/use-session-workflow.ts`                       | Use cleanupMode                                                 |
 
@@ -1456,11 +1426,8 @@ sendGenerateCleanup();
 
 - [ ] CleanupModeSetting enum has correct values and properties
 - [ ] get_cleanup_system_prompt returns correct prompt for each mode
-- [ ] Conservative mode prompt is ~800 tokens
-- [ ] Balanced mode prompt is ~900 tokens
-- [ ] Aggressive mode prompt is ~900 tokens
-- [ ] Only ONE prompt is sent per request (token efficiency)
-- [ ] REST endpoint accepts cleanup_mode as a validated query param (and rejects invalid values with 422)
+- [ ] get_cleanup_system_prompt returns exactly ONE of the three prompts (no concatenation)
+- [ ] REST endpoint accepts cleanup_mode as a validated query param (invalid values => 422)
 - [ ] WebSocket generate_cleanup command accepts cleanup_mode and rejects invalid values as an error event
 - [ ] Mode flows end-to-end through the generation chain (UI → WebSocket/REST → manager → flow → SDK → prompt factory)
 - [ ] Response includes cleanup_mode field
@@ -1481,19 +1448,21 @@ sendGenerateCleanup();
 - [ ] Mode persists across page refreshes
 - [ ] Mode is passed to backend when generating cleanup (WebSocket payload; REST query param if used)
 - [ ] SignalBadges render with correct icons and colors
+- [ ] Store persistence test updated to include cleanupMode
 
 ---
 
 ## Acceptance Criteria
 
-- [ ] Users can select Conservative, Balanced, or Aggressive mode
+- [ ] Users can select Conservative, Balanced, or Aggressive mode (pre-session)
 - [ ] Selected mode persists in localStorage
-- [ ] Only the selected mode's prompt is sent to AI (~800-900 tokens, NOT ~2400)
+- [ ] Cleanup mode is not changeable mid-session (locked after session start)
+- [ ] Only the selected mode's prompt is sent to AI (single-mode prompt; no concatenation of all modes)
 - [ ] Conservative mode keeps 90%+ content, only obvious noise flagged
 - [ ] Balanced mode provides smart suggestions (20-30% discard for mixed docs)
 - [ ] Aggressive mode actively flags time-sensitive content (40-50% discard)
 - [ ] Signals are detected and displayed in UI
-- [ ] Mode is visible in control dock before starting session
+- [ ] Mode selector is visible in the pre-session Control Row (before starting session)
 - [ ] Invalid cleanup_mode is rejected (REST 422 / WebSocket error event) — no silent fallback to Balanced
 
 ---

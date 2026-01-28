@@ -129,12 +129,11 @@ validate_worktree() {
 
 All worktree-aware commands accept optional worktree selectors:
 
-| Command         | No Argument           | With Number               | With Name                    |
-| --------------- | --------------------- | ------------------------- | ---------------------------- |
-| `/sync`         | Sync current worktree | `/sync 1` syncs feature-1 | `/sync feature-2`            |
-| `/review`       | Reviews current       | `/review 1`               | `/review feature-2`          |
-| `/deepreview`   | Current, auto-detect  | `/deepreview 1`           | `/deepreview feature-1 main` |
-| `/smart-commit` | Commits in current    | `/smart-commit 1`         | `/smart-commit feature-2`    |
+| Command         | No Argument           | With Number               | With Name                 |
+| --------------- | --------------------- | ------------------------- | ------------------------- |
+| `/sync`         | Sync current worktree | `/sync 1` syncs feature-1 | `/sync feature-2`         |
+| `/review`       | Reviews current       | `/review 1`               | `/review feature-2 main`  |
+| `/smart-commit` | Commits in current    | `/smart-commit 1`         | `/smart-commit feature-2` |
 
 ### Argument Parsing for Commands
 
@@ -154,11 +153,11 @@ The commands support flexible arguments:
 **Examples:**
 
 ```
-/deepreview                    # Current worktree, auto-detect main/master
-/deepreview 1                  # feature-1 worktree, auto-detect branch
-/deepreview 2                  # feature-2 worktree, auto-detect branch
-/deepreview develop            # Current worktree, compare to develop
-/deepreview 1 develop          # feature-1 worktree, compare to develop
+/review                        # Current worktree, uncommitted changes
+/review 1                      # feature-1 worktree, uncommitted changes
+/review main                   # Current worktree, compare to main branch
+/review develop                # Current worktree, compare to develop branch
+/review 1 develop              # feature-1 worktree, compare to develop branch
 ```
 
 ## Running Commands in a Worktree

@@ -60,11 +60,16 @@ Our command system follows a **token-efficient architecture**:
 
 ### Code Review
 
-| Command       | File            | Purpose                      |
-| ------------- | --------------- | ---------------------------- |
-| `/review`     | `review.md`     | Deep code review (10 agents) |
-| `/deepreview` | `deepreview.md` | Extended review              |
-| `/thorough`   | `thorough.md`   | 3-pass verification          |
+| Command     | File          | Purpose                                   |
+| ----------- | ------------- | ----------------------------------------- |
+| `/review`   | `review.md`   | Comprehensive review (10 agents, 2 modes) |
+| `/thorough` | `thorough.md` | 3-pass verification                       |
+
+### Plan Execution
+
+| Command         | File              | Purpose                            |
+| --------------- | ----------------- | ---------------------------------- |
+| `/execute-plan` | `execute-plan.md` | Generate prompt for plan execution |
 
 ### Other
 

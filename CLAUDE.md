@@ -74,13 +74,14 @@ npm run build:packages   # Build shared packages first
 
 **Full guide**: See `.commands.md` in repo root for complete reference with decision flowchart.
 
-| Command            | When to Use                       |
-| ------------------ | --------------------------------- |
-| `/automaker-arch`  | Starting any feature work         |
-| `/worktree`        | Port issues, parallel development |
-| `/new-feature`     | Building a new major feature      |
-| `/test-guide`      | Running tests, debugging failures |
-| `/ai-library-api`  | Knowledge Library backend         |
-| `/ai-library-ui`   | Knowledge Library frontend        |
-| `/session-cleanup` | Session cleanup workflow          |
-| `/commands-meta`   | Creating/updating commands        |
+| Command            | When to Use                        |
+| ------------------ | ---------------------------------- |
+| `/automaker-arch`  | Starting any feature work          |
+| `/worktree`        | Port issues, parallel development  |
+| `/new-feature`     | Building a new major feature       |
+| `/test-guide`      | Running tests, debugging failures  |
+| `/ai-library-api`  | Knowledge Library backend          |
+| `/ai-library-ui`   | Knowledge Library frontend         |
+| `/session-cleanup` | Session cleanup workflow           |
+| `/commands-meta`   | Creating/updating commands         |
+| `/execute-plan`    | Generate prompt for plan execution |
