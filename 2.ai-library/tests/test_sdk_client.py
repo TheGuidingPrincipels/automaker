@@ -6,6 +6,7 @@ import pytest
 from src.sdk.client import ClaudeCodeClient, SDKResponse
 from src.utils.validation import normalize_confidence
 from src.models.cleanup_plan import CleanupDisposition
+from src.models.cleanup_mode_setting import CleanupModeSetting
 
 
 @pytest.mark.asyncio
@@ -190,6 +191,244 @@ async def test_generate_cleanup_plan_omitted_block_defaults_confidence_and_reaso
     omitted = next(i for i in plan.items if i.block_id == "block_002")
     assert omitted.confidence == 0.5
     assert "omitted" in omitted.suggestion_reason.lower()
+
+
+@pytest.mark.asyncio
+async def test_generate_cleanup_plan_downgrades_low_confidence_discard(monkeypatch):
+    """Discard suggestions below the mode threshold must be downgraded to keep."""
+    blocks = [
+        {"id": "block_001", "type": "paragraph", "content": "Alpha", "heading_path": ["H1"]},
+    ]
+
+    async def fake_query(self, system_prompt, user_prompt):
+        return SDKResponse(
+            success=True,
+            data={
+                "cleanup_items": [
+                    {
+                        "block_id": "block_001",
+                        "suggested_disposition": "discard",
+                        "suggestion_reason": "Low confidence discard suggestion",
+                        "confidence": 0.5,
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(ClaudeCodeClient, "_query", fake_query)
+
+    client = ClaudeCodeClient()
+    plan = await client.generate_cleanup_plan(
+        session_id="sess_123",
+        source_file="source.md",
+        blocks=blocks,
+        content_mode="strict",
+        cleanup_mode=CleanupModeSetting.CONSERVATIVE,
+    )
+
+    item = plan.items[0]
+    assert item.suggested_disposition == CleanupDisposition.KEEP
+    assert "downgraded" in item.suggestion_reason.lower()
+
+
+@pytest.mark.asyncio
+async def test_confidence_guardrail_at_exact_threshold(monkeypatch):
+    """Confidence exactly at threshold should NOT downgrade."""
+    blocks = [
+        {"id": "block_001", "type": "paragraph", "content": "Alpha", "heading_path": ["H1"]},
+    ]
+
+    async def fake_query(self, system_prompt, user_prompt):
+        return SDKResponse(
+            success=True,
+            data={
+                "cleanup_items": [
+                    {
+                        "block_id": "block_001",
+                        "suggested_disposition": "discard",
+                        "suggestion_reason": "At threshold discard suggestion",
+                        "confidence": 0.85,  # Exactly at CONSERVATIVE threshold
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(ClaudeCodeClient, "_query", fake_query)
+
+    client = ClaudeCodeClient()
+    plan = await client.generate_cleanup_plan(
+        session_id="sess_123",
+        source_file="source.md",
+        blocks=blocks,
+        content_mode="strict",
+        cleanup_mode=CleanupModeSetting.CONSERVATIVE,
+    )
+
+    item = plan.items[0]
+    # Should NOT be downgraded - confidence is exactly at threshold
+    assert item.suggested_disposition == CleanupDisposition.DISCARD
+    assert "downgraded" not in item.suggestion_reason.lower()
+
+
+@pytest.mark.asyncio
+async def test_confidence_guardrail_just_below_threshold(monkeypatch):
+    """Confidence just below threshold should downgrade."""
+    blocks = [
+        {"id": "block_001", "type": "paragraph", "content": "Alpha", "heading_path": ["H1"]},
+    ]
+
+    async def fake_query(self, system_prompt, user_prompt):
+        return SDKResponse(
+            success=True,
+            data={
+                "cleanup_items": [
+                    {
+                        "block_id": "block_001",
+                        "suggested_disposition": "discard",
+                        "suggestion_reason": "Below threshold discard suggestion",
+                        "confidence": 0.84,  # Just below CONSERVATIVE threshold of 0.85
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(ClaudeCodeClient, "_query", fake_query)
+
+    client = ClaudeCodeClient()
+    plan = await client.generate_cleanup_plan(
+        session_id="sess_123",
+        source_file="source.md",
+        blocks=blocks,
+        content_mode="strict",
+        cleanup_mode=CleanupModeSetting.CONSERVATIVE,
+    )
+
+    item = plan.items[0]
+    # Should be downgraded - confidence is below threshold
+    assert item.suggested_disposition == CleanupDisposition.KEEP
+    assert "downgraded" in item.suggestion_reason.lower()
+
+
+@pytest.mark.asyncio
+async def test_confidence_guardrail_balanced_mode(monkeypatch):
+    """Balanced mode uses 0.70 threshold."""
+    blocks = [
+        {"id": "block_001", "type": "paragraph", "content": "Alpha", "heading_path": ["H1"]},
+    ]
+
+    async def fake_query(self, system_prompt, user_prompt):
+        return SDKResponse(
+            success=True,
+            data={
+                "cleanup_items": [
+                    {
+                        "block_id": "block_001",
+                        "suggested_disposition": "discard",
+                        "suggestion_reason": "Balanced mode discard suggestion",
+                        "confidence": 0.69,  # Just below BALANCED threshold of 0.70
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(ClaudeCodeClient, "_query", fake_query)
+
+    client = ClaudeCodeClient()
+    plan = await client.generate_cleanup_plan(
+        session_id="sess_123",
+        source_file="source.md",
+        blocks=blocks,
+        content_mode="strict",
+        cleanup_mode=CleanupModeSetting.BALANCED,
+    )
+
+    item = plan.items[0]
+    # Should be downgraded - confidence 0.69 is below BALANCED threshold 0.70
+    assert item.suggested_disposition == CleanupDisposition.KEEP
+    assert "downgraded" in item.suggestion_reason.lower()
+
+
+@pytest.mark.asyncio
+async def test_confidence_guardrail_aggressive_mode(monkeypatch):
+    """Aggressive mode uses 0.55 threshold."""
+    blocks = [
+        {"id": "block_001", "type": "paragraph", "content": "Alpha", "heading_path": ["H1"]},
+    ]
+
+    async def fake_query(self, system_prompt, user_prompt):
+        return SDKResponse(
+            success=True,
+            data={
+                "cleanup_items": [
+                    {
+                        "block_id": "block_001",
+                        "suggested_disposition": "discard",
+                        "suggestion_reason": "Aggressive mode discard suggestion",
+                        "confidence": 0.54,  # Just below AGGRESSIVE threshold of 0.55
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(ClaudeCodeClient, "_query", fake_query)
+
+    client = ClaudeCodeClient()
+    plan = await client.generate_cleanup_plan(
+        session_id="sess_123",
+        source_file="source.md",
+        blocks=blocks,
+        content_mode="strict",
+        cleanup_mode=CleanupModeSetting.AGGRESSIVE,
+    )
+
+    item = plan.items[0]
+    # Should be downgraded - confidence 0.54 is below AGGRESSIVE threshold 0.55
+    assert item.suggested_disposition == CleanupDisposition.KEEP
+    assert "downgraded" in item.suggestion_reason.lower()
+
+
+@pytest.mark.asyncio
+async def test_generate_cleanup_plan_sanitizes_secret_like_strings(monkeypatch):
+    """Suggestion reasons and signal details should redact secret-like strings."""
+    blocks = [
+        {"id": "block_001", "type": "paragraph", "content": "Alpha", "heading_path": ["H1"]},
+    ]
+
+    async def fake_query(self, system_prompt, user_prompt):
+        return SDKResponse(
+            success=True,
+            data={
+                "cleanup_items": [
+                    {
+                        "block_id": "block_001",
+                        "suggested_disposition": "keep",
+                        "suggestion_reason": "API key: sk-testsecret1234567890",
+                        "confidence": 0.9,
+                        "signals": [
+                            {"type": "explicit_marker", "detail": "token=abcd1234EFGH"},
+                        ],
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(ClaudeCodeClient, "_query", fake_query)
+
+    client = ClaudeCodeClient()
+    plan = await client.generate_cleanup_plan(
+        session_id="sess_123",
+        source_file="source.md",
+        blocks=blocks,
+        content_mode="strict",
+        cleanup_mode=CleanupModeSetting.BALANCED,
+    )
+
+    item = plan.items[0]
+    assert "sk-testsecret" not in item.suggestion_reason
+    assert "[REDACTED]" in item.suggestion_reason
+    assert item.signals_detected
+    assert "abcd1234" not in item.signals_detected[0].detail
+    assert "[REDACTED]" in item.signals_detected[0].detail
 
 
 @pytest.mark.asyncio

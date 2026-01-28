@@ -18,6 +18,7 @@ from ..models.session import ExtractionSession, SessionPhase
 from ..models.content import SourceDocument
 from ..models.content_mode import ContentMode
 from ..models.cleanup_plan import CleanupPlan, CleanupItem, CleanupDisposition
+from ..models.cleanup_mode_setting import CleanupModeSetting
 from ..models.routing_plan import RoutingPlan, BlockRoutingItem, validate_overview_text
 from ..extraction.parser import parse_markdown_file
 from .storage import SessionStorage
@@ -385,6 +386,7 @@ class SessionManager:
     async def generate_cleanup_plan_with_ai(
         self,
         session_id: str,
+        cleanup_mode: CleanupModeSetting = CleanupModeSetting.BALANCED,
     ) -> AsyncIterator:
         """
         Generate a cleanup plan with AI suggestions using PlanningFlow.
@@ -393,6 +395,7 @@ class SessionManager:
 
         Args:
             session_id: The session ID
+            cleanup_mode: Cleanup aggressiveness mode (conservative, balanced, aggressive)
 
         Yields:
             PlanEvent objects tracking progress
@@ -414,7 +417,7 @@ class SessionManager:
         flow = PlanningFlow(library_path=session.library_path)
 
         # Stream cleanup plan generation
-        async for event in flow.generate_cleanup_plan(session):
+        async for event in flow.generate_cleanup_plan(session, cleanup_mode=cleanup_mode):
             yield event
 
             # If cleanup is ready, update session

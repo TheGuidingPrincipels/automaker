@@ -104,7 +104,7 @@ export function ProjectBulkReplaceDialog({
   // Get the selected provider config (if custom)
   const selectedProviderConfig = useMemo(() => {
     if (selectedProvider === 'anthropic') return null;
-    return enabledProviders.find((p) => p.id === selectedProvider);
+    return enabledProviders.find((p) => p.id === selectedProvider) ?? null;
   }, [selectedProvider, enabledProviders]);
 
   // Get the Claude model alias from a PhaseModelEntry

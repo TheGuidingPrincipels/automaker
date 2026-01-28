@@ -309,9 +309,11 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
     const sessionIds: string[] = [];
     const collectFromLayout = (node: TerminalPanelContent | null): void => {
       if (!node) return;
-      if (node.type === 'terminal') {
+      if (node.type === 'terminal' || node.type === 'testRunner') {
         sessionIds.push(node.sessionId);
-      } else {
+        return;
+      }
+      if (node.type === 'split') {
         node.panels.forEach(collectFromLayout);
       }
     };
@@ -621,7 +623,7 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
             description: data.error || 'Unknown error',
           });
           // Reset the handled ref so the same cwd can be retried
-          initialCwdHandledRef.current = undefined;
+          initialCwdHandledRef.current = null;
         }
       } catch (err) {
         logger.error('Create terminal with cwd error:', err);
@@ -629,7 +631,7 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
           description: 'Could not connect to server',
         });
         // Reset the handled ref so the same cwd can be retried
-        initialCwdHandledRef.current = undefined;
+        initialCwdHandledRef.current = null;
       }
     };
 
@@ -789,6 +791,28 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
               sessionId,
               size: persisted.size,
               fontSize: persisted.fontSize,
+            };
+          }
+
+          if (persisted.type === 'testRunner') {
+            totalSessions++;
+            if (!persisted.sessionId || !persisted.worktreePath) {
+              failedSessions++;
+              return null;
+            }
+
+            const exists = await checkSessionExists(persisted.sessionId);
+            if (!exists) {
+              failedSessions++;
+              return null;
+            }
+
+            reconnectedSessions++;
+            return {
+              type: 'testRunner',
+              sessionId: persisted.sessionId,
+              size: persisted.size,
+              worktreePath: persisted.worktreePath,
             };
           }
 
@@ -1094,7 +1118,7 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
     // Collect all session IDs from the tab's layout
     const collectSessionIds = (node: TerminalPanelContent | null): string[] => {
       if (!node) return [];
-      if (node.type === 'terminal') return [node.sessionId];
+      if (node.type === 'terminal' || node.type === 'testRunner') return [node.sessionId];
       return node.panels.flatMap(collectSessionIds);
     };
 
@@ -1130,7 +1154,7 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
 
   // Collect all terminal IDs from a panel tree in order
   const getTerminalIds = (panel: TerminalPanelContent): string[] => {
-    if (panel.type === 'terminal') {
+    if (panel.type === 'terminal' || panel.type === 'testRunner') {
       return [panel.sessionId];
     }
     return panel.panels.flatMap(getTerminalIds);
@@ -1139,7 +1163,7 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
   // Get a STABLE key for a panel - uses the stable id for splits
   // This prevents unnecessary remounts when layout structure changes
   const getPanelKey = (panel: TerminalPanelContent): string => {
-    if (panel.type === 'terminal') {
+    if (panel.type === 'terminal' || panel.type === 'testRunner') {
       return panel.sessionId;
     }
     // Use the stable id for split nodes
@@ -1154,6 +1178,9 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
             return panel.fontSize ?? terminalState.defaultFontSize;
           }
           return null;
+        }
+        if (panel.type === 'testRunner') {
+          return panel.sessionId === sessionId ? terminalState.defaultFontSize : null;
         }
         for (const child of panel.panels) {
           const found = findInPanel(child);
@@ -1208,13 +1235,14 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
       ): string | null => {
         // Helper to get all terminal IDs from a layout subtree
         const getAllTerminals = (node: TerminalPanelContent): string[] => {
-          if (node.type === 'terminal') return [node.sessionId];
+          if (node.type === 'terminal' || node.type === 'testRunner') return [node.sessionId];
           return node.panels.flatMap(getAllTerminals);
         };
 
         // Helper to find terminal and its path in the tree
+        type SplitNode = Extract<TerminalPanelContent, { type: 'split' }>;
         type PathEntry = {
-          node: TerminalPanelContent;
+          node: SplitNode;
           index: number;
           direction: 'horizontal' | 'vertical';
         };
@@ -1223,9 +1251,10 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
           target: string,
           path: PathEntry[] = []
         ): PathEntry[] | null => {
-          if (node.type === 'terminal') {
+          if (node.type === 'terminal' || node.type === 'testRunner') {
             return node.sessionId === target ? path : null;
           }
+          if (node.type !== 'split') return null;
           for (let i = 0; i < node.panels.length; i++) {
             const result = findPath(node.panels[i], target, [
               ...path,
@@ -1249,7 +1278,7 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
         for (let i = path.length - 1; i >= 0; i--) {
           const entry = path[i];
           if (entry.direction === neededDirection) {
-            const siblings = entry.node.type === 'split' ? entry.node.panels : [];
+            const siblings = entry.node.panels;
             const nextIndex = goingForward ? entry.index + 1 : entry.index - 1;
 
             if (nextIndex >= 0 && nextIndex < siblings.length) {
@@ -1304,56 +1333,82 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [navigateToTerminal]);
 
+  // Helper to render a terminal panel (used by both 'terminal' and 'testRunner' types)
+  const renderTerminalPanelWithBoundary = (
+    sessionId: string,
+    options: {
+      fontSize?: number;
+      runCommandOnConnect?: string;
+      onCommandRan?: () => void;
+      branchName?: string;
+    } = {}
+  ): React.ReactNode => {
+    const {
+      fontSize = terminalState.defaultFontSize,
+      runCommandOnConnect,
+      onCommandRan,
+      branchName,
+    } = options;
+
+    return (
+      <TerminalErrorBoundary
+        key={`boundary-${sessionId}`}
+        sessionId={sessionId}
+        onRestart={() => {
+          killTerminal(sessionId);
+          createTerminal();
+        }}
+      >
+        <TerminalPanel
+          key={sessionId}
+          sessionId={sessionId}
+          authToken={terminalState.authToken}
+          isActive={terminalState.activeSessionId === sessionId}
+          onFocus={() => setActiveTerminalSession(sessionId)}
+          onClose={() => killTerminal(sessionId)}
+          onSplitHorizontal={() => createTerminal('horizontal', sessionId)}
+          onSplitVertical={() => createTerminal('vertical', sessionId)}
+          onNewTab={createTerminalInNewTab}
+          onNavigateUp={() => navigateToTerminal('up')}
+          onNavigateDown={() => navigateToTerminal('down')}
+          onNavigateLeft={() => navigateToTerminal('left')}
+          onNavigateRight={() => navigateToTerminal('right')}
+          onSessionInvalid={() => {
+            logger.info(`Session ${sessionId} is invalid, removing from layout`);
+            killTerminal(sessionId);
+          }}
+          isDragging={activeDragId === sessionId}
+          isDropTarget={activeDragId !== null && activeDragId !== sessionId}
+          fontSize={fontSize}
+          onFontSizeChange={(size) => setTerminalPanelFontSize(sessionId, size)}
+          runCommandOnConnect={runCommandOnConnect}
+          onCommandRan={onCommandRan}
+          isMaximized={terminalState.maximizedSessionId === sessionId}
+          onToggleMaximize={() => toggleTerminalMaximized(sessionId)}
+          branchName={branchName}
+        />
+      </TerminalErrorBoundary>
+    );
+  };
+
   // Render panel content recursively
   const renderPanelContent = (content: TerminalPanelContent): React.ReactNode => {
     if (content.type === 'terminal') {
-      // Use per-terminal fontSize or fall back to default
       const terminalFontSize = content.fontSize ?? terminalState.defaultFontSize;
-      // Only run command on new sessions (not restored ones)
       const isNewSession = newSessionIds.has(content.sessionId);
-      return (
-        <TerminalErrorBoundary
-          key={`boundary-${content.sessionId}`}
-          sessionId={content.sessionId}
-          onRestart={() => {
-            // When terminal crashes and is restarted, recreate the session
-            killTerminal(content.sessionId);
-            createTerminal();
-          }}
-        >
-          <TerminalPanel
-            key={content.sessionId}
-            sessionId={content.sessionId}
-            authToken={terminalState.authToken}
-            isActive={terminalState.activeSessionId === content.sessionId}
-            onFocus={() => setActiveTerminalSession(content.sessionId)}
-            onClose={() => killTerminal(content.sessionId)}
-            onSplitHorizontal={() => createTerminal('horizontal', content.sessionId)}
-            onSplitVertical={() => createTerminal('vertical', content.sessionId)}
-            onNewTab={createTerminalInNewTab}
-            onNavigateUp={() => navigateToTerminal('up')}
-            onNavigateDown={() => navigateToTerminal('down')}
-            onNavigateLeft={() => navigateToTerminal('left')}
-            onNavigateRight={() => navigateToTerminal('right')}
-            onSessionInvalid={() => {
-              // Auto-remove stale session when server says it doesn't exist
-              // This handles cases like server restart where sessions are lost
-              logger.info(`Session ${content.sessionId} is invalid, removing from layout`);
-              killTerminal(content.sessionId);
-            }}
-            isDragging={activeDragId === content.sessionId}
-            isDropTarget={activeDragId !== null && activeDragId !== content.sessionId}
-            fontSize={terminalFontSize}
-            onFontSizeChange={(size) => setTerminalPanelFontSize(content.sessionId, size)}
-            runCommandOnConnect={isNewSession ? defaultRunScript : undefined}
-            onCommandRan={() => handleCommandRan(content.sessionId)}
-            isMaximized={terminalState.maximizedSessionId === content.sessionId}
-            onToggleMaximize={() => toggleTerminalMaximized(content.sessionId)}
-            branchName={content.branchName}
-          />
-        </TerminalErrorBoundary>
-      );
+      return renderTerminalPanelWithBoundary(content.sessionId, {
+        fontSize: terminalFontSize,
+        runCommandOnConnect: isNewSession ? defaultRunScript : undefined,
+        onCommandRan: isNewSession ? () => handleCommandRan(content.sessionId) : undefined,
+        branchName: content.branchName,
+      });
     }
+
+    if (content.type === 'testRunner') {
+      return renderTerminalPanelWithBoundary(content.sessionId);
+    }
+
+    if (content.type !== 'split') return null;
 
     const isHorizontal = content.direction === 'horizontal';
     const defaultSizePerPanel = 100 / content.panels.length;
@@ -1367,8 +1422,7 @@ export function TerminalView({ initialCwd, initialBranch, initialMode, nonce }: 
     return (
       <PanelGroup direction={content.direction} onLayout={handleLayoutChange}>
         {content.panels.map((panel, index) => {
-          const panelSize =
-            panel.type === 'terminal' && panel.size ? panel.size : defaultSizePerPanel;
+          const panelSize = panel.size ?? defaultSizePerPanel;
 
           const panelKey = getPanelKey(panel);
           return (

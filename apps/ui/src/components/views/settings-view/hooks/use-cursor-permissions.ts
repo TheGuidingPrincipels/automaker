@@ -19,28 +19,25 @@ export function useCursorPermissions(projectPath?: string) {
 
   // Apply a permission profile
   const applyProfile = useCallback(
-    (profileId: 'strict' | 'development', scope: 'global' | 'project') => {
-      applyProfileMutation.mutate({ profileId, scope });
+    async (profileId: 'strict' | 'development', scope: 'global' | 'project') => {
+      await applyProfileMutation.mutateAsync({ profileId, scope });
     },
     [applyProfileMutation]
   );
 
   // Copy example config to clipboard
   const copyConfig = useCallback(
-    (profileId: 'strict' | 'development') => {
-      copyConfigMutation.mutate(profileId, {
-        onSuccess: () => {
-          setCopiedConfig(true);
-          setTimeout(() => setCopiedConfig(false), 2000);
-        },
-      });
+    async (profileId: 'strict' | 'development') => {
+      await copyConfigMutation.mutateAsync(profileId);
+      setCopiedConfig(true);
+      setTimeout(() => setCopiedConfig(false), 2000);
     },
     [copyConfigMutation]
   );
 
   // Load permissions (refetch)
-  const loadPermissions = useCallback(() => {
-    permissionsQuery.refetch();
+  const loadPermissions = useCallback(async () => {
+    await permissionsQuery.refetch();
   }, [permissionsQuery]);
 
   return {

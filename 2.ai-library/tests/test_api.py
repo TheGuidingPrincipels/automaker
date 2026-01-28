@@ -814,6 +814,16 @@ async def test_get_cleanup_plan(client, mock_session_manager, mock_session):
 
 
 @pytest.mark.asyncio
+async def test_generate_cleanup_rejects_invalid_cleanup_mode(client, mock_session_manager):
+    """Invalid cleanup_mode should return 422 validation error."""
+    response = await client.post(
+        "/api/sessions/test123/cleanup/generate",
+        params={"cleanup_mode": "invalid_mode"},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_set_cleanup_decision(client, mock_session_manager, mock_session):
     """Test setting cleanup decision."""
     response = await client.post(

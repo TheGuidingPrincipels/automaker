@@ -34,6 +34,9 @@ export function useRunningAgents() {
     queryKey: queryKeys.runningAgents.all(),
     queryFn: async (): Promise<RunningAgentsResult> => {
       const api = getElectronAPI();
+      if (!api?.runningAgents) {
+        throw new Error('Running agents API not available');
+      }
       const result = await api.runningAgents.getAll();
       if (!result.success) {
         throw new Error(result.error || 'Failed to fetch running agents');

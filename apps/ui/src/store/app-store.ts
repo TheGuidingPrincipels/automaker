@@ -17,6 +17,7 @@ import type {
   ModelAlias,
   PlanningMode,
   ThinkingLevel,
+  ReasoningEffort,
   ModelProvider,
   CursorModelId,
   CodexModelId,
@@ -461,6 +462,16 @@ export interface Feature extends Omit<
   titleGenerating?: boolean;
   category: string;
   description: string;
+  model?: string;
+  thinkingLevel?: ThinkingLevel;
+  reasoningEffort?: ReasoningEffort;
+  planningMode?: PlanningMode;
+  requirePlanApproval?: boolean;
+  skipTests?: boolean;
+  // Keep aligned with shared @automaker/types Feature (null is treated as "main worktree" elsewhere).
+  branchName?: string;
+  error?: string;
+  summary?: string;
   steps: string[]; // Required in UI (not optional)
   status: FeatureStatusWithPipeline;
   images?: FeatureImage[]; // UI-specific base64 images

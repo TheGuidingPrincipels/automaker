@@ -17,6 +17,15 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import {
+  KL_CLEANUP_MODE_CONFIG,
+  KL_DEFAULT_CLEANUP_MODE,
+  getKLCleanupModeOptions,
+  type KLCleanupMode,
+} from '@automaker/types';
+
+// Re-export type for backwards compatibility
+export type { KLCleanupMode };
 
 // ============================================================================
 // Types
@@ -45,6 +54,7 @@ export interface KLTranscriptEntry {
   role: 'system' | 'assistant' | 'user';
   content: string;
   timestamp?: string;
+  eventType?: string;
   level?: 'info' | 'error';
 }
 
@@ -119,6 +129,9 @@ interface KnowledgeLibraryState {
 
   // Transcript UI state
   isTranscriptExpanded: boolean;
+
+  // Cleanup mode state
+  cleanupMode: KLCleanupMode;
 }
 
 // ============================================================================
@@ -169,6 +182,9 @@ interface KnowledgeLibraryActions {
   setTranscriptExpanded: (expanded: boolean) => void;
   toggleTranscript: () => void;
 
+  // Cleanup mode actions
+  setCleanupMode: (mode: KLCleanupMode) => void;
+
   // Reset actions
   reset: () => void;
   resetSession: () => void;
@@ -191,6 +207,7 @@ const initialState: KnowledgeLibraryState = {
   expandedCategories: new Set(),
   activeConversationId: null,
   isTranscriptExpanded: false,
+  cleanupMode: KL_DEFAULT_CLEANUP_MODE,
 };
 
 // ============================================================================
@@ -317,6 +334,9 @@ export const useKnowledgeLibraryStore = create<KnowledgeLibraryState & Knowledge
       toggleTranscript: () =>
         set((state) => ({ isTranscriptExpanded: !state.isTranscriptExpanded })),
 
+      // Cleanup mode actions
+      setCleanupMode: (mode) => set({ cleanupMode: mode }),
+
       // Reset actions
       reset: () =>
         set({
@@ -338,12 +358,33 @@ export const useKnowledgeLibraryStore = create<KnowledgeLibraryState & Knowledge
     }),
     {
       name: 'automaker-knowledge-library-store',
-      version: 1,
+      version: 2,
       partialize: (state) => ({
         // Only persist stable primitives
         activeView: state.activeView,
         currentSessionId: state.currentSessionId,
+        cleanupMode: state.cleanupMode,
       }),
+      migrate: (persistedState, version) => {
+        // Migration from version 1 to 2: add cleanupMode
+        const state = persistedState as {
+          activeView?: KLActiveView;
+          currentSessionId?: string | null;
+          cleanupMode?: KLCleanupMode;
+        };
+        if (version < 2) {
+          return {
+            activeView: state.activeView ?? 'input',
+            currentSessionId: state.currentSessionId ?? null,
+            cleanupMode: KL_DEFAULT_CLEANUP_MODE,
+          };
+        }
+        return {
+          activeView: state.activeView ?? 'input',
+          currentSessionId: state.currentSessionId ?? null,
+          cleanupMode: state.cleanupMode ?? DEFAULT_CLEANUP_MODE,
+        };
+      },
     }
   )
 );
@@ -369,3 +410,28 @@ export const selectInvalidProposedFilesCount = (state: KnowledgeLibraryState): n
  */
 export const selectAllProposedFilesValid = (state: KnowledgeLibraryState): boolean =>
   Object.values(state.proposedNewFiles).every((f) => f.isValid);
+
+// ============================================================================
+// Cleanup Mode Utilities (Backwards Compatibility Aliases)
+// ============================================================================
+
+/**
+ * @deprecated Use KL_CLEANUP_MODE_CONFIG from @automaker/types instead
+ */
+export const CLEANUP_MODE_CONFIG = KL_CLEANUP_MODE_CONFIG;
+
+/**
+ * @deprecated Use KL_DEFAULT_CLEANUP_MODE from @automaker/types instead
+ */
+export const DEFAULT_CLEANUP_MODE = KL_DEFAULT_CLEANUP_MODE;
+
+/**
+ * Get the cleanup mode configuration
+ * @deprecated Use KL_CLEANUP_MODE_CONFIG[mode] from @automaker/types instead
+ */
+export const getCleanupModeConfig = (mode: KLCleanupMode) => KL_CLEANUP_MODE_CONFIG[mode];
+
+/**
+ * @deprecated Use getKLCleanupModeOptions from @automaker/types instead
+ */
+export const getCleanupModeOptions = getKLCleanupModeOptions;

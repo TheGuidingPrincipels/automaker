@@ -15,6 +15,7 @@ from datetime import datetime
 
 from ..models.session import ExtractionSession, SessionPhase
 from ..models.cleanup_plan import CleanupPlan, CleanupDisposition
+from ..models.cleanup_mode_setting import CleanupModeSetting
 from ..models.routing_plan import RoutingPlan, BlockRoutingItem, BlockDestination
 from ..sdk.client import ClaudeCodeClient
 from ..library.manifest import LibraryManifest
@@ -67,6 +68,7 @@ class PlanningFlow:
     async def generate_cleanup_plan(
         self,
         session: ExtractionSession,
+        cleanup_mode: CleanupModeSetting = CleanupModeSetting.BALANCED,
     ) -> AsyncIterator[PlanEvent]:
         """
         Generate a cleanup plan with AI suggestions.
@@ -76,6 +78,7 @@ class PlanningFlow:
 
         Args:
             session: The extraction session with parsed source
+            cleanup_mode: Cleanup aggressiveness mode (conservative, balanced, aggressive)
 
         Yields:
             PlanEvent objects tracking progress
@@ -89,8 +92,8 @@ class PlanningFlow:
 
         yield PlanEvent(
             type=PlanEventType.CLEANUP_STARTED,
-            message=f"Starting cleanup plan generation for {session.source.total_blocks} blocks",
-            data={"block_count": session.source.total_blocks},
+            message=f"Starting cleanup plan generation for {session.source.total_blocks} blocks (mode: {cleanup_mode.value})",
+            data={"block_count": session.source.total_blocks, "cleanup_mode": cleanup_mode.value},
         )
 
         # Prepare blocks for SDK
@@ -108,7 +111,7 @@ class PlanningFlow:
         yield PlanEvent(
             type=PlanEventType.PROGRESS,
             message="Analyzing content for discard candidates...",
-            data={"step": "analysis"},
+            data={"step": "analysis", "cleanup_mode": cleanup_mode.value},
         )
 
         try:
@@ -120,6 +123,7 @@ class PlanningFlow:
                 content_mode=session.content_mode.value,
                 conversation_history=self._format_conversation_history(session),
                 pending_questions=self._pending_question_texts(session),
+                cleanup_mode=cleanup_mode,
             )
 
             # Count discard suggestions (for user info only - no auto-discard)
@@ -135,6 +139,7 @@ class PlanningFlow:
                     "cleanup_plan": cleanup_plan.model_dump(),
                     "total_items": len(cleanup_plan.items),
                     "discard_suggestions": discard_count,
+                    "cleanup_mode": cleanup_mode.value,
                 },
             )
 

@@ -14,44 +14,59 @@ This command accepts an optional worktree selector via `$ARGUMENTS`:
 - `/review 1` or `/review feature-1` - Reviews feature-1 worktree
 - `/review 2` or `/review feature-2` - Reviews feature-2 worktree
 
+> [!IMPORTANT]
+> **Agent Note**: If the worktree path is outside the active workspace, standard `run_command` may fail with "path is not in a workspace" error. In this case:
+>
+> 1. Use `mcp_cipher_cipher_bash` tool instead of `run_command`
+> 2. Always `cd` to the worktree path at the start of each command
+> 3. Example: `cd /path/to/worktree && git diff HEAD`
+
 ## Steps
 
-0.  **Determine Worktree Context**
+0.  **Determine and Prepare Worktree Context**
 
-    If `$ARGUMENTS` contains a worktree name, find and switch to that worktree:
+    Use the provided argument to switch worktrees if necessary, and ensure untracked files are included.
 
     ```bash
-    # Parse optional worktree argument
-    WORKTREE_NAME="$ARGUMENTS"
+    TARGET_TREE="$ARGUMENTS"
 
-    if [ -n "$WORKTREE_NAME" ]; then
-      # Find worktree path by name
-      WORKTREE_PATH=$(git worktree list | grep "/$WORKTREE_NAME " | awk '{print $1}')
+    # 1. Switch Worktree if argument provided
+    if [ -n "$TARGET_TREE" ]; then
+      # Find worktree path (fuzzy match)
+      # We look for a line in 'git worktree list' matched by the argument
+      WT_LINE=$(git worktree list | grep -- "$TARGET_TREE" | head -n 1)
 
-      if [ -z "$WORKTREE_PATH" ]; then
-        echo "Error: Worktree '$WORKTREE_NAME' not found."
+      if [ -z "$WT_LINE" ]; then
+        echo "Error: Worktree matching '$TARGET_TREE' not found."
         echo ""
         echo "Available worktrees:"
         git worktree list
         exit 1
       fi
 
-      # Change to worktree directory
-      cd "$WORKTREE_PATH"
+      WT_PATH=$(echo "$WT_LINE" | awk '{print $1}')
+      echo "Switching to worktree: $WT_PATH"
+      cd "$WT_PATH"
+    else
+      echo "Running in current directory: $(pwd)"
     fi
 
-    # Report context
-    echo "=== WORKTREE CONTEXT ==="
+    # 2. Prepare Context (Include Untracked Files)
+    # 'git add -N .' creates an intent-to-add for untracked files,
+    # allowing them to be captured by 'git diff HEAD' as new files.
+    git add -N . 2>/dev/null || true
+
+    echo "=== REVIEW CONTEXT ==="
     echo "Path: $(git rev-parse --show-toplevel)"
     echo "Branch: $(git branch --show-current)"
-    echo "========================"
+    echo "======================"
     ```
 
     All subsequent git commands will run in the target worktree context.
 
 1.  **Analyze Context**
-    - Target: Uncommitted changes.
-    - Command: `git diff HEAD` (to see staged and unstaged changes) or `git diff --cached` (if you only want to review staged changes).
+    - Target: Uncommitted changes (including new/untracked files).
+    - Command: `git diff HEAD` (captures staged, unstaged, and intent-to-add files).
     - _Agent Note references_: If the diff is too large, suggest reviewing specific files or asking the user to split the commit.
 
 2.  **Quality Check**

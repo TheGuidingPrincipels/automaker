@@ -5,6 +5,11 @@ import {
   selectHasStagedUpload,
   selectInvalidProposedFilesCount,
   selectAllProposedFilesValid,
+  DEFAULT_CLEANUP_MODE,
+  CLEANUP_MODE_CONFIG,
+  getCleanupModeConfig,
+  getCleanupModeOptions,
+  type KLCleanupMode,
 } from './knowledge-library-store';
 
 // ============================================================================
@@ -47,6 +52,8 @@ describe('knowledge-library-store', () => {
       selectedFilePath: null,
       expandedCategories: new Set(),
       activeConversationId: null,
+      isTranscriptExpanded: false,
+      cleanupMode: DEFAULT_CLEANUP_MODE,
     });
   });
 
@@ -55,7 +62,7 @@ describe('knowledge-library-store', () => {
   // ==========================================================================
 
   describe('persistence', () => {
-    it('persists only activeView and currentSessionId', async () => {
+    it('persists activeView, currentSessionId, and cleanupMode', async () => {
       const state = useKnowledgeLibraryStore.getState();
 
       state.setActiveView('library');
@@ -63,12 +70,14 @@ describe('knowledge-library-store', () => {
       state.setSelectedFilePath('/notes/overview.md');
       state.setActiveConversationId('conversation-1');
       state.toggleCategory('docs');
+      state.setCleanupMode('aggressive');
 
       await Promise.resolve();
 
       expect(readPersistedState()).toEqual({
         activeView: 'library',
         currentSessionId: 'session-123',
+        cleanupMode: 'aggressive',
       });
     });
   });
@@ -677,6 +686,106 @@ describe('knowledge-library-store', () => {
       });
 
       expect(selectAllProposedFilesValid(useKnowledgeLibraryStore.getState())).toBe(false);
+    });
+  });
+
+  // ==========================================================================
+  // Cleanup Mode Actions
+  // ==========================================================================
+
+  describe('setCleanupMode', () => {
+    it('sets cleanup mode to conservative', () => {
+      const state = useKnowledgeLibraryStore.getState();
+      state.setCleanupMode('conservative');
+      expect(useKnowledgeLibraryStore.getState().cleanupMode).toBe('conservative');
+    });
+
+    it('sets cleanup mode to balanced', () => {
+      const state = useKnowledgeLibraryStore.getState();
+      state.setCleanupMode('balanced');
+      expect(useKnowledgeLibraryStore.getState().cleanupMode).toBe('balanced');
+    });
+
+    it('sets cleanup mode to aggressive', () => {
+      const state = useKnowledgeLibraryStore.getState();
+      state.setCleanupMode('aggressive');
+      expect(useKnowledgeLibraryStore.getState().cleanupMode).toBe('aggressive');
+    });
+
+    it('defaults to balanced', () => {
+      expect(useKnowledgeLibraryStore.getState().cleanupMode).toBe('balanced');
+    });
+  });
+
+  // ==========================================================================
+  // Cleanup Mode Utilities
+  // ==========================================================================
+
+  describe('CLEANUP_MODE_CONFIG', () => {
+    it('has configuration for all modes', () => {
+      const modes: KLCleanupMode[] = ['conservative', 'balanced', 'aggressive'];
+      for (const mode of modes) {
+        expect(CLEANUP_MODE_CONFIG[mode]).toBeDefined();
+        expect(CLEANUP_MODE_CONFIG[mode].label).toBeDefined();
+        expect(CLEANUP_MODE_CONFIG[mode].description).toBeDefined();
+        expect(CLEANUP_MODE_CONFIG[mode].confidenceThreshold).toBeDefined();
+      }
+    });
+
+    it('has correct confidence thresholds', () => {
+      expect(CLEANUP_MODE_CONFIG.conservative.confidenceThreshold).toBe(0.85);
+      expect(CLEANUP_MODE_CONFIG.balanced.confidenceThreshold).toBe(0.7);
+      expect(CLEANUP_MODE_CONFIG.aggressive.confidenceThreshold).toBe(0.55);
+    });
+  });
+
+  describe('getCleanupModeConfig', () => {
+    it('returns config for conservative mode', () => {
+      const config = getCleanupModeConfig('conservative');
+      expect(config.label).toBe('Conservative');
+      expect(config.confidenceThreshold).toBe(0.85);
+    });
+
+    it('returns config for balanced mode', () => {
+      const config = getCleanupModeConfig('balanced');
+      expect(config.label).toBe('Balanced');
+      expect(config.confidenceThreshold).toBe(0.7);
+    });
+
+    it('returns config for aggressive mode', () => {
+      const config = getCleanupModeConfig('aggressive');
+      expect(config.label).toBe('Aggressive');
+      expect(config.confidenceThreshold).toBe(0.55);
+    });
+  });
+
+  describe('getCleanupModeOptions', () => {
+    it('returns all three mode options', () => {
+      const options = getCleanupModeOptions();
+      expect(options).toHaveLength(3);
+    });
+
+    it('returns options with value, label, and description', () => {
+      const options = getCleanupModeOptions();
+      for (const option of options) {
+        expect(option.value).toBeDefined();
+        expect(option.label).toBeDefined();
+        expect(option.description).toBeDefined();
+      }
+    });
+
+    it('includes all modes', () => {
+      const options = getCleanupModeOptions();
+      const values = options.map((o) => o.value);
+      expect(values).toContain('conservative');
+      expect(values).toContain('balanced');
+      expect(values).toContain('aggressive');
+    });
+  });
+
+  describe('DEFAULT_CLEANUP_MODE', () => {
+    it('is balanced', () => {
+      expect(DEFAULT_CLEANUP_MODE).toBe('balanced');
     });
   });
 });

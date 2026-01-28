@@ -160,6 +160,17 @@ class BlockListResponse(BaseModel):
 # =============================================================================
 
 
+class DetectedSignalResponse(BaseModel):
+    """Response for a detected signal in cleanup analysis.
+
+    Signals indicate specific patterns detected in the content that
+    influence the keep/discard recommendation (e.g., time-sensitive
+    content, completed items, original work, reference value).
+    """
+    type: str
+    detail: str
+
+
 class CleanupItemResponse(BaseModel):
     """Response for a cleanup item."""
     block_id: str
@@ -179,9 +190,20 @@ class CleanupItemResponse(BaseModel):
     similar_block_ids: List[str] = Field(default_factory=list)
     similarity_score: Optional[float] = None
 
+    # Signal detection - shows why the AI made its recommendation
+    signals_detected: List[DetectedSignalResponse] = Field(default_factory=list)
+
     @classmethod
     def from_item(cls, item: CleanupItem) -> "CleanupItemResponse":
         """Create response from cleanup item."""
+        # Handle signals_detected if present on the item
+        signals = []
+        if hasattr(item, 'signals_detected') and item.signals_detected:
+            signals = [
+                DetectedSignalResponse(type=s.type, detail=s.detail)
+                for s in item.signals_detected
+            ]
+
         return cls(
             block_id=item.block_id,
             heading_path=item.heading_path,
@@ -197,6 +219,8 @@ class CleanupItemResponse(BaseModel):
             # Duplicate detection
             similar_block_ids=item.similar_block_ids,
             similarity_score=item.similarity_score,
+            # Signal detection
+            signals_detected=signals,
         )
 
 
@@ -216,6 +240,9 @@ class CleanupPlanResponse(BaseModel):
     generation_error: Optional[str] = None
     # Duplicate detection summary
     duplicate_groups: List[List[str]] = Field(default_factory=list)
+    # Cleanup mode and overall notes (for AI decision criteria improvements)
+    cleanup_mode: str = "balanced"
+    overall_notes: str = ""
 
     @classmethod
     def from_plan(cls, plan: CleanupPlan) -> "CleanupPlanResponse":
@@ -237,6 +264,9 @@ class CleanupPlanResponse(BaseModel):
             ai_generated=plan.ai_generated,
             generation_error=plan.generation_error,
             duplicate_groups=plan.duplicate_groups,
+            # Cleanup mode and overall notes (use getattr for backward compatibility)
+            cleanup_mode=getattr(plan, 'cleanup_mode', 'balanced'),
+            overall_notes=getattr(plan, 'overall_notes', ''),
         )
 
 

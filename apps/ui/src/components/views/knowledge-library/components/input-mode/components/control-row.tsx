@@ -2,7 +2,7 @@
  * Control Row
  *
  * Compact single-row control for session management.
- * Pre-session: Upload area + staged file info + Start Session button
+ * Pre-session: Upload area + staged file info + Cleanup Mode selector + Start Session button
  * Active session: Mode toggle + Cancel Session button
  */
 
@@ -13,6 +13,8 @@ import { Switch } from '@/components/ui/switch';
 import { Upload, FileText, X, Play, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { WorkflowState } from '../../../hooks/use-session-workflow';
+import { CleanupModeSelector } from './cleanup-mode-selector';
+import { useKnowledgeLibraryStore } from '@/store/knowledge-library-store';
 
 interface ControlRowProps {
   workflowState: WorkflowState;
@@ -59,6 +61,10 @@ export function ControlRow({
 }: ControlRowProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Cleanup mode from global store
+  const cleanupMode = useKnowledgeLibraryStore((state) => state.cleanupMode);
+  const setCleanupMode = useKnowledgeLibraryStore((state) => state.setCleanupMode);
 
   const hasActiveSession = !!sessionId;
   const canStartSession = !!stagedFile && !hasActiveSession && !isStarting;
@@ -157,6 +163,15 @@ export function ControlRow({
               <X className="h-3 w-3" />
             </Button>
           </div>
+        )}
+
+        {/* Cleanup mode selector - shown when a file is staged */}
+        {stagedFile && (
+          <CleanupModeSelector
+            value={cleanupMode}
+            onChange={setCleanupMode}
+            disabled={isStarting}
+          />
         )}
 
         <div className="flex-1" />

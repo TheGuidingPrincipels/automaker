@@ -295,7 +295,7 @@ export const AgentInfoPanel = memo(function AgentInfoPanel({
   // Agent Info Panel for non-backlog cards
   // Show panel if we have agentInfo OR planSpec.tasks (for spec/full mode)
   // Note: hasPlanSpecTasks is already defined above and includes freshPlanSpec
-  if (feature.status !== 'backlog' && (agentInfo || hasPlanSpecTasks)) {
+  if (agentInfo || hasPlanSpecTasks) {
     return (
       <>
         <div className="mb-3 space-y-2 overflow-hidden">

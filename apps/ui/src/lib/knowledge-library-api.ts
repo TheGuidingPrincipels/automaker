@@ -18,6 +18,7 @@ import type {
   KLBlockListResponse,
   KLCleanupPlanResponse,
   KLCleanupDecisionRequest,
+  KLCleanupMode,
   KLRoutingPlanResponse,
   KLSelectDestinationRequest,
   KLSetModeRequest,
@@ -319,11 +320,20 @@ export const knowledgeLibraryApi = {
 
   /**
    * Generate cleanup plan (AI-assisted)
+   *
+   * @param sessionId - The session ID
+   * @param options - Generation options
+   * @param options.useAi - Whether to use AI for suggestions (default: true)
+   * @param options.cleanupMode - Cleanup aggressiveness mode: 'conservative', 'balanced', or 'aggressive' (default: 'balanced')
    */
-  async generateCleanupPlan(sessionId: string, useAi = true): Promise<KLCleanupPlanResponse> {
+  async generateCleanupPlan(
+    sessionId: string,
+    options: { useAi?: boolean; cleanupMode?: KLCleanupMode } = {}
+  ): Promise<KLCleanupPlanResponse> {
+    const { useAi = true, cleanupMode = 'balanced' } = options;
     return request<KLCleanupPlanResponse>(`/api/sessions/${sessionId}/cleanup/generate`, {
       method: 'POST',
-      params: { use_ai: useAi },
+      params: { use_ai: useAi, cleanup_mode: cleanupMode },
     });
   },
 

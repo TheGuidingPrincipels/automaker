@@ -13,6 +13,7 @@ import json
 import os
 import asyncio
 import logging
+import re
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 try:
@@ -33,18 +34,79 @@ from ..models.cleanup_plan import (
     CleanupPlan,
     CleanupItem,
     CleanupDisposition,
+    DetectedSignal,
 )
+from ..models.cleanup_mode_setting import CleanupModeSetting
 from ..models.routing_plan import (
     RoutingPlan,
     BlockRoutingItem,
     BlockDestination,
     PlanSummary,
 )
-from .prompts.cleanup_mode import CLEANUP_SYSTEM_PROMPT, build_cleanup_prompt, CONTENT_PREVIEW_LIMIT
+from .prompts.cleanup_mode import (
+    CLEANUP_SYSTEM_PROMPT,
+    build_cleanup_prompt,
+    CONTENT_PREVIEW_LIMIT,
+    get_cleanup_system_prompt,
+)
 from .prompts.routing_mode import ROUTING_SYSTEM_PROMPT, build_routing_prompt
 
 
 logger = logging.getLogger(__name__)
+
+_SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (
+        re.compile(
+            r"(?i)\b(api[_-]?key|token|password|secret|access[_-]?key|client[_-]?secret)\b(\s*[:=]\s*)([A-Za-z0-9\-._~+/=]{4,})"
+        ),
+        r"\1\2[REDACTED]",
+    ),
+    (re.compile(r"(?i)\b(bearer)\s+([A-Za-z0-9\-._~+/=]+)"), "Bearer [REDACTED]"),
+    (re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"), "[REDACTED]"),
+    (re.compile(r"\bAIzaSy[0-9A-Za-z\-_]{35}\b"), "[REDACTED]"),
+    (re.compile(r"\bsk-[A-Za-z0-9]{16,}\b"), "[REDACTED]"),
+    (re.compile(r"\b(?=[A-Za-z0-9]{32,}\b)(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9]+\b"), "[REDACTED]"),
+]
+
+
+def _sanitize_ai_text(text: str) -> str:
+    """Redact secret-like substrings from AI-provided text."""
+    if not text:
+        return text
+
+    sanitized = text
+    for pattern, replacement in _SECRET_PATTERNS:
+        sanitized = pattern.sub(replacement, sanitized)
+    return sanitized
+
+
+def _disposition_value(disposition: Any) -> str:
+    if isinstance(disposition, CleanupDisposition):
+        return disposition.value
+    if isinstance(disposition, str):
+        return disposition.lower()
+    return str(disposition).lower()
+
+
+def _apply_confidence_guardrail(
+    disposition: Any,
+    reason: str,
+    confidence: float,
+    cleanup_mode: CleanupModeSetting,
+) -> tuple[Any, str]:
+    if _disposition_value(disposition) != CleanupDisposition.DISCARD.value:
+        return disposition, reason
+
+    if confidence >= cleanup_mode.confidence_threshold:
+        return disposition, reason
+
+    note = (
+        "Guardrail: downgraded to keep "
+        f"(confidence {confidence:.2f} < {cleanup_mode.confidence_threshold:.2f} "
+        f"for {cleanup_mode.value} mode)."
+    )
+    updated_reason = f"{reason} {note}".strip() if reason else note
+    return CleanupDisposition.KEEP, updated_reason
 
 
 @dataclass
@@ -289,6 +351,7 @@ class ClaudeCodeClient:
         content_mode: str = "strict",
         conversation_history: str = "",
         pending_questions: Optional[List[str]] = None,
+        cleanup_mode: CleanupModeSetting = CleanupModeSetting.BALANCED,
     ) -> CleanupPlan:
         """
         Generate a cleanup plan using Claude Code SDK.
@@ -298,6 +361,9 @@ class ClaudeCodeClient:
             source_file: Source file path
             blocks: List of block dictionaries
             content_mode: "strict" or "refinement"
+            conversation_history: Previous conversation turns
+            pending_questions: List of pending questions
+            cleanup_mode: Cleanup aggressiveness mode (conservative, balanced, aggressive)
 
         Returns:
             CleanupPlan with AI suggestions
@@ -313,9 +379,12 @@ class ClaudeCodeClient:
             content_mode=content_mode,
             conversation_history=conversation_history,
             pending_questions=pending_questions,
+            cleanup_mode=cleanup_mode,
         )
 
-        response = await self._query(CLEANUP_SYSTEM_PROMPT, user_prompt)
+        # Use mode-specific system prompt
+        system_prompt = get_cleanup_system_prompt(cleanup_mode)
+        response = await self._query(system_prompt, user_prompt)
 
         # Track generation status for transparency
         ai_generated = response.success and response.data is not None
@@ -336,6 +405,9 @@ class ClaudeCodeClient:
                 block_id = item_data.get("block_id")
                 if block_id in block_map:
                     suggested_by_block_id[block_id] = item_data
+            overall_notes = _sanitize_ai_text(str(response.data.get("overall_notes") or ""))
+        else:
+            overall_notes = ""
 
         # Always return one item per input block (no silent drops)
         items = []
@@ -354,9 +426,31 @@ class ClaudeCodeClient:
                 suggested_disposition = item_data.get(
                     "suggested_disposition", CleanupDisposition.KEEP
                 )
-                suggestion_reason = item_data.get("suggestion_reason", "")
+                suggestion_reason = _sanitize_ai_text(
+                    str(item_data.get("suggestion_reason") or "")
+                )
                 confidence = normalize_confidence(item_data.get("confidence"), log=logger)
                 ai_analyzed = True
+
+                # Parse signals_detected from AI response
+                signals_detected = []
+                for signal_data in item_data.get("signals", []):
+                    if isinstance(signal_data, dict):
+                        signal_type = signal_data.get("type", "")
+                        signal_detail = _sanitize_ai_text(
+                            str(signal_data.get("detail") or "")
+                        )
+                        if signal_type and signal_detail:
+                            signals_detected.append(
+                                DetectedSignal(type=signal_type, detail=signal_detail)
+                            )
+
+                suggested_disposition, suggestion_reason = _apply_confidence_guardrail(
+                    suggested_disposition,
+                    suggestion_reason,
+                    confidence,
+                    cleanup_mode,
+                )
             else:
                 # AI omitted this block - use defaults
                 suggested_disposition = CleanupDisposition.KEEP
@@ -367,6 +461,7 @@ class ClaudeCodeClient:
                 )
                 confidence = 0.5
                 ai_analyzed = False
+                signals_detected = []  # No signals when AI doesn't analyze
                 if response.success:
                     logger.debug(
                         "Cleanup item omitted for block %s; defaulting confidence to 0.5",
@@ -388,6 +483,8 @@ class ClaudeCodeClient:
                     # Duplicate detection
                     similar_block_ids=similar_ids,
                     similarity_score=max_similarity,
+                    # Signal detection
+                    signals_detected=signals_detected,
                 )
             )
 
@@ -398,6 +495,8 @@ class ClaudeCodeClient:
             ai_generated=ai_generated,
             generation_error=generation_error,
             duplicate_groups=duplicate_groups,
+            cleanup_mode=cleanup_mode.value,
+            overall_notes=overall_notes,
         )
 
     async def generate_routing_plan(

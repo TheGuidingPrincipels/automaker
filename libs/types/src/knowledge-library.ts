@@ -127,6 +127,63 @@ export interface KLBlockListResponse {
 // Cleanup Plan
 // ============================================================================
 
+/** Cleanup mode for AI decision criteria */
+export type KLCleanupMode = 'conservative' | 'balanced' | 'aggressive';
+
+/** Configuration for each cleanup mode */
+export const KL_CLEANUP_MODE_CONFIG: Record<
+  KLCleanupMode,
+  { label: string; description: string; confidenceThreshold: number }
+> = {
+  conservative: {
+    label: 'Conservative',
+    description: 'Keep more - only suggest discard for obvious noise',
+    confidenceThreshold: 0.85,
+  },
+  balanced: {
+    label: 'Balanced',
+    description: 'Balanced - smart suggestions based on content signals',
+    confidenceThreshold: 0.7,
+  },
+  aggressive: {
+    label: 'Aggressive',
+    description: 'Discard more - actively flag time-sensitive content',
+    confidenceThreshold: 0.55,
+  },
+};
+
+/** Default cleanup mode */
+export const KL_DEFAULT_CLEANUP_MODE: KLCleanupMode = 'balanced';
+
+/** Get cleanup mode options for UI dropdowns */
+export function getKLCleanupModeOptions(): Array<{
+  value: KLCleanupMode;
+  label: string;
+  description: string;
+}> {
+  return (
+    Object.entries(KL_CLEANUP_MODE_CONFIG) as [
+      KLCleanupMode,
+      (typeof KL_CLEANUP_MODE_CONFIG)[KLCleanupMode],
+    ][]
+  ).map(([value, config]) => ({
+    value,
+    label: config.label,
+    description: config.description,
+  }));
+}
+
+/** Signal detected in cleanup analysis.
+ * Signals indicate specific patterns detected in the content that
+ * influence the keep/discard recommendation.
+ */
+export interface KLDetectedSignalResponse {
+  /** Signal type (e.g., "time_sensitive", "completed_items", "original_work") */
+  type: string;
+  /** Human-readable detail about what was detected */
+  detail: string;
+}
+
 /** Single cleanup item */
 export interface KLCleanupItemResponse {
   block_id: string;
@@ -151,6 +208,10 @@ export interface KLCleanupItemResponse {
   similar_block_ids: string[];
   /** Highest similarity score with another block (0.0-1.0), null if no similar blocks */
   similarity_score: number | null;
+
+  // Signal detection - shows why the AI made its recommendation
+  /** Signals detected in the content that influenced the recommendation */
+  signals_detected: KLDetectedSignalResponse[];
 }
 
 /** Cleanup plan for a session */
@@ -170,6 +231,10 @@ export interface KLCleanupPlanResponse {
   generation_error: string | null;
   /** Groups of block IDs that appear to be duplicates or near-duplicates */
   duplicate_groups: string[][];
+  /** Cleanup mode used for this plan (conservative/balanced/aggressive) */
+  cleanup_mode: KLCleanupMode;
+  /** Overall notes from AI about the cleanup analysis */
+  overall_notes: string;
 }
 
 /** Request to set cleanup decision */
@@ -525,6 +590,9 @@ export type KLStreamCommand =
 /** WebSocket command request */
 export interface KLStreamCommandRequest {
   command: KLStreamCommand;
+
+  /** For generate_cleanup command - cleanup mode to use */
+  cleanup_mode?: KLCleanupMode;
 
   /** For user_message command */
   message?: string;

@@ -1,46 +1,85 @@
 # Code Review Command
 
-Comprehensive code review using multiple deep dive agents to analyze git diff for correctness, security, code quality, and tech stack compliance, followed by automated fixes using deepcode agents.
+Comprehensive code review using multiple deep dive agents to analyze changes for correctness, security, code quality, and tech stack compliance, followed by automated fixes using deepcode agents.
 
 ## Usage
 
-This command analyzes all changes in the git diff and verifies:
+This command analyzes changes and verifies:
 
 1. **Invalid code based on tech stack** (HIGHEST PRIORITY)
 2. Security vulnerabilities
 3. Code quality issues (dirty code)
 4. Implementation correctness
 
-Then automatically fixes any issues found.
+Then automatically fixes any issues found (or defers severe+uncertain issues to user).
 
-### Worktree Support
+### Arguments
 
-This command accepts an optional worktree name via `$ARGUMENTS`:
+This command supports two optional arguments via `$ARGUMENTS`:
 
-- `/review` - Reviews current worktree
-- `/review 1` or `/review feature-1` - Reviews the feature-1 worktree
-- `/review 2` or `/review feature-2` - Reviews the feature-2 worktree
+- **Worktree selector**: `1` for feature-1, `2` for feature-2, or full worktree name
+- **Target branch**: Branch name to compare against (e.g., `develop`, `main`)
+
+**Examples:**
+
+| Command             | Review Mode       | Scope                                     |
+| ------------------- | ----------------- | ----------------------------------------- |
+| `/review`           | Working directory | Uncommitted changes in current worktree   |
+| `/review 1`         | Working directory | Uncommitted changes in feature-1 worktree |
+| `/review main`      | Branch comparison | Current branch vs main                    |
+| `/review develop`   | Branch comparison | Current branch vs develop                 |
+| `/review 1 develop` | Branch comparison | feature-1 branch vs develop               |
+
+**Argument Detection Logic:**
+
+1. If argument matches a known worktree name → use as worktree
+2. If argument matches a branch name → use as target branch
+3. If two arguments → first is worktree, second is target branch
+
+**Review Modes:**
+
+- **Working directory mode** (default): Reviews uncommitted changes (`git diff HEAD`)
+- **Branch comparison mode**: Reviews all changes between branches (`git diff $TARGET_REF...HEAD`)
 
 ## Instructions
 
-### Phase 0: Determine Worktree Context
+### Phase 0: Parse Arguments and Determine Context
 
-1. **Parse arguments for worktree name**
-
-   `$ARGUMENTS` may contain an optional worktree name. If empty, use current directory.
-
-2. **If worktree specified, find and validate**
+1. **Parse `$ARGUMENTS`** (may contain worktree name, target branch, or both)
 
    ```bash
-   # Parse optional worktree argument
-   WORKTREE_NAME="$ARGUMENTS"
+   # Split arguments
+   ARG1=$(echo "$ARGUMENTS" | awk '{print $1}')
+   ARG2=$(echo "$ARGUMENTS" | awk '{print $2}')
 
+   # Initialize variables
+   WORKTREE_NAME=""
+   TARGET_BRANCH=""
+   REVIEW_MODE="working"  # Default: working directory review
+
+   # Get list of worktree names
+   WORKTREE_NAMES=$(git worktree list | awk '{print $1}' | xargs -I{} basename {})
+
+   # Check if ARG1 is a worktree name or branch
+   if echo "$WORKTREE_NAMES" | grep -qx "$ARG1" 2>/dev/null; then
+     WORKTREE_NAME="$ARG1"
+     # ARG2 might be target branch
+     if [ -n "$ARG2" ]; then
+       TARGET_BRANCH="$ARG2"
+       REVIEW_MODE="branch"
+     fi
+   elif [ -n "$ARG1" ]; then
+     # ARG1 is likely a branch name
+     TARGET_BRANCH="$ARG1"
+     REVIEW_MODE="branch"
+   fi
+   ```
+
+2. **Switch to worktree if specified**
+
+   ```bash
    if [ -n "$WORKTREE_NAME" ]; then
-     # List all worktrees
-     echo "Looking for worktree: $WORKTREE_NAME"
-     git worktree list
-
-     # Find worktree path (exact match on path component)
+     # Find worktree path
      WORKTREE_PATH=$(git worktree list | grep "/$WORKTREE_NAME " | awk '{print $1}')
 
      if [ -z "$WORKTREE_PATH" ]; then
@@ -57,23 +96,52 @@ This command accepts an optional worktree name via `$ARGUMENTS`:
    fi
    ```
 
-3. **Report context**
+3. **Validate target branch (if branch mode)**
 
    ```bash
-   echo "=== WORKTREE CONTEXT ==="
+   if [ "$REVIEW_MODE" = "branch" ]; then
+     # Verify target branch exists
+     if ! git show-ref --verify --quiet refs/heads/$TARGET_BRANCH && \
+        ! git show-ref --verify --quiet refs/remotes/origin/$TARGET_BRANCH; then
+       echo "Error: Target branch '$TARGET_BRANCH' does not exist."
+       echo ""
+       echo "Available branches:"
+       git branch -a | head -20
+       exit 1
+     fi
+
+     # Determine ref to use (local or remote)
+     if git show-ref --verify --quiet refs/heads/$TARGET_BRANCH; then
+       TARGET_REF=$TARGET_BRANCH
+     else
+       TARGET_REF=origin/$TARGET_BRANCH
+     fi
+   fi
+   ```
+
+4. **Report context**
+
+   ```bash
+   echo "=== REVIEW CONTEXT ==="
    echo "Path: $(git rev-parse --show-toplevel)"
    echo "Branch: $(git branch --show-current)"
+   echo "Mode: $REVIEW_MODE"
+
+   if [ "$REVIEW_MODE" = "branch" ]; then
+     echo "Target: $TARGET_BRANCH"
+
+     # Show branch relationship
+     AHEAD=$(git rev-list --count $TARGET_REF..HEAD 2>/dev/null || echo "?")
+     BEHIND=$(git rev-list --count HEAD..$TARGET_REF 2>/dev/null || echo "?")
+     echo "Commits: $AHEAD ahead, $BEHIND behind $TARGET_BRANCH"
+   fi
 
    # Show port configuration if .env exists
    if [ -f ".env" ]; then
      echo "Ports: UI=$(grep '^TEST_PORT=' .env | cut -d'=' -f2), Server=$(grep '^PORT=' .env | cut -d'=' -f2)"
    fi
-   echo "========================"
+   echo "======================="
    ```
-
-4. **Proceed with review in target worktree context**
-
-   All subsequent git commands will execute in the resolved worktree directory.
 
 ### Phase 1: Collect Metadata (Lean Context)
 
@@ -82,21 +150,33 @@ This command accepts an optional worktree name via `$ARGUMENTS`:
 1. **Get diff statistics** (not full diff content)
 
    ```bash
-   # Summary of changes per file (lines added/removed)
-   git diff --stat HEAD
-
-   # For staged changes
-   git diff --stat --cached
+   if [ "$REVIEW_MODE" = "branch" ]; then
+     # Branch comparison stats
+     git diff --stat $TARGET_REF...HEAD
+   else
+     # Working directory stats
+     git diff --stat HEAD
+     git diff --stat --cached
+   fi
    ```
 
 2. **Get list of changed files**
 
    ```bash
-   # Modified files
-   git diff --name-only HEAD
+   if [ "$REVIEW_MODE" = "branch" ]; then
+     # Files changed between branches
+     git diff --name-only $TARGET_REF...HEAD
 
-   # Staged files
-   git diff --name-only --cached
+     # Plus any uncommitted changes on top
+     git diff --name-only HEAD
+     git diff --name-only --cached
+   else
+     # Modified files (working directory)
+     git diff --name-only HEAD
+
+     # Staged files
+     git diff --name-only --cached
+   fi
    ```
 
 3. **Get untracked files** (new files not yet added to git)
@@ -107,18 +187,28 @@ This command accepts an optional worktree name via `$ARGUMENTS`:
 
    **DO NOT read untracked file contents** - agents will read them.
 
-4. **Categorize all changes** (metadata only)
+4. **Get commit log (branch mode only)**
+
+   ```bash
+   if [ "$REVIEW_MODE" = "branch" ]; then
+     # Show commits that will be reviewed
+     git log --oneline $TARGET_REF..HEAD
+   fi
+   ```
+
+5. **Categorize all changes** (metadata only)
 
    Create a summary table:
 
-   | Category           | Count | Files         |
-   | ------------------ | ----- | ------------- |
-   | Modified (tracked) | X     | list files... |
-   | Staged             | X     | list files... |
-   | Untracked (new)    | X     | list files... |
-   | **Total**          | X     |               |
+   | Category                   | Count | Files         |
+   | -------------------------- | ----- | ------------- |
+   | Branch changes (committed) | X     | list files... |
+   | Modified (uncommitted)     | X     | list files... |
+   | Staged                     | X     | list files... |
+   | Untracked (new)            | X     | list files... |
+   | **Total unique files**     | X     |               |
 
-5. **Identify file types** for agent routing
+6. **Identify file types** for agent routing
 
    Categorize files by domain:
    - **Frontend**: `apps/ui/**`, `*.tsx`, `*.css`
@@ -127,7 +217,7 @@ This command accepts an optional worktree name via `$ARGUMENTS`:
    - **Config**: `*.json`, `*.config.*`, `.env*`
    - **Tests**: `*.test.ts`, `*.spec.ts`
 
-6. **Note the tech stack** (agents will verify against this):
+7. **Note the tech stack** (agents will verify against this):
    - **Node.js**: >=22.0.0 <23.0.0
    - **TypeScript**: 5.9.3
    - **React**: 19.2.3
@@ -149,15 +239,18 @@ To avoid context bloat in the main session, agents read files themselves:
    - Diff statistics (lines changed per file)
    - File categorization (frontend/backend/shared/tests)
    - Tech stack versions to validate against
+   - **Review mode** (working or branch) and target ref if applicable
 
 2. **Each agent MUST**:
    - Read the files assigned to them using the Read tool
-   - Run `git diff HEAD -- <file>` to see specific changes
+   - Run appropriate git diff command to see specific changes:
+     - **Working mode**: `git diff HEAD -- <file>`
+     - **Branch mode**: `git diff $TARGET_REF...HEAD -- <file>`
    - Read related files as needed for context
    - Focus on their specific domain
 
 3. **Agent file reading strategy**:
-   - For MODIFIED files: Run `git diff HEAD -- <file>` to see changes
+   - For MODIFIED files: Run appropriate `git diff` to see changes
    - For UNTRACKED files: Read full file content (no diff exists)
    - For CONTEXT: Read imports/related files as needed
 
@@ -172,7 +265,7 @@ To avoid context bloat in the main session, agents read files themselves:
 
 **Focus:** Verify code is valid for the tech stack
 
-**Input:** List of files to analyze, tech stack versions
+**Input:** List of files to analyze, tech stack versions, review mode
 
 **Instructions for Agent 1:**
 
@@ -180,7 +273,7 @@ To avoid context bloat in the main session, agents read files themselves:
 STEP 0: READ THE FILES (Required First Step)
 
 For each file in your assigned list:
-- MODIFIED files: Run `git diff HEAD -- <filepath>` to see changes
+- MODIFIED files: Run `git diff HEAD -- <filepath>` (or `git diff $TARGET_REF...HEAD -- <filepath>` for branch mode)
 - UNTRACKED files: Use Read tool to get full content
 - Read any imported files if needed for type checking
 
@@ -237,7 +330,7 @@ Provide a detailed report with:
 
 **Focus:** Security issues and vulnerabilities
 
-**Input:** List of files to analyze (prioritize routes, auth, API files)
+**Input:** List of files to analyze (prioritize routes, auth, API files), review mode
 
 **Instructions for Agent 2:**
 
@@ -245,7 +338,7 @@ Provide a detailed report with:
 STEP 0: READ THE FILES (Required First Step)
 
 For each file in your assigned list:
-- MODIFIED files: Run `git diff HEAD -- <filepath>` to see changes
+- MODIFIED files: Run appropriate `git diff` command to see changes
 - UNTRACKED files: Use Read tool to get full content
 - Prioritize: auth/*, routes/*, api/*, *.env*, config files
 
@@ -305,7 +398,7 @@ Provide a detailed report with:
 
 **Focus:** Dirty code, code smells, and quality issues
 
-**Input:** List of files to analyze
+**Input:** List of files to analyze, review mode
 
 **Instructions for Agent 3:**
 
@@ -313,7 +406,7 @@ Provide a detailed report with:
 STEP 0: READ THE FILES (Required First Step)
 
 For each file in your assigned list:
-- MODIFIED files: Run `git diff HEAD -- <filepath>` to see changes
+- MODIFIED files: Run appropriate `git diff` command to see changes
 - UNTRACKED files: Use Read tool to get full content
 - For long files, focus on changed sections
 
@@ -373,7 +466,7 @@ Provide a detailed report with:
 
 **Focus:** Verify code implements requirements correctly
 
-**Input:** List of files to analyze
+**Input:** List of files to analyze, review mode
 
 **Instructions for Agent 4:**
 
@@ -381,7 +474,7 @@ Provide a detailed report with:
 STEP 0: READ THE FILES (Required First Step)
 
 For each file in your assigned list:
-- MODIFIED files: Run `git diff HEAD -- <filepath>` to see changes
+- MODIFIED files: Run appropriate `git diff` command to see changes
 - UNTRACKED files: Use Read tool to get full content
 - Read test files alongside implementation files
 
@@ -438,7 +531,7 @@ Provide a detailed report with:
 
 **Focus:** Architectural issues and design pattern violations
 
-**Input:** List of files to analyze, file categorization from Phase 1
+**Input:** List of files to analyze, file categorization from Phase 1, review mode
 
 **Instructions for Agent 5:**
 
@@ -446,7 +539,7 @@ Provide a detailed report with:
 STEP 0: READ THE FILES (Required First Step)
 
 For each file in your assigned list:
-- MODIFIED files: Run `git diff HEAD -- <filepath>` to see changes
+- MODIFIED files: Run appropriate `git diff` command to see changes
 - UNTRACKED files: Use Read tool to get full content
 - Read CLAUDE.md and project docs for architecture patterns
 - Check import/export relationships between files
@@ -514,12 +607,13 @@ After all 5 deep dive agents complete their analysis:
    - Flag untracked files that may need `git add` before commit
 5. **Create a master report** summarizing all findings:
 
-   | Source             | Files Reviewed | Issues Found |
-   | ------------------ | -------------- | ------------ |
-   | Modified (tracked) | X              | Y            |
-   | Staged             | X              | Y            |
-   | Untracked (new)    | X              | Y            |
-   | **Total**          | X              | Y            |
+   | Source                     | Files Reviewed | Issues Found |
+   | -------------------------- | -------------- | ------------ |
+   | Branch changes (committed) | X              | Y            |
+   | Modified (uncommitted)     | X              | Y            |
+   | Staged                     | X              | Y            |
+   | Untracked (new)            | X              | Y            |
+   | **Total**                  | X              | Y            |
 
 ### Phase 4: Deepcode Fixes (5 Agents)
 
@@ -530,7 +624,7 @@ Launch 5 deepcode agents to fix the issues found. Each agent should be invoked w
 Deepcode agents must read files before fixing:
 
 - Use Read tool to get current file content
-- For context, run `git diff HEAD -- <filepath>` to see what was changed
+- For context, run appropriate `git diff` to see what was changed
 - Edit files using the Edit tool
 - After all fixes are complete, recommend `git add <file>` for untracked files
 
@@ -714,22 +808,26 @@ After all fixes are complete:
    - Which might be intentionally untracked (e.g., local config)
 
 7. **Create summary report**:
+   - Review mode used (working directory or branch comparison)
+   - Target branch (if branch mode)
    - Issues found by each agent (tracked vs untracked)
    - Issues fixed by each agent
+   - Issues deferred to user (if any)
    - Remaining issues (if any)
    - Verification results
    - Untracked files recommendations
 
 ## Workflow Summary
 
-1. ✅ Collect metadata only (file lists, diff stats) - NO file content reading
-2. ✅ Categorize files by domain (frontend/backend/shared/tests)
-3. ✅ Launch 5 deep dive agents with file lists (agents read files themselves)
-4. ✅ Consolidate findings and prioritize (track untracked issues)
-5. ✅ Launch 5 deepcode agents (sequential fixes, priority order)
-6. ✅ Verify fixes with build/lint/test
-7. ✅ Verify untracked files and recommend staging
-8. ✅ Report summary with tracked vs untracked breakdown
+1. Parse arguments (worktree, target branch) and determine review mode
+2. Collect metadata only (file lists, diff stats) - NO file content reading
+3. Categorize files by domain (frontend/backend/shared/tests)
+4. Launch 5 deep dive agents with file lists (agents read files themselves)
+5. Consolidate findings and prioritize (track untracked issues)
+6. Launch 5 deepcode agents (sequential fixes, priority order)
+7. Verify fixes with build/lint/test
+8. Verify untracked files and recommend staging
+9. Report summary with tracked vs untracked breakdown
 
 ## Notes
 
@@ -752,6 +850,9 @@ After all fixes are complete:
 - **Tech stack validation is HIGHEST PRIORITY** - invalid code must be fixed first
 - **Agents read their own files** - Each agent uses Read tool and `git diff` to fetch file content
 - **Untracked files** - Agents read full content since no diff exists
+- **Review modes**:
+  - Working directory mode: Reviews uncommitted changes (`git diff HEAD`)
+  - Branch comparison mode: Reviews all branch changes (`git diff $TARGET_REF...HEAD`)
 - Each deep dive agent should work independently and provide comprehensive analysis
 - Deepcode agents should fix issues in priority order
 - All fixes should maintain existing functionality

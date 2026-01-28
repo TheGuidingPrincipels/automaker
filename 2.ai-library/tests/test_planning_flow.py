@@ -11,6 +11,7 @@ from src.models.session import ExtractionSession, SessionPhase
 from src.models.content import SourceDocument, ContentBlock, BlockType
 from src.models.content_mode import ContentMode
 from src.models.cleanup_plan import CleanupPlan, CleanupItem, CleanupDisposition
+from src.models.cleanup_mode_setting import CleanupModeSetting
 from src.models.routing_plan import RoutingPlan, BlockRoutingItem
 
 
@@ -268,6 +269,118 @@ class TestPlanningFlow:
         called_blocks = flow.sdk_client.generate_cleanup_plan.call_args.kwargs["blocks"]
         assert called_blocks
         assert all("type" in b for b in called_blocks)
+
+    @pytest.mark.asyncio
+    async def test_cleanup_passes_cleanup_mode_to_sdk(self, mock_session):
+        """PlanningFlow must pass cleanup_mode parameter to SDK client."""
+        mock_cleanup_plan = CleanupPlan(
+            session_id=mock_session.id,
+            source_file=mock_session.source.file_path,
+            items=[
+                CleanupItem(
+                    block_id="block_1",
+                    heading_path=["Authentication"],
+                    content_preview="JWT tokens...",
+                    suggested_disposition=CleanupDisposition.KEEP,
+                    suggestion_reason="Relevant content",
+                )
+            ],
+        )
+
+        with patch.object(
+            PlanningFlow,
+            "__init__",
+            lambda self, **kwargs: None,
+        ):
+            flow = PlanningFlow()
+            flow.sdk_client = AsyncMock()
+            flow.sdk_client.generate_cleanup_plan = AsyncMock(return_value=mock_cleanup_plan)
+            flow.library_path = "./library"
+            flow.manifest = MagicMock()
+
+            # Test with aggressive mode
+            async for _ in flow.generate_cleanup_plan(mock_session, cleanup_mode=CleanupModeSetting.AGGRESSIVE):
+                pass
+
+        # Verify cleanup_mode was passed to SDK
+        called_cleanup_mode = flow.sdk_client.generate_cleanup_plan.call_args.kwargs["cleanup_mode"]
+        assert called_cleanup_mode == CleanupModeSetting.AGGRESSIVE
+
+    @pytest.mark.asyncio
+    async def test_cleanup_defaults_to_balanced_mode(self, mock_session):
+        """PlanningFlow should default to balanced cleanup mode."""
+        mock_cleanup_plan = CleanupPlan(
+            session_id=mock_session.id,
+            source_file=mock_session.source.file_path,
+            items=[
+                CleanupItem(
+                    block_id="block_1",
+                    heading_path=["Authentication"],
+                    content_preview="JWT tokens...",
+                    suggested_disposition=CleanupDisposition.KEEP,
+                    suggestion_reason="Relevant content",
+                )
+            ],
+        )
+
+        with patch.object(
+            PlanningFlow,
+            "__init__",
+            lambda self, **kwargs: None,
+        ):
+            flow = PlanningFlow()
+            flow.sdk_client = AsyncMock()
+            flow.sdk_client.generate_cleanup_plan = AsyncMock(return_value=mock_cleanup_plan)
+            flow.library_path = "./library"
+            flow.manifest = MagicMock()
+
+            # Test without specifying cleanup_mode (should default to balanced)
+            async for _ in flow.generate_cleanup_plan(mock_session):
+                pass
+
+        # Verify cleanup_mode defaulted to balanced
+        called_cleanup_mode = flow.sdk_client.generate_cleanup_plan.call_args.kwargs["cleanup_mode"]
+        assert called_cleanup_mode == CleanupModeSetting.BALANCED
+
+    @pytest.mark.asyncio
+    async def test_cleanup_events_include_cleanup_mode(self, mock_session):
+        """PlanningFlow should include cleanup_mode in event data."""
+        mock_cleanup_plan = CleanupPlan(
+            session_id=mock_session.id,
+            source_file=mock_session.source.file_path,
+            items=[
+                CleanupItem(
+                    block_id="block_1",
+                    heading_path=["Authentication"],
+                    content_preview="JWT tokens...",
+                    suggested_disposition=CleanupDisposition.KEEP,
+                    suggestion_reason="Relevant content",
+                )
+            ],
+        )
+
+        with patch.object(
+            PlanningFlow,
+            "__init__",
+            lambda self, **kwargs: None,
+        ):
+            flow = PlanningFlow()
+            flow.sdk_client = AsyncMock()
+            flow.sdk_client.generate_cleanup_plan = AsyncMock(return_value=mock_cleanup_plan)
+            flow.library_path = "./library"
+            flow.manifest = MagicMock()
+
+            events = []
+            async for event in flow.generate_cleanup_plan(mock_session, cleanup_mode=CleanupModeSetting.CONSERVATIVE):
+                events.append(event)
+
+        # Check that cleanup_started event includes cleanup_mode
+        started_event = next(e for e in events if e.type == PlanEventType.CLEANUP_STARTED)
+        assert started_event.data["cleanup_mode"] == "conservative"
+
+        # Check that cleanup_ready event includes cleanup_mode
+        ready_event = next(e for e in events if e.type == PlanEventType.CLEANUP_READY)
+        assert ready_event.data["cleanup_mode"] == "conservative"
 
     @pytest.mark.asyncio
     async def test_routing_blocks_include_type_key(self, mock_session_with_cleanup):

@@ -678,8 +678,9 @@ export function hydrateStoreFromSettings(settings: GlobalSettings): void {
       maxConcurrency: number;
     }
   > = {};
-  if ((settings as Record<string, unknown>).autoModeByWorktree) {
-    const persistedSettings = (settings as Record<string, unknown>).autoModeByWorktree as Record<
+  const settingsRecord = settings as unknown as Record<string, unknown>;
+  if (settingsRecord.autoModeByWorktree) {
+    const persistedSettings = settingsRecord.autoModeByWorktree as Record<
       string,
       { maxConcurrency?: number; branchName?: string | null }
     >;

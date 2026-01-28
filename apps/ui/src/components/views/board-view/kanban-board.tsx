@@ -6,6 +6,7 @@ import {
   useEffect,
   type RefObject,
   type ReactNode,
+  type UIEvent,
 } from 'react';
 import { DragOverlay } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -78,7 +79,7 @@ const REDUCED_CARD_OPACITY_PERCENT = 85;
 type VirtualListItem = { id: string };
 
 interface VirtualListState<Item extends VirtualListItem> {
-  contentRef: RefObject<HTMLDivElement>;
+  contentRef: RefObject<HTMLDivElement | null>;
   onScroll: (event: UIEvent<HTMLDivElement>) => void;
   itemIds: string[];
   visibleItems: Item[];

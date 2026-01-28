@@ -10,6 +10,14 @@ import { getElectronAPI } from '@/lib/electron';
 import { queryKeys } from '@/lib/query-keys';
 import { toast } from 'sonner';
 
+const getAutoModeAPI = () => {
+  const api = getElectronAPI();
+  if (!api?.autoMode) {
+    throw new Error('Auto mode API is unavailable');
+  }
+  return api.autoMode;
+};
+
 /**
  * Start running a feature in auto mode
  *
@@ -35,13 +43,8 @@ export function useStartFeature(projectPath: string) {
       useWorktrees?: boolean;
       worktreePath?: string;
     }) => {
-      const api = getElectronAPI();
-      const result = await api.autoMode.runFeature(
-        projectPath,
-        featureId,
-        useWorktrees,
-        worktreePath
-      );
+      const autoMode = getAutoModeAPI();
+      const result = await autoMode.runFeature(projectPath, featureId, useWorktrees, worktreePath);
       if (!result.success) {
         throw new Error(result.error || 'Failed to start feature');
       }
@@ -76,8 +79,8 @@ export function useResumeFeature(projectPath: string) {
       featureId: string;
       useWorktrees?: boolean;
     }) => {
-      const api = getElectronAPI();
-      const result = await api.autoMode.resumeFeature(projectPath, featureId, useWorktrees);
+      const autoMode = getAutoModeAPI();
+      const result = await autoMode.resumeFeature(projectPath, featureId, useWorktrees);
       if (!result.success) {
         throw new Error(result.error || 'Failed to resume feature');
       }
@@ -115,8 +118,8 @@ export function useStopFeature() {
   return useMutation({
     mutationFn: async (input: string | { featureId: string; projectPath?: string }) => {
       const featureId = typeof input === 'string' ? input : input.featureId;
-      const api = getElectronAPI();
-      const result = await api.autoMode.stopFeature(featureId);
+      const autoMode = getAutoModeAPI();
+      const result = await autoMode.stopFeature(featureId);
       if (!result.success) {
         throw new Error(result.error || 'Failed to stop feature');
       }
@@ -150,8 +153,8 @@ export function useVerifyFeature(projectPath: string) {
 
   return useMutation({
     mutationFn: async (featureId: string) => {
-      const api = getElectronAPI();
-      const result = await api.autoMode.verifyFeature(projectPath, featureId);
+      const autoMode = getAutoModeAPI();
+      const result = await autoMode.verifyFeature(projectPath, featureId);
       if (!result.success) {
         throw new Error(result.error || 'Failed to verify feature');
       }
@@ -195,8 +198,8 @@ export function useApprovePlan(projectPath: string) {
       editedPlan?: string;
       feedback?: string;
     }) => {
-      const api = getElectronAPI();
-      const result = await api.autoMode.approvePlan(
+      const autoMode = getAutoModeAPI();
+      const result = await autoMode.approvePlan(
         projectPath,
         featureId,
         approved,
@@ -245,8 +248,8 @@ export function useFollowUpFeature(projectPath: string) {
       imagePaths?: string[];
       useWorktrees?: boolean;
     }) => {
-      const api = getElectronAPI();
-      const result = await api.autoMode.followUpFeature(
+      const autoMode = getAutoModeAPI();
+      const result = await autoMode.followUpFeature(
         projectPath,
         featureId,
         prompt,
@@ -281,8 +284,8 @@ export function useCommitFeature(projectPath: string) {
 
   return useMutation({
     mutationFn: async (featureId: string) => {
-      const api = getElectronAPI();
-      const result = await api.autoMode.commitFeature(projectPath, featureId);
+      const autoMode = getAutoModeAPI();
+      const result = await autoMode.commitFeature(projectPath, featureId);
       if (!result.success) {
         throw new Error(result.error || 'Failed to commit changes');
       }
@@ -309,8 +312,8 @@ export function useCommitFeature(projectPath: string) {
 export function useAnalyzeProject() {
   return useMutation({
     mutationFn: async (projectPath: string) => {
-      const api = getElectronAPI();
-      const result = await api.autoMode.analyzeProject(projectPath);
+      const autoMode = getAutoModeAPI();
+      const result = await autoMode.analyzeProject(projectPath);
       if (!result.success) {
         throw new Error(result.error || 'Failed to analyze project');
       }
@@ -338,8 +341,8 @@ export function useStartAutoMode(projectPath: string) {
 
   return useMutation({
     mutationFn: async (maxConcurrency?: number) => {
-      const api = getElectronAPI();
-      const result = await api.autoMode.start(projectPath, maxConcurrency);
+      const autoMode = getAutoModeAPI();
+      const result = await autoMode.start(projectPath, null, maxConcurrency);
       if (!result.success) {
         throw new Error(result.error || 'Failed to start auto mode');
       }
@@ -368,8 +371,8 @@ export function useStopAutoMode(projectPath: string) {
 
   return useMutation({
     mutationFn: async () => {
-      const api = getElectronAPI();
-      const result = await api.autoMode.stop(projectPath);
+      const autoMode = getAutoModeAPI();
+      const result = await autoMode.stop(projectPath);
       if (!result.success) {
         throw new Error(result.error || 'Failed to stop auto mode');
       }
