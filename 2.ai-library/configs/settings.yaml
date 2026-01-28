@@ -19,9 +19,11 @@ sdk:
   temperature: 0 # TODO(verify): only enforce if supported by Claude Code/SDK
   max_turns: 6
 
-  # Auth: use Claude Code subscription/auth token via environment.
-  # TODO(verify): confirm the correct env var name in current Claude Code docs.
-  auth_token_env_var: ANTHROPIC_AUTH_TOKEN
+  # Authentication: OAuth only via ANTHROPIC_AUTH_TOKEN environment variable
+  # Token sources (in priority order):
+  #   1. ANTHROPIC_AUTH_TOKEN environment variable
+  #   2. ~/.automaker/credentials.json -> anthropic_oauth_token
+  # API keys are NOT supported - use 'claude login' for authentication
 
 # Safety settings
 safety:

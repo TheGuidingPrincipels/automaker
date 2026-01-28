@@ -137,6 +137,20 @@ export interface KLCleanupItemResponse {
   /** AI confidence score (0.0-1.0) */
   confidence: number;
   final_disposition: KLCleanupDisposition | null;
+
+  // AI analysis tracking - helps UI distinguish AI-analyzed vs defaulted blocks
+  /** True if AI provided analysis for this block, False if using defaults */
+  ai_analyzed: boolean;
+  /** True if content was truncated before sending to AI */
+  content_truncated: boolean;
+  /** Original content length in characters */
+  original_content_length: number;
+
+  // Duplicate detection - helps UI show similar block warnings
+  /** Block IDs with similar content (similarity >= threshold) */
+  similar_block_ids: string[];
+  /** Highest similarity score with another block (0.0-1.0), null if no similar blocks */
+  similarity_score: number | null;
 }
 
 /** Cleanup plan for a session */
@@ -150,6 +164,12 @@ export interface KLCleanupPlanResponse {
   approved_at: string | null;
   pending_count: number;
   total_count: number;
+  /** Whether suggestions came from AI (false if using defaults due to error) */
+  ai_generated: boolean;
+  /** Error message if AI generation failed (e.g., missing OAuth token) */
+  generation_error: string | null;
+  /** Groups of block IDs that appear to be duplicates or near-duplicates */
+  duplicate_groups: string[][];
 }
 
 /** Request to set cleanup decision */

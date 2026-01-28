@@ -183,7 +183,11 @@ export function useSessionWorkflow(): UseSessionWorkflowResult {
   // Queries
   const sessionQuery = useKLSession(currentSessionId ?? undefined);
   const cleanupPlanQuery = useKLCleanupPlan(currentSessionId ?? undefined);
-  const routingPlanQuery = useKLRoutingPlan(currentSessionId ?? undefined);
+  // Pass session phase to prevent premature 404 errors during cleanup phase
+  const routingPlanQuery = useKLRoutingPlan(
+    currentSessionId ?? undefined,
+    sessionQuery.data?.phase
+  );
 
   // WebSocket ref
   const wsRef = useRef<WebSocket | null>(null);

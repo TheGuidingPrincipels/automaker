@@ -550,6 +550,15 @@ Step 0 will detect this and error gracefully with available worktrees listed.
 
 ## Safety Guarantees
 
+### Fork Safety (CRITICAL)
+
+**NEVER push to or create PRs targeting `upstream` (AutoMaker-Org/automaker).**
+
+- `origin` = TheGuidingPrincipels/automaker (YOUR fork) - push here
+- `upstream` = AutoMaker-Org/automaker (READ ONLY - never push)
+
+All `/sync` operations push to `origin` only. The `--repo TheGuidingPrincipels/automaker` flag in PR mode ensures PRs target your fork.
+
 ### Both Modes
 
 - All uncommitted work is committed (never lost)

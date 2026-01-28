@@ -170,6 +170,15 @@ class CleanupItemResponse(BaseModel):
     confidence: float
     final_disposition: Optional[str] = None
 
+    # AI analysis tracking - helps UI distinguish AI-analyzed vs defaulted blocks
+    ai_analyzed: bool = False
+    content_truncated: bool = False
+    original_content_length: int = 0
+
+    # Duplicate detection - helps UI show similar block warnings
+    similar_block_ids: List[str] = Field(default_factory=list)
+    similarity_score: Optional[float] = None
+
     @classmethod
     def from_item(cls, item: CleanupItem) -> "CleanupItemResponse":
         """Create response from cleanup item."""
@@ -181,6 +190,13 @@ class CleanupItemResponse(BaseModel):
             suggestion_reason=item.suggestion_reason,
             confidence=item.confidence,
             final_disposition=item.final_disposition,
+            # AI analysis tracking
+            ai_analyzed=item.ai_analyzed,
+            content_truncated=item.content_truncated,
+            original_content_length=item.original_content_length,
+            # Duplicate detection
+            similar_block_ids=item.similar_block_ids,
+            similarity_score=item.similarity_score,
         )
 
 
@@ -195,6 +211,11 @@ class CleanupPlanResponse(BaseModel):
     approved_at: Optional[datetime] = None
     pending_count: int
     total_count: int
+    # AI generation status fields
+    ai_generated: bool = True
+    generation_error: Optional[str] = None
+    # Duplicate detection summary
+    duplicate_groups: List[List[str]] = Field(default_factory=list)
 
     @classmethod
     def from_plan(cls, plan: CleanupPlan) -> "CleanupPlanResponse":
@@ -213,6 +234,9 @@ class CleanupPlanResponse(BaseModel):
             approved_at=plan.approved_at,
             pending_count=pending_count,
             total_count=len(plan.items),
+            ai_generated=plan.ai_generated,
+            generation_error=plan.generation_error,
+            duplicate_groups=plan.duplicate_groups,
         )
 
 

@@ -11,7 +11,11 @@ from src.models.cleanup_plan import CleanupDisposition
 @pytest.mark.asyncio
 async def test_query_passes_model_into_options(monkeypatch):
     """Configured model must be passed into ClaudeCodeOptions."""
+    import os
     import src.sdk.client as sdk_client
+
+    # Set OAuth token to allow query to proceed
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "test-token")
 
     captured: dict = {}
 

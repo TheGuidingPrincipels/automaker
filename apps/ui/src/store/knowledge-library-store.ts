@@ -116,6 +116,9 @@ interface KnowledgeLibraryState {
 
   // Query state
   activeConversationId: string | null;
+
+  // Transcript UI state
+  isTranscriptExpanded: boolean;
 }
 
 // ============================================================================
@@ -162,6 +165,10 @@ interface KnowledgeLibraryActions {
   // Query actions
   setActiveConversationId: (id: string | null) => void;
 
+  // Transcript UI actions
+  setTranscriptExpanded: (expanded: boolean) => void;
+  toggleTranscript: () => void;
+
   // Reset actions
   reset: () => void;
   resetSession: () => void;
@@ -183,6 +190,7 @@ const initialState: KnowledgeLibraryState = {
   selectedFilePath: null,
   expandedCategories: new Set(),
   activeConversationId: null,
+  isTranscriptExpanded: false,
 };
 
 // ============================================================================
@@ -303,6 +311,11 @@ export const useKnowledgeLibraryStore = create<KnowledgeLibraryState & Knowledge
 
       // Query actions
       setActiveConversationId: (id) => set({ activeConversationId: id }),
+
+      // Transcript UI actions
+      setTranscriptExpanded: (expanded) => set({ isTranscriptExpanded: expanded }),
+      toggleTranscript: () =>
+        set((state) => ({ isTranscriptExpanded: !state.isTranscriptExpanded })),
 
       // Reset actions
       reset: () =>

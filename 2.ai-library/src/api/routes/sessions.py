@@ -8,6 +8,7 @@ from pathlib import PurePath, Path
 import re
 
 from fastapi import APIRouter, HTTPException, status, WebSocket, WebSocketDisconnect, UploadFile, File
+from starlette.websockets import WebSocketState
 import anyio
 
 logger = logging.getLogger(__name__)
@@ -240,15 +241,36 @@ async def _send_stream_event(
     session_id: str,
     data: dict,
     timestamp: Optional[datetime] = None,
-) -> None:
-    """Send a StreamEvent payload with timestamp."""
-    event = StreamEvent(
-        event_type=event_type,
-        session_id=session_id,
-        data=data,
-        timestamp=timestamp or datetime.now(),
-    )
-    await websocket.send_json(event.model_dump(mode="json"))
+) -> bool:
+    """Send a StreamEvent payload with timestamp.
+
+    Returns True if sent successfully, False if connection is closed.
+    """
+    if websocket.client_state != WebSocketState.CONNECTED:
+        logger.debug("WebSocket not connected, skipping event: %s", event_type)
+        return False
+
+    try:
+        event = StreamEvent(
+            event_type=event_type,
+            session_id=session_id,
+            data=data,
+            timestamp=timestamp or datetime.now(),
+        )
+        await websocket.send_json(event.model_dump(mode="json"))
+        return True
+    except Exception as e:
+        logger.debug("Failed to send %s event: %s", event_type, e)
+        return False
+
+
+async def _safe_close(websocket: WebSocket) -> None:
+    """Safely close WebSocket connection, ignoring errors if already closed."""
+    try:
+        if websocket.client_state == WebSocketState.CONNECTED:
+            await websocket.close()
+    except Exception:
+        pass  # Connection already closed or errored
 
 
 # =============================================================================
@@ -975,7 +997,7 @@ async def session_stream(
 
                     # Stream cleanup plan generation
                     async for event in manager.generate_cleanup_plan_with_ai(session_id):
-                        await _send_stream_event(
+                        sent = await _send_stream_event(
                             websocket,
                             event.type.value if hasattr(event.type, "value") else str(event.type),
                             session_id,
@@ -986,6 +1008,8 @@ async def session_stream(
                             },
                             timestamp=getattr(event, "timestamp", None),
                         )
+                        if not sent:
+                            break  # Connection lost, stop streaming
 
                 elif command == "generate_routing":
                     if session.pending_questions:
@@ -1001,7 +1025,7 @@ async def session_stream(
 
                     # Stream routing plan generation
                     async for event in manager.generate_routing_plan_with_ai(session_id):
-                        await _send_stream_event(
+                        sent = await _send_stream_event(
                             websocket,
                             event.type.value if hasattr(event.type, "value") else str(event.type),
                             session_id,
@@ -1012,6 +1036,8 @@ async def session_stream(
                             },
                             timestamp=getattr(event, "timestamp", None),
                         )
+                        if not sent:
+                            break  # Connection lost, stop streaming
 
                 elif command == "user_message":
                     text = message.get("message")
@@ -1085,13 +1111,11 @@ async def session_stream(
 
     except Exception as e:
         logger.exception("WebSocket error for session %s", session_id)
-        try:
-            await _send_stream_event(
-                websocket,
-                "error",
-                session_id,
-                {"message": str(e)},
-            )
-        except Exception:
-            logger.debug("Failed to send error message to WebSocket client")
-        await websocket.close()
+        # Try to send error event, ignore if connection already closed
+        await _send_stream_event(
+            websocket,
+            "error",
+            session_id,
+            {"message": str(e)},
+        )
+        await _safe_close(websocket)

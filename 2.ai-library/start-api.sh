@@ -18,6 +18,17 @@ if [ -z "$MISTRAL_API_KEY" ]; then
     exit 1
 fi
 
+# Check OAuth token availability (info only - may load from credentials.json at runtime)
+if [ -z "$ANTHROPIC_AUTH_TOKEN" ]; then
+    echo "INFO: ANTHROPIC_AUTH_TOKEN not set in environment"
+    echo "      Will attempt to load from ~/.automaker/credentials.json at runtime"
+    echo "      If AI features fail, set ANTHROPIC_AUTH_TOKEN or run 'claude login'"
+fi
+
+# Ensure API key auth is NOT used (OAuth only mode)
+unset ANTHROPIC_API_KEY
+echo "INFO: API key authentication disabled (OAuth only mode)"
+
 # Check if Qdrant is running
 if ! curl -s http://localhost:6333/health > /dev/null 2>&1; then
     echo "WARNING: Qdrant is not running on localhost:6333"

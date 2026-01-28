@@ -1,20 +1,58 @@
 # Sub-Plan 2: Domain Gallery UI Component
 
+**Plan ID:** `SUBPLAN-2-DOMAIN-GALLERY-UI`
+
 ## Objective
 
-Create the visual Domain Gallery that displays the nine knowledge domains in a 3x3 grid layout with images, icons, and statistics. Users click a domain card to navigate to its detail view.
+Create the visual Domain Gallery that displays the nine knowledge domains in a 3x3 grid layout with icons/gradients and statistics (domain/page images are handled in Sub-Plan 4). Users click a domain card to navigate to its detail view.
+
+## Intent lock (must NOT change)
+
+This is **frontend-only domain navigation layering**: do **not** change backend APIs, storage, taxonomy generation, or persistence. Domains are derived from existing `category` path strings returned by the Knowledge Library API.
+
+## Non-goals
+
+- No backend changes
+- No page/domain image rendering or generation (handled in **Sub-Plan 4**)
+- No full Domain Detail implementation (handled in **Sub-Plan 3**)
 
 ## Prerequisites
 
 - **Sub-Plan 1 completed**: Domain types and configuration exist
 - Working knowledge of React, Tailwind CSS, and shadcn/ui components
 - Understanding of the existing Knowledge Library UI patterns
+- **Repo testing reality:** UI unit tests + typecheck run under the UI workspace (`--root apps/ui` or `--workspace=apps/ui`)
+
+## Preflight (Sub-Plan 1 Gate — STOP if failing)
+
+This sub-plan is only executable **after Sub-Plan 1 has been implemented in code** (not just written).
+
+**Required files must exist:**
+
+- `apps/ui/src/config/domains.ts`
+- `apps/ui/src/lib/domain-utils.ts`
+
+**Required exports must resolve (compile-time):**
+
+- `@/config/domains`: `getDomainById`
+- `@/lib/domain-utils`: `getDomainsWithStats`
+- `@automaker/types`: `KLDomainId`, `KLDomainWithStats`
+
+**Quick checks (run from repo root):**
+
+```bash
+test -f "apps/ui/src/config/domains.ts"
+test -f "apps/ui/src/lib/domain-utils.ts"
+npm run typecheck --workspace=apps/ui
+```
+
+**Stop condition:** If any check fails, STOP and execute Sub-Plan 1 first.
 
 ## Deliverables
 
 1. Domain Gallery component with 3x3 responsive grid
-2. Domain Card component with image/icon, title, description, and stats
-3. Updated Knowledge Library to use Domain Gallery as default Library view
+2. Domain Card component with icon/gradient, title, description, and stats
+3. Updated Knowledge Library “Library” tab to render `LibraryMode` (Domains default) while keeping `LibraryBrowser` accessible
 4. Updated Zustand store for domain navigation state
 
 ---
@@ -23,44 +61,73 @@ Create the visual Domain Gallery that displays the nine knowledge domains in a 3
 
 **File:** `apps/ui/src/store/knowledge-library-store.ts`
 
-Add domain navigation state. Find the state interface and add:
+Add domain navigation state **repo-aligned** (this store has separate `KnowledgeLibraryState`, `KnowledgeLibraryActions`, and a typed `initialState` object).
+
+1. Add the type import near the top of the file (with other imports):
 
 ```typescript
 import type { KLDomainId } from '@automaker/types';
-
-// Add to KnowledgeLibraryState interface:
-interface KnowledgeLibraryState {
-  // ... existing state ...
-
-  /** Currently selected domain (null = show gallery view) */
-  selectedDomainId: KLDomainId | null;
-
-  /** Actions */
-  setSelectedDomainId: (domainId: KLDomainId | null) => void;
-  clearSelectedDomain: () => void;
-}
-
-// Add to store implementation (inside create()):
-selectedDomainId: null,
-
-setSelectedDomainId: (domainId) => {
-  set({ selectedDomainId: domainId });
-},
-
-clearSelectedDomain: () => {
-  set({ selectedDomainId: null, selectedFilePath: null });
-},
 ```
 
-Update the persist middleware to NOT persist `selectedDomainId` (users should start fresh):
+2. Add to `KnowledgeLibraryState` (place near “Library browser state”):
+
+```typescript
+/** Currently selected domain (null = show domain gallery view) */
+selectedDomainId: KLDomainId | null;
+```
+
+3. Add to `KnowledgeLibraryActions`:
+
+```typescript
+  /** Domain navigation actions */
+  setSelectedDomainId: (domainId: KLDomainId | null) => void;
+  clearSelectedDomain: () => void;
+```
+
+4. Add to `initialState`:
+
+```typescript
+  selectedDomainId: null,
+```
+
+5. Implement the actions inside the store body (near other “Library browser actions”):
+
+```typescript
+  setSelectedDomainId: (domainId) => {
+    // Prevent stale file selection when entering domain views (Sub-Plan 3 uses selectedFilePath)
+    set({ selectedDomainId: domainId, selectedFilePath: null });
+  },
+
+  clearSelectedDomain: () => {
+    set({ selectedDomainId: null, selectedFilePath: null });
+  },
+```
+
+6. Update `resetSession()` to clear `selectedDomainId` (resetting a session clears session work and domain selection):
+
+```typescript
+  resetSession: () =>
+    set({
+      // ... existing resets ...
+      selectedDomainId: null,
+    }),
+```
+
+7. Persistence: do **not** add `selectedDomainId` to `partialize` (it should not persist). The existing `partialize` already persists only `activeView` + `currentSessionId`.
 
 ```typescript
 partialize: (state) => ({
   activeView: state.activeView,
   currentSessionId: state.currentSessionId,
-  // Do NOT include selectedDomainId
 }),
 ```
+
+8. Update store unit tests (required, targeted):
+
+**File:** `apps/ui/src/store/knowledge-library-store.test.ts`
+
+- In the `beforeEach` store reset object, add `selectedDomainId: null` to keep tests deterministic.
+- In the “persists only activeView and currentSessionId” test, set `selectedDomainId` and keep the expected persisted object unchanged.
 
 ---
 
@@ -79,6 +146,7 @@ partialize: (state) => ({
 import { useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import type { LucideIcon } from 'lucide-react';
 import { ArrowRight, FileText, Folder } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -89,12 +157,17 @@ interface DomainCardProps {
   onClick: () => void;
 }
 
+// Repo-aligned icon resolver (avoids needing `React.ComponentType` typing)
+const getIconComponent = (iconName?: string): LucideIcon => {
+  if (iconName && iconName in LucideIcons) {
+    return (LucideIcons as unknown as Record<string, LucideIcon>)[iconName];
+  }
+  return Folder;
+};
+
 export function DomainCard({ domain, onClick }: DomainCardProps) {
-  // Dynamically get the icon component
-  const IconComponent = useMemo(() => {
-    const iconName = domain.icon as keyof typeof LucideIcons;
-    return (LucideIcons[iconName] as React.ComponentType<{ className?: string }>) || LucideIcons.Folder;
-  }, [domain.icon]);
+  // NOTE: Domain image URLs are handled in Sub-Plan 4; this card uses icon + gradient only.
+  const IconComponent = useMemo(() => getIconComponent(domain.icon), [domain.icon]);
 
   return (
     <Card
@@ -275,7 +348,8 @@ export function DomainGallery() {
           </div>
         </div>
         <p className="text-muted-foreground">
-          Browse your knowledge library organized by domain. Click a domain to explore its pages and content.
+          Browse your knowledge library organized by domain. Click a domain to explore its pages and
+          content.
         </p>
       </div>
 
@@ -296,8 +370,8 @@ export function DomainGallery() {
           <Library className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
           <h3 className="text-lg font-medium mb-2">Your library is empty</h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            Upload documents in the Input tab to populate your knowledge library.
-            Content will be automatically organized into these domains.
+            Upload documents in the Input tab to populate your knowledge library. Content will be
+            automatically organized into these domains.
           </p>
         </div>
       )}
@@ -319,24 +393,46 @@ export { DomainCard } from './domain-card';
 /**
  * Library Mode - Container for library browsing views
  *
- * Renders either DomainGallery or DomainDetailView based on
- * whether a domain is selected.
+ * Provides two sub-views:
+ * - Domains: DomainGallery / DomainDetailView (default)
+ * - Browse: existing LibraryBrowser
  */
 
+import { useState } from 'react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useKnowledgeLibraryStore } from '@/store/knowledge-library-store';
 import { DomainGallery } from '../domain-gallery';
 import { DomainDetailView } from '../domain-detail';
+import { LibraryBrowser } from '../library-browser';
+
+type LibraryModeTab = 'domains' | 'browse';
 
 export function LibraryMode() {
   const { selectedDomainId } = useKnowledgeLibraryStore();
+  const [tab, setTab] = useState<LibraryModeTab>('domains');
 
-  // Show domain detail view if a domain is selected
-  if (selectedDomainId) {
-    return <DomainDetailView domainId={selectedDomainId} />;
-  }
+  return (
+    <Tabs
+      value={tab}
+      onValueChange={(v) => setTab(v as LibraryModeTab)}
+      className="h-full flex flex-col"
+    >
+      {/* Keep LibraryBrowser accessible */}
+      <TabsList className="mx-4 mt-3 mb-2 shrink-0">
+        <TabsTrigger value="domains">Domains</TabsTrigger>
+        <TabsTrigger value="browse">Browse</TabsTrigger>
+      </TabsList>
 
-  // Show domain gallery as default
-  return <DomainGallery />;
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <TabsContent value="domains" className="h-full m-0">
+          {selectedDomainId ? <DomainDetailView domainId={selectedDomainId} /> : <DomainGallery />}
+        </TabsContent>
+        <TabsContent value="browse" className="h-full m-0">
+          <LibraryBrowser />
+        </TabsContent>
+      </div>
+    </Tabs>
+  );
 }
 ```
 
@@ -381,12 +477,7 @@ export function DomainDetailView({ domainId }: DomainDetailViewProps) {
     <div className="h-full flex flex-col">
       {/* Header with back button */}
       <div className="flex items-center gap-4 p-4 border-b">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={clearSelectedDomain}
-          className="shrink-0"
-        >
+        <Button variant="ghost" size="icon" onClick={clearSelectedDomain} className="shrink-0">
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
@@ -426,21 +517,25 @@ Find the imports section and add:
 import { LibraryMode } from './components/library-mode';
 ```
 
-Find the TabsContent for "library" (around line 74) and update:
+Find the `TabsContent` where `value="library"` and replace its child component:
 
 ```tsx
-{/* Replace this: */}
+{
+  /* Replace this: */
+}
 <TabsContent value="library" className="h-full m-0">
   <LibraryBrowser />
-</TabsContent>
+</TabsContent>;
 
-{/* With this: */}
+{
+  /* With this: */
+}
 <TabsContent value="library" className="h-full m-0">
   <LibraryMode />
-</TabsContent>
+</TabsContent>;
 ```
 
-You can keep the LibraryBrowser import for now as it may be used as a fallback or in the DomainDetailView.
+After this change, `LibraryBrowser` should be imported/used by `LibraryMode` (Browse tab). Remove the `LibraryBrowser` import from `knowledge-library/index.tsx` if it becomes unused.
 
 ---
 
@@ -509,6 +604,10 @@ Grid layout:
 
 After completing these steps:
 
+0. **Automated checks (required):**
+   - `npm run typecheck --workspace=apps/ui` → pass condition: exit code 0
+   - `npx vitest run --root apps/ui -c vitest.config.ts src/store/knowledge-library-store.test.ts` → pass condition: exit code 0
+
 1. **Visual Check:**
    - Navigate to Knowledge Hub → Knowledge Library
    - Verify 9 domain cards appear in a 3x3 grid
@@ -530,7 +629,24 @@ After completing these steps:
 
 ---
 
+## Rollback plan
+
+To revert safely:
+
+1. Revert changes in:
+   - `apps/ui/src/store/knowledge-library-store.ts`
+   - `apps/ui/src/store/knowledge-library-store.test.ts`
+   - `apps/ui/src/components/views/knowledge-library/index.tsx`
+2. Delete new UI components created by this plan:
+   - `apps/ui/src/components/views/knowledge-library/components/domain-gallery/`
+   - `apps/ui/src/components/views/knowledge-library/components/library-mode/`
+   - `apps/ui/src/components/views/knowledge-library/components/domain-detail/`
+3. Re-run:
+   - `npm run typecheck --workspace=apps/ui` (pass: exit code 0)
+   - `npx vitest run --root apps/ui -c vitest.config.ts src/store/knowledge-library-store.test.ts` (pass: exit code 0)
+
 ## Next Steps
 
 After completing this sub-plan:
+
 - **Sub-Plan 3:** Domain Detail View and Page Gallery (complete implementation)

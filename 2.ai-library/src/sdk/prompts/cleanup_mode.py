@@ -27,9 +27,20 @@ Your task is to analyze the provided document blocks and suggest a cleanup plan.
 
 3. **Never Auto-Discard**: Nothing is discarded without explicit user approval.
 
+## Confidence Guidelines
+
+Use these specific confidence levels based on evidence strength:
+
+- **0.9-1.0 (Strong evidence)**: Explicit markers like dates ("reminder for 2023-01-15"), keywords ("TODO", "DRAFT", "temporary", "delete this"), or clearly time-sensitive content
+- **0.7-0.9 (Moderate evidence)**: Contextual clues suggest status (informal tone, incomplete sentences, references to specific past events)
+- **0.5-0.7 (Weak evidence)**: Uncertain - content could reasonably go either way, limited context available
+- **Below 0.5 (Very uncertain)**: Default to KEEP suggestion - better to preserve than lose
+
+Always explain the reasoning behind your confidence level in the suggestion_reason field.
+
 ## Output Format
 
-Return a JSON object with the following structure:
+Return a JSON object with the following structure. IMPORTANT: You MUST provide an analysis for EVERY block ID listed in the input.
 
 ```json
 {
@@ -37,13 +48,13 @@ Return a JSON object with the following structure:
     {
       "block_id": "block_001",
       "suggested_disposition": "keep",
-      "suggestion_reason": "Contains valuable technical information",
+      "suggestion_reason": "Contains valuable technical information about X (high confidence: permanent reference material)",
       "confidence": 0.9
     },
     {
       "block_id": "block_002",
       "suggested_disposition": "discard",
-      "suggestion_reason": "Appears to be a temporary reminder dated 2023",
+      "suggestion_reason": "Appears to be a temporary reminder dated 2023 (moderate confidence: explicit date reference suggests time-sensitivity)",
       "confidence": 0.7
     }
   ],
@@ -53,12 +64,17 @@ Return a JSON object with the following structure:
 
 ## Rules
 
-- Always provide a reason for each suggestion
+- CRITICAL: Provide analysis for EVERY block in the input - do not omit any blocks
+- Always provide a reason for each suggestion that explains your confidence level
 - Use "keep" as default unless there's clear evidence for "discard"
-- Confidence should reflect how certain you are (0.0 to 1.0)
+- Confidence should reflect how certain you are (0.0 to 1.0) - see guidelines above
 - Never modify content - only classify it
 - Be conservative - it's better to keep something than lose valuable information
+- If content is truncated, base your analysis on available content and note any limitations
 """
+
+# Content preview limit - increased from 300 to 800 for better AI context
+CONTENT_PREVIEW_LIMIT = 800
 
 
 def build_cleanup_prompt(
@@ -83,15 +99,20 @@ def build_cleanup_prompt(
 
     for block in blocks:
         heading = " > ".join(block.get("heading_path", [])) or "(no heading)"
-        preview = block["content"][:300]
-        if len(block["content"]) > 300:
+        content_length = len(block["content"])
+        is_truncated = content_length > CONTENT_PREVIEW_LIMIT
+        preview = block["content"][:CONTENT_PREVIEW_LIMIT]
+        if is_truncated:
             preview += "..."
 
+        # Include content length metadata to help AI understand context limitations
+        truncation_note = "(truncated)" if is_truncated else "(full)"
         block_descriptions.append(
             f"### Block {block['id']}\n"
             f"- Type: {block['type']}\n"
             f"- Heading Path: {heading}\n"
-            f"- Content Preview:\n```\n{preview}\n```\n"
+            f"- Content Length: {content_length} chars {truncation_note}\n"
+            f"- Content:\n```\n{preview}\n```\n"
         )
 
     blocks_text = "\n".join(block_descriptions)

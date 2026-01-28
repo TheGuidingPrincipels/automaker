@@ -8,22 +8,27 @@
  * 3. Routing plan review
  * 4. Execution
  *
- * Layout:
- * - Top: Review area (cleanup/routing phases) or empty state
- * - Bottom: Control dock (always visible with upload, transcript, and start)
+ * Layout (redesigned for more vertical space):
+ * - Top: Control row (upload/mode toggle/session actions)
+ * - Middle: Review area (cleanup/routing phases) or empty state - scrollable
+ * - Bottom: Collapsible transcript (expandable)
  */
 
-import { useSessionWorkflow } from '../../hooks/use-session-workflow';
-import { ControlDock } from './control-dock';
+import type { UseSessionWorkflowResult } from '../../hooks/use-session-workflow';
+import { useKLSession, useKLSetMode } from '@/hooks/queries/use-knowledge-library';
+import { ControlRow } from './components/control-row';
+import { CollapsibleTranscript } from './components/collapsible-transcript';
 import { DropzoneOverlay } from './dropzone-overlay';
 import { EmptyState } from './empty-state';
 import { PlanReview } from './plan-review';
 import { ExecutionStatus } from './execution-status';
-import { SessionList } from './session-list';
 import { AlertCircle } from 'lucide-react';
 
-export function InputMode() {
-  const workflow = useSessionWorkflow();
+interface InputModeProps {
+  workflow: UseSessionWorkflowResult;
+}
+
+export function InputMode({ workflow }: InputModeProps) {
   const {
     workflowState,
     sessionId,
@@ -36,23 +41,48 @@ export function InputMode() {
     actions,
   } = workflow;
 
+  // Get session data for mode toggle
+  const sessionQuery = useKLSession(sessionId ?? undefined);
+  const setModeMutation = useKLSetMode(sessionId ?? '');
+  const contentMode = sessionQuery.data?.content_mode ?? 'strict';
+
+  const handleModeChange = async (checked: boolean) => {
+    const nextMode = checked ? 'refinement' : 'strict';
+    try {
+      await setModeMutation.mutateAsync(nextMode);
+    } catch (err) {
+      console.error('Failed to update content mode:', err);
+    }
+  };
+
   return (
     <DropzoneOverlay onFileDrop={actions.stageFile} disabled={!!sessionId}>
       <div className="h-full flex flex-col">
         {/* Error alert */}
         {error && (
-          <div className="mx-4 mt-4 p-4 rounded-lg border border-destructive/50 bg-destructive/10 flex items-start gap-3 shrink-0">
+          <div className="mx-4 mt-4 p-3 rounded-lg border border-destructive/50 bg-destructive/10 flex items-start gap-3 shrink-0">
             <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
             <p className="text-sm text-destructive">{error}</p>
           </div>
         )}
 
-        {/* Session list */}
-        <div className="mx-4 mt-4 shrink-0">
-          <SessionList activeSessionId={sessionId} onSelectSession={actions.selectSession} />
-        </div>
+        {/* Control Row - upload/mode toggle/session actions */}
+        <ControlRow
+          workflowState={workflowState}
+          sessionId={sessionId}
+          contentMode={contentMode}
+          stagedFile={stagedFile}
+          isConnected={isConnected}
+          isStarting={isLoading.creating}
+          isModeUpdating={setModeMutation.isPending}
+          onStageFile={actions.stageFile}
+          onClearStagedFile={actions.clearStagedFile}
+          onStartSession={actions.startSession}
+          onCancel={actions.cancelSession}
+          onModeChange={handleModeChange}
+        />
 
-        {/* Top area: Review content or empty state */}
+        {/* Main content area */}
         <div className="flex-1 min-h-0 overflow-hidden">
           {/* Empty/idle state - show when no session and no staged file */}
           {(workflowState === 'idle' || workflowState === 'file_staged') && <EmptyState />}
@@ -120,22 +150,17 @@ export function InputMode() {
           )}
         </div>
 
-        {/* Bottom dock: Always visible with upload, transcript, and start button */}
-        <ControlDock
-          workflowState={workflowState}
-          sessionId={sessionId}
-          isConnected={isConnected}
-          stagedFile={stagedFile}
-          onStageFile={actions.stageFile}
-          onClearStagedFile={actions.clearStagedFile}
-          onStartSession={actions.startSession}
-          onCancel={actions.cancelSession}
-          isStarting={isLoading.creating}
-          transcript={transcript}
-          pendingQuestions={pendingQuestions}
-          onSendMessage={actions.sendMessage}
-          onAnswerQuestion={actions.answerQuestion}
-        />
+        {/* Collapsible transcript - only show when session is active */}
+        {sessionId && (
+          <CollapsibleTranscript
+            transcript={transcript}
+            pendingQuestions={pendingQuestions}
+            sessionId={sessionId}
+            isConnected={isConnected}
+            onSendMessage={actions.sendMessage}
+            onAnswerQuestion={actions.answerQuestion}
+          />
+        )}
       </div>
     </DropzoneOverlay>
   );

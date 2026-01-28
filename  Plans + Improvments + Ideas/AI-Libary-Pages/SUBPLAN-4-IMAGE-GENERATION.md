@@ -11,21 +11,48 @@ Implement automatic AI-powered image generation for knowledge library domains an
 - **Vertex AI API enabled** in your GCP project
 - Understanding of team storage patterns
 
+## Preflight (STOP if failing)
+
+This sub-plan is only executable **after Sub-Plans 1–3 have been implemented in code** (not just written).
+
+Run from repo root:
+
+```bash
+# Sub-Plans 2–3: Domain UI files
+test -d "apps/ui/src/components/views/knowledge-library/components/domain-gallery"
+test -d "apps/ui/src/components/views/knowledge-library/components/domain-detail"
+test -f "apps/ui/src/components/views/knowledge-library/components/domain-gallery/domain-card.tsx"
+test -f "apps/ui/src/components/views/knowledge-library/components/domain-detail/page-card.tsx"
+
+# Sub-Plan 1: Domain config + utils
+test -f "apps/ui/src/config/domains.ts"
+test -f "apps/ui/src/lib/domain-utils.ts"
+
+# Sub-Plan 1: Shared types exported
+rg -n "export type KLDomainId\\b" libs/types/src/knowledge-library.ts
+rg -n "export interface KLPageCard\\b" libs/types/src/knowledge-library.ts
+
+# Sanity: UI types resolve
+npm run typecheck --workspace=apps/ui
+```
+
+**Stop condition:** If any command fails, STOP and complete Sub-Plans 1–3 first.
+
 ## Important: Google Image Generation Requirements
 
 **Google's dedicated image generation model is Imagen 3.0**, accessed via Vertex AI. This is different from Gemini (which handles text/multimodal but NOT image generation).
 
-| Aspect | Gemini API | Imagen 3.0 (Vertex AI) |
-|--------|------------|------------------------|
-| Package | `@google/generative-ai` | `@google-cloud/vertexai` |
-| Capabilities | Text generation, image understanding | **Image generation** |
-| Authentication | API key | Service account / ADC |
-| Setup | Simple | Requires GCP project |
+| Aspect         | Gemini API                           | Imagen 3.0 (Vertex AI)                                                |
+| -------------- | ------------------------------------ | --------------------------------------------------------------------- |
+| Package        | `@google/generative-ai`              | Vertex AI **REST** (`:generateContent`) + `google-auth-library` (ADC) |
+| Capabilities   | Text generation, image understanding | **Image generation**                                                  |
+| Authentication | API key                              | Service account / ADC                                                 |
+| Setup          | Simple                               | Requires GCP project                                                  |
 
 ## Deliverables
 
 1. GCP project setup with Vertex AI enabled
-2. Service account credentials storage
+2. Service account credentials configuration (ENV/ADC)
 3. Image generation service using Imagen 3.0
 4. Team storage integration for generated images
 5. Automatic generation trigger when title + overview exist
@@ -99,10 +126,14 @@ Add to your `.env` file:
 ```bash
 # Google Cloud / Vertex AI configuration
 GOOGLE_CLOUD_PROJECT=automaker-images
+GOOGLE_CLOUD_LOCATION=us-central1
 GOOGLE_APPLICATION_CREDENTIALS=/path/to/automaker-imagen-key.json
 
-# Alternative: Store key content directly (for deployment)
-# GOOGLE_SERVICE_ACCOUNT_KEY={"type":"service_account","project_id":"..."}
+# Optional overrides
+AUTOMAKER_IMAGEN_MODEL=imagen-3.0-generate-002
+
+# Kill switch (repo-aligned pattern: "true" disables)
+AUTOMAKER_DISABLE_GENERATED_MEDIA=false
 ```
 
 ---
@@ -110,122 +141,61 @@ GOOGLE_APPLICATION_CREDENTIALS=/path/to/automaker-imagen-key.json
 ## Step 2: Install Dependencies
 
 ```bash
-npm install @google-cloud/vertexai --workspace=apps/server
+npm install google-auth-library --workspace=apps/server
 ```
 
 ---
 
-## Step 3: Update Credentials Types
+## Step 3: Identifier Strategy (future-proof + reliable)
 
-**File:** `libs/types/src/settings.ts`
+### 3.1 Domain IDs
 
-Find the `Credentials` interface and add Google Cloud fields:
+Use the existing domain ID (from Sub-Plan 1) as `domainId` everywhere (routes, storage, caching).
 
-```typescript
-export interface Credentials {
-  version: number;
-  apiKeys: {
-    anthropic: string;
-    anthropic_oauth_token: string;
-    google: string;
-    openai: string;
-    gemini: string;
-  };
-  /** Google Cloud configuration for Vertex AI (Imagen) */
-  googleCloud?: {
-    projectId: string;
-    /** Base64-encoded service account key JSON */
-    serviceAccountKey?: string;
-  };
-}
+### 3.2 Page IDs (safe + deterministic)
+
+Pages are identified upstream by a **file path** (e.g. `technical/programming/js-basics.md`). File paths contain `/` and are **not safe** as URL params or TeamStorage entity IDs.
+
+Define:
+
+- `pageFilePath`: the Knowledge Library file path (available on `KLPageCard.path` in Sub-Plan 3)
+- `pageStorageId`: `sha256hex(pageFilePath)` (UTF-8)
+
+Rules:
+
+- Store page images under the TeamStorage entity ID = `pageStorageId` (safe single path segment).
+- Client-facing APIs should accept `pageFilePath` (no client-side hashing required); the server derives `pageStorageId`.
+
+**Server helper (Node):**
+
+```ts
+import crypto from 'crypto';
+
+export const getPageStorageId = (pageFilePath: string): string =>
+  crypto.createHash('sha256').update(pageFilePath, 'utf8').digest('hex');
 ```
 
-Update `DEFAULT_CREDENTIALS`:
+### 3.3 Cache busting
 
-```typescript
-export const DEFAULT_CREDENTIALS: Credentials = {
-  version: 1,
-  apiKeys: {
-    anthropic: '',
-    anthropic_oauth_token: '',
-    google: '',
-    openai: '',
-    gemini: '',
-  },
-  googleCloud: {
-    projectId: '',
-    serviceAccountKey: '',
-  },
-};
-```
+When returning thumbnail URLs to the UI, include `v=<inputHash>` as a query param to avoid stale browser caches after regeneration.
 
 ---
 
-## Step 4: Update Settings Service
+## Step 4: Configuration (ENV-only; no SettingsService/Credentials changes)
 
-**File:** `apps/server/src/services/settings-service.ts`
+This sub-plan intentionally does **not** modify:
 
-Add methods for Google Cloud credentials:
+- `libs/types/src/settings.ts` (Credentials schema)
+- `apps/server/src/services/settings-service.ts`
 
-```typescript
-/**
- * Get Google Cloud Project ID
- */
-getGoogleCloudProjectId(): string | null {
-  // Check credentials storage first
-  const credentials = this.getCredentials();
-  if (credentials.googleCloud?.projectId) {
-    return credentials.googleCloud.projectId;
-  }
+The backend reads Imagen/Vertex config from environment variables only:
 
-  // Fall back to environment variable
-  return process.env.GOOGLE_CLOUD_PROJECT || null;
-}
+- Required: `GOOGLE_CLOUD_PROJECT`, `GOOGLE_APPLICATION_CREDENTIALS`
+- Recommended: `GOOGLE_CLOUD_LOCATION=us-central1`
+- Optional: `AUTOMAKER_IMAGEN_MODEL` (default: `imagen-3.0-generate-002`)
+- Optional kill switch: `AUTOMAKER_DISABLE_GENERATED_MEDIA=true`
 
-/**
- * Get Google Cloud service account credentials
- * Returns the path to credentials file or the credentials object
- */
-getGoogleCloudCredentials(): { type: 'file'; path: string } | { type: 'key'; credentials: object } | null {
-  // Check for credentials file path in environment
-  const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (credentialsPath) {
-    return { type: 'file', path: credentialsPath };
-  }
-
-  // Check for stored service account key
-  const credentials = this.getCredentials();
-  if (credentials.googleCloud?.serviceAccountKey) {
-    try {
-      const keyJson = JSON.parse(
-        Buffer.from(credentials.googleCloud.serviceAccountKey, 'base64').toString('utf-8')
-      );
-      return { type: 'key', credentials: keyJson };
-    } catch {
-      return null;
-    }
-  }
-
-  // Check for inline key in environment
-  const keyEnv = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
-  if (keyEnv) {
-    try {
-      return { type: 'key', credentials: JSON.parse(keyEnv) };
-    } catch {
-      return null;
-    }
-  }
-
-  return null;
-}
-
-/**
- * Check if Imagen (Vertex AI) is available
- */
-isImagenAvailable(): boolean {
-  return !!(this.getGoogleCloudProjectId() && this.getGoogleCloudCredentials());
-}
-```
+**Stop condition:** If required env vars are missing (or kill switch is enabled), `/api/generated-media/status` must report `available: false` and generation endpoints must return `503` (no external calls).
 
 ---
 
@@ -242,14 +212,10 @@ isImagenAvailable(): boolean {
  * reusability and transferability.
  */
 
-import { VertexAI } from '@google-cloud/vertexai';
-import { createLogger } from '@automaker/utils/logger';
-import { TeamStorageService } from '../lib/team-storage';
-import { SettingsService } from './settings-service';
+import { GoogleAuth } from 'google-auth-library';
+import { createLogger } from '@automaker/utils';
+import type { TeamStorageService } from '../lib/team-storage.js';
 import crypto from 'crypto';
-import fs from 'fs/promises';
-import path from 'path';
-import os from 'os';
 
 const logger = createLogger('ImageGenerationService');
 
@@ -258,6 +224,8 @@ export interface ImageGenerationOptions {
   entityType: 'domain' | 'page';
   /** Unique entity ID */
   entityId: string;
+  /** Optional: for pages, original KL file path (debugging/traceability) */
+  sourcePath?: string;
   /** Title for the image prompt */
   title: string;
   /** Overview/description for context */
@@ -286,6 +254,8 @@ export interface GeneratedImage {
 interface ImageMetadata {
   entityType: string;
   entityId: string;
+  /** Optional: for pages, the source KL file path (debugging/traceability) */
+  sourcePath?: string;
   title: string;
   overview: string;
   generatedAt: string;
@@ -297,68 +267,31 @@ interface ImageMetadata {
 }
 
 export class ImageGenerationService {
-  private vertexAI: VertexAI | null = null;
   private teamStorage: TeamStorageService;
-  private settingsService: SettingsService;
-  private tempCredentialsPath: string | null = null;
+  private auth: GoogleAuth;
+  private projectId: string;
+  private location: string;
+  private model: string;
 
-  constructor(teamStorage: TeamStorageService, settingsService: SettingsService) {
+  constructor(teamStorage: TeamStorageService) {
     this.teamStorage = teamStorage;
-    this.settingsService = settingsService;
+    this.auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
+
+    // ENV-only configuration (Step 4)
+    this.projectId = process.env.GOOGLE_CLOUD_PROJECT || '';
+    this.location = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1';
+    this.model = process.env.AUTOMAKER_IMAGEN_MODEL || 'imagen-3.0-generate-002';
   }
 
   /**
-   * Initialize the Vertex AI client
+   * Check if image generation is available
    */
-  private async initializeClient(): Promise<VertexAI> {
-    if (this.vertexAI) return this.vertexAI;
-
-    const projectId = this.settingsService.getGoogleCloudProjectId();
-    if (!projectId) {
-      throw new Error(
-        'Google Cloud Project ID not found. Set GOOGLE_CLOUD_PROJECT environment variable or configure in settings.'
-      );
-    }
-
-    const credentialsConfig = this.settingsService.getGoogleCloudCredentials();
-    if (!credentialsConfig) {
-      throw new Error(
-        'Google Cloud credentials not found. Set GOOGLE_APPLICATION_CREDENTIALS environment variable or configure service account key in settings.'
-      );
-    }
-
-    // If credentials are stored as key object, write to temp file
-    // (Vertex AI SDK requires file path or ADC)
-    if (credentialsConfig.type === 'key') {
-      this.tempCredentialsPath = path.join(os.tmpdir(), `automaker-gcloud-${Date.now()}.json`);
-      await fs.writeFile(
-        this.tempCredentialsPath,
-        JSON.stringify(credentialsConfig.credentials),
-        { mode: 0o600 }
-      );
-      process.env.GOOGLE_APPLICATION_CREDENTIALS = this.tempCredentialsPath;
-    }
-
-    this.vertexAI = new VertexAI({
-      project: projectId,
-      location: 'us-central1', // Imagen is available in us-central1
-    });
-
-    return this.vertexAI;
-  }
-
-  /**
-   * Cleanup temporary credentials file
-   */
-  async cleanup(): Promise<void> {
-    if (this.tempCredentialsPath) {
-      try {
-        await fs.unlink(this.tempCredentialsPath);
-      } catch {
-        // Ignore cleanup errors
-      }
-      this.tempCredentialsPath = null;
-    }
+  isAvailable(): boolean {
+    if (process.env.AUTOMAKER_DISABLE_GENERATED_MEDIA === 'true') return false;
+    if (!this.projectId) return false;
+    // ADC path is required for local dev; other ADC methods may exist, but don't guess here.
+    if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) return false;
+    return true;
   }
 
   /**
@@ -410,6 +343,67 @@ Style: Professional, topic-relevant, visually distinct.
     return entityType === 'domain' ? 'domain-images' : 'page-images';
   }
 
+  private async getAuthHeaders(): Promise<Record<string, string>> {
+    const client = await this.auth.getClient();
+    const headers = await client.getRequestHeaders();
+    return headers as Record<string, string>;
+  }
+
+  private getImagenGenerateContentUrl(): string {
+    return `https://${this.location}-aiplatform.googleapis.com/v1/projects/${this.projectId}/locations/${this.location}/publishers/google/models/${this.model}:generateContent`;
+  }
+
+  private async callImagenGenerateContent(
+    prompt: string
+  ): Promise<{ base64: string; mimeType: string }> {
+    const url = this.getImagenGenerateContentUrl();
+    const authHeaders = await this.getAuthHeaders();
+
+    const body = {
+      contents: [
+        {
+          parts: [{ text: prompt }],
+        },
+      ],
+      // Imagen uses "parameters" for image-generation options (NOT Gemini's candidateCount)
+      parameters: {
+        sampleCount: 1,
+        aspectRatio: '1:1',
+        outputOptions: { mimeType: 'image/png' },
+      },
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { ...authHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(
+        `Imagen generateContent failed: ${response.status} ${response.statusText} ${errorText}`
+      );
+    }
+
+    const json = (await response.json()) as any;
+    const candidates = json?.candidates || [];
+    for (const candidate of candidates) {
+      const parts = candidate?.content?.parts || [];
+      for (const part of parts) {
+        const inlineData = part?.inlineData;
+        if (inlineData?.data) {
+          return {
+            base64: inlineData.data as string,
+            mimeType: (inlineData.mimeType as string) || 'image/png',
+          };
+        }
+      }
+    }
+
+    throw new Error('No inlineData image found in Imagen response');
+  }
+
   /**
    * Check if a valid cached image exists
    */
@@ -457,6 +451,10 @@ Style: Professional, topic-relevant, visually distinct.
   async generateImage(options: ImageGenerationOptions): Promise<GeneratedImage> {
     const { entityType, entityId, title, overview, keywords, forceRegenerate } = options;
 
+    if (!this.isAvailable()) {
+      throw new Error('Image generation not available (missing env vars or disabled)');
+    }
+
     // Check requirements
     if (!title || !overview || overview.length < 20) {
       throw new Error('Image generation requires both title and overview (min 20 chars)');
@@ -472,54 +470,12 @@ Style: Professional, topic-relevant, visually distinct.
 
     logger.info(`Generating Imagen 3.0 image for ${entityType}:${entityId}`);
 
-    // Initialize client
-    const vertexAI = await this.initializeClient();
-
-    // Get Imagen 3.0 model
-    const model = vertexAI.preview.getGenerativeModel({
-      model: 'imagen-3.0-generate-001',
-    });
-
     // Build prompt
     const prompt = this.buildPrompt(options);
     const inputHash = this.generateInputHash(title, overview, keywords);
 
     try {
-      // Generate image with Imagen 3.0
-      const result = await model.generateContent({
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: prompt }],
-          },
-        ],
-        generationConfig: {
-          // Imagen-specific parameters
-          candidateCount: 1,
-          // Note: Actual Imagen parameters may differ - check Vertex AI docs
-        } as any,
-      });
-
-      const response = result.response;
-
-      // Extract image data from response
-      let imageBase64: string | null = null;
-      let mimeType = 'image/png';
-
-      for (const candidate of response.candidates || []) {
-        for (const part of candidate.content?.parts || []) {
-          if ((part as any).inlineData) {
-            imageBase64 = (part as any).inlineData.data;
-            mimeType = (part as any).inlineData.mimeType || 'image/png';
-            break;
-          }
-        }
-        if (imageBase64) break;
-      }
-
-      if (!imageBase64) {
-        throw new Error('No image data in Imagen response');
-      }
+      const { base64: imageBase64, mimeType } = await this.callImagenGenerateContent(prompt);
 
       // Save to team storage
       const timestamp = Date.now();
@@ -544,6 +500,7 @@ Style: Professional, topic-relevant, visually distinct.
       const metadata: ImageMetadata = {
         entityType,
         entityId,
+        sourcePath: options.sourcePath,
         title,
         overview,
         generatedAt: generatedImage.generatedAt,
@@ -566,33 +523,8 @@ Style: Professional, topic-relevant, visually distinct.
     } catch (error: any) {
       logger.error(`Failed to generate image for ${entityType}:${entityId}`, error);
 
-      // Provide helpful error messages
-      if (error.message?.includes('PERMISSION_DENIED')) {
-        throw new Error('Vertex AI permission denied. Check service account permissions.');
-      }
-      if (error.message?.includes('RESOURCE_EXHAUSTED')) {
-        throw new Error('Imagen API quota exceeded. Try again later.');
-      }
-      if (error.message?.includes('NOT_FOUND')) {
-        throw new Error('Imagen model not found. Ensure Vertex AI API is enabled.');
-      }
-
       throw error;
     }
-  }
-
-  /**
-   * Check if image generation is available
-   */
-  isAvailable(): boolean {
-    return this.settingsService.isImagenAvailable();
-  }
-
-  /**
-   * Get image URL for serving
-   */
-  getImageUrl(entityType: 'domain' | 'page', entityId: string, filename: string): string {
-    return `/api/generated-media/${entityType}/${entityId}/${filename}`;
   }
 }
 ```
@@ -603,6 +535,14 @@ Style: Professional, topic-relevant, visually distinct.
 
 **File:** `apps/server/src/lib/team-storage.ts`
 
+This repo’s `TeamStorageService` requires **3** updates for any new `StorageCollection`:
+
+1. Add the union member(s) to `StorageCollection`
+2. Add directory mapping(s) in `collectionMap` (inside `getCollectionPath`)
+3. Add filename mapping(s) in `fileNameMap` (inside `getEntityPath`)
+
+### 6.1 Update `StorageCollection`
+
 Find the `StorageCollection` type and add:
 
 ```typescript
@@ -612,19 +552,46 @@ export type StorageCollection =
   | 'blueprints'
   | 'knowledge-entries'
   | 'learnings'
-  | 'domain-images'    // ADD
-  | 'page-images';     // ADD
+  | 'domain-images' // ADD
+  | 'page-images'; // ADD
 ```
 
-In the `initialize()` method, add directories for new collections:
+### 6.2 Update `collectionMap`
+
+In `getCollectionPath()`, add:
+
+```ts
+const collectionMap: Record<StorageCollection, string> = {
+  // ...existing...
+  'domain-images': 'knowledge/generated-media/domain-images',
+  'page-images': 'knowledge/generated-media/page-images',
+};
+```
+
+### 6.3 Update `fileNameMap`
+
+In `getEntityPath()`, add:
+
+```ts
+const fileNameMap: Record<StorageCollection, string> = {
+  // ...existing...
+  'domain-images': 'metadata.json',
+  'page-images': 'metadata.json',
+};
+```
+
+### 6.4 Update `initialize()` directories
+
+In `initialize()`, add the new directories to the existing `directories` array (repo-aligned pattern):
 
 ```typescript
 async initialize(): Promise<void> {
-  // ... existing directories ...
-
-  // Generated media directories
-  await mkdir(join(this.basePath, 'domain-images'), { recursive: true });
-  await mkdir(join(this.basePath, 'page-images'), { recursive: true });
+  const directories = [
+    // ... existing directories ...
+    path.join(this.basePath, 'knowledge/generated-media'),
+    path.join(this.basePath, 'knowledge/generated-media/domain-images'),
+    path.join(this.basePath, 'knowledge/generated-media/page-images'),
+  ];
 }
 ```
 
@@ -639,55 +606,97 @@ async initialize(): Promise<void> {
  * Generated Media API Routes
  *
  * Serves AI-generated images for domains and pages.
+ *
+ * NOTE: `authMiddleware` is applied globally in `apps/server/src/index.ts`
+ * (all `/api/*` routes mounted after `app.use('/api', authMiddleware)`).
  */
 
-import { Router, Request, Response } from 'express';
-import { TeamStorageService } from '../../lib/team-storage';
-import { ImageGenerationService } from '../../services/image-generation-service';
-import { SettingsService } from '../../services/settings-service';
-import { authMiddleware } from '../../lib/auth';
-import { createLogger } from '@automaker/utils/logger';
+import { Router } from 'express';
+import type { Request, Response } from 'express';
+import crypto from 'crypto';
+import { createLogger } from '@automaker/utils';
+import type { TeamStorageService } from '../../lib/team-storage.js';
+import { ImageGenerationService } from '../../services/image-generation-service.js';
 
 const logger = createLogger('GeneratedMediaRoutes');
 
-export function createGeneratedMediaRoutes(
+const getPageStorageId = (pageFilePath: string): string =>
+  crypto.createHash('sha256').update(pageFilePath, 'utf8').digest('hex');
+
+type ThumbnailMetadata = {
+  images?: {
+    thumbnail?: { filename: string; mimeType: string; inputHash: string };
+  };
+  inputHash: string;
+};
+
+async function readThumbnailMetadata(
   teamStorage: TeamStorageService,
-  settingsService: SettingsService
-): Router {
+  collection: 'domain-images' | 'page-images',
+  entityId: string
+): Promise<ThumbnailMetadata | null> {
+  const metadataBuffer = await teamStorage.readFile(collection, entityId, 'metadata.json');
+  if (!metadataBuffer) return null;
+  return JSON.parse(metadataBuffer.toString('utf-8')) as ThumbnailMetadata;
+}
+
+export function createGeneratedMediaRoutes(teamStorage: TeamStorageService): Router {
   const router = Router();
-  const imageService = new ImageGenerationService(teamStorage, settingsService);
+  const imageService = new ImageGenerationService(teamStorage);
 
-  // Serve generated images
-  router.get('/:entityType/:entityId/:filename', authMiddleware, async (req: Request, res: Response) => {
-    const { entityType, entityId, filename } = req.params;
+  const serveThumbnailByEntityId = async (
+    res: Response,
+    collection: 'domain-images' | 'page-images',
+    entityId: string
+  ): Promise<void> => {
+    const metadata = await readThumbnailMetadata(teamStorage, collection, entityId);
+    if (!metadata?.images?.thumbnail?.filename) {
+      res.status(404).json({ error: 'Image not found' });
+      return;
+    }
 
-    if (entityType !== 'domain' && entityType !== 'page') {
-      return res.status(400).json({ error: 'Invalid entity type' });
+    const { filename, mimeType } = metadata.images.thumbnail;
+    const imageBuffer = await teamStorage.readFile(collection, entityId, filename);
+    if (!imageBuffer) {
+      res.status(404).json({ error: 'Image not found' });
+      return;
+    }
+
+    res.setHeader('Content-Type', mimeType || 'image/png');
+    // URLs include ?v=<inputHash> from clients; safe to cache long-term.
+    res.setHeader('Cache-Control', 'public, max-age=31536000');
+    res.send(imageBuffer);
+  };
+
+  // Serve current domain thumbnail
+  router.get('/domain/:domainId/thumbnail', async (req: Request, res: Response) => {
+    try {
+      await serveThumbnailByEntityId(res, 'domain-images', req.params.domainId);
+    } catch (error) {
+      logger.error('Failed to serve domain thumbnail', error);
+      res.status(500).json({ error: 'Failed to serve image' });
+    }
+  });
+
+  // Serve current page thumbnail by page file path (server derives pageStorageId)
+  router.get('/page/thumbnail', async (req: Request, res: Response) => {
+    const pageFilePath = req.query.path;
+    if (typeof pageFilePath !== 'string' || !pageFilePath) {
+      res.status(400).json({ error: 'Missing required query param: path' });
+      return;
     }
 
     try {
-      const collection = entityType === 'domain' ? 'domain-images' : 'page-images';
-      const imageBuffer = await teamStorage.readFile(collection as any, entityId, filename);
-
-      if (!imageBuffer) {
-        return res.status(404).json({ error: 'Image not found' });
-      }
-
-      // Determine content type
-      const ext = filename.split('.').pop()?.toLowerCase();
-      const contentType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
-
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
-      res.send(imageBuffer);
+      const pageStorageId = getPageStorageId(pageFilePath);
+      await serveThumbnailByEntityId(res, 'page-images', pageStorageId);
     } catch (error) {
-      logger.error('Failed to serve image', error);
+      logger.error('Failed to serve page thumbnail', error);
       res.status(500).json({ error: 'Failed to serve image' });
     }
   });
 
   // Generate image for domain
-  router.post('/generate/domain/:domainId', authMiddleware, async (req: Request, res: Response) => {
+  router.post('/generate/domain/:domainId', async (req: Request, res: Response) => {
     const { domainId } = req.params;
     const { title, overview, keywords, forceRegenerate } = req.body;
 
@@ -698,7 +707,8 @@ export function createGeneratedMediaRoutes(
     if (!imageService.isAvailable()) {
       return res.status(503).json({
         error: 'Image generation not available',
-        message: 'Google Cloud credentials not configured. Set GOOGLE_CLOUD_PROJECT and GOOGLE_APPLICATION_CREDENTIALS.'
+        message:
+          'Imagen is disabled or not configured. Set GOOGLE_CLOUD_PROJECT and GOOGLE_APPLICATION_CREDENTIALS (and ensure AUTOMAKER_DISABLE_GENERATED_MEDIA is not true).',
       });
     }
 
@@ -715,7 +725,8 @@ export function createGeneratedMediaRoutes(
       res.json({
         success: true,
         image: result,
-        url: imageService.getImageUrl('domain', domainId, result.filename),
+        // URL path only; UI must add host + auth query params
+        url: `/api/generated-media/domain/${domainId}/thumbnail?v=${encodeURIComponent(result.inputHash)}`,
       });
     } catch (error: any) {
       logger.error('Failed to generate domain image', error);
@@ -724,10 +735,12 @@ export function createGeneratedMediaRoutes(
   });
 
   // Generate image for page
-  router.post('/generate/page/:pageId', authMiddleware, async (req: Request, res: Response) => {
-    const { pageId } = req.params;
-    const { title, overview, keywords, forceRegenerate } = req.body;
+  router.post('/generate/page', async (req: Request, res: Response) => {
+    const { path: pageFilePath, title, overview, keywords, forceRegenerate } = req.body;
 
+    if (!pageFilePath || typeof pageFilePath !== 'string') {
+      return res.status(400).json({ error: 'path is required' });
+    }
     if (!title || !overview) {
       return res.status(400).json({ error: 'Title and overview are required' });
     }
@@ -735,14 +748,17 @@ export function createGeneratedMediaRoutes(
     if (!imageService.isAvailable()) {
       return res.status(503).json({
         error: 'Image generation not available',
-        message: 'Google Cloud credentials not configured.'
+        message:
+          'Imagen is disabled or not configured. Set GOOGLE_CLOUD_PROJECT and GOOGLE_APPLICATION_CREDENTIALS.',
       });
     }
 
     try {
+      const pageStorageId = getPageStorageId(pageFilePath);
       const result = await imageService.generateImage({
         entityType: 'page',
-        entityId: pageId,
+        entityId: pageStorageId,
+        sourcePath: pageFilePath,
         title,
         overview,
         keywords,
@@ -752,7 +768,10 @@ export function createGeneratedMediaRoutes(
       res.json({
         success: true,
         image: result,
-        url: imageService.getImageUrl('page', pageId, result.filename),
+        // URL path only; UI must add host + auth query params
+        url: `/api/generated-media/page/thumbnail?path=${encodeURIComponent(pageFilePath)}&v=${encodeURIComponent(
+          result.inputHash
+        )}`,
       });
     } catch (error: any) {
       logger.error('Failed to generate page image', error);
@@ -761,17 +780,25 @@ export function createGeneratedMediaRoutes(
   });
 
   // Check if image generation is available
-  router.get('/status', authMiddleware, async (_req: Request, res: Response) => {
+  router.get('/status', async (_req: Request, res: Response) => {
     const available = imageService.isAvailable();
-    const projectId = settingsService.getGoogleCloudProjectId();
+    const projectId = process.env.GOOGLE_CLOUD_PROJECT || null;
+    const location = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1';
+    const model = process.env.AUTOMAKER_IMAGEN_MODEL || 'imagen-3.0-generate-002';
+    const disabled = process.env.AUTOMAKER_DISABLE_GENERATED_MEDIA === 'true';
 
     res.json({
       available,
       provider: 'google-imagen',
       projectId: available ? projectId : null,
+      location: available ? location : null,
+      model: available ? model : null,
+      disabled,
       message: available
         ? 'Imagen 3.0 via Vertex AI is configured and available'
-        : 'Configure GOOGLE_CLOUD_PROJECT and GOOGLE_APPLICATION_CREDENTIALS to enable image generation',
+        : disabled
+          ? 'Generated media is disabled (AUTOMAKER_DISABLE_GENERATED_MEDIA=true)'
+          : 'Configure GOOGLE_CLOUD_PROJECT + GOOGLE_APPLICATION_CREDENTIALS to enable image generation',
     });
   });
 
@@ -788,10 +815,10 @@ export function createGeneratedMediaRoutes(
 Add import and route registration:
 
 ```typescript
-import { createGeneratedMediaRoutes } from './routes/generated-media';
+import { createGeneratedMediaRoutes } from './routes/generated-media/index.js';
 
-// After teamStorage and settingsService are initialized:
-app.use('/api/generated-media', createGeneratedMediaRoutes(teamStorage, settingsService));
+// After auth middleware is applied and teamStorage is available:
+app.use('/api/generated-media', createGeneratedMediaRoutes(teamStorage));
 ```
 
 ---
@@ -799,6 +826,18 @@ app.use('/api/generated-media', createGeneratedMediaRoutes(teamStorage, settings
 ## Step 9: Create Frontend Hook
 
 **File:** `apps/ui/src/hooks/queries/use-generated-images.ts` (NEW FILE)
+
+Also update query keys (repo pattern):
+
+**File:** `apps/ui/src/lib/query-keys.ts`
+
+Add:
+
+```ts
+generatedMedia: {
+  status: () => ['generatedMedia', 'status'] as const,
+},
+```
 
 ```typescript
 /**
@@ -808,7 +847,9 @@ app.use('/api/generated-media', createGeneratedMediaRoutes(teamStorage, settings
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient } from '@/lib/api-client';
+import { apiGet, apiPost } from '@/lib/api-fetch';
+import { getApiKey, getSessionToken, getServerUrlSync } from '@/lib/http-api-client';
+import { queryKeys } from '@/lib/query-keys';
 
 interface GeneratedImage {
   path: string;
@@ -826,9 +867,18 @@ interface GenerateImageRequest {
   forceRegenerate?: boolean;
 }
 
+interface GeneratePageImageRequest extends GenerateImageRequest {
+  /** Knowledge Library file path (e.g. "technical/programming/js-basics.md") */
+  path: string;
+}
+
 interface GenerateImageResponse {
   success: boolean;
   image: GeneratedImage;
+  /**
+   * Authenticated URL for <img src="..."> usage.
+   * (Server returns a URL path; this hook converts it to absolute + adds auth query params.)
+   */
   url: string;
 }
 
@@ -836,7 +886,25 @@ interface ImageGenerationStatus {
   available: boolean;
   provider: string;
   projectId: string | null;
+  location?: string | null;
+  model?: string | null;
+  disabled?: boolean;
   message: string;
+}
+
+function toAuthenticatedGeneratedMediaUrl(urlPath: string): string {
+  const serverUrl = getServerUrlSync();
+  const url = new URL(urlPath, serverUrl);
+
+  // Electron mode: apiKey query param (needed for <img> loads; headers can't be set)
+  const apiKey = getApiKey();
+  if (apiKey) url.searchParams.set('apiKey', apiKey);
+
+  // Web mode: session token query param fallback for <img> loads
+  const sessionToken = getSessionToken();
+  if (sessionToken) url.searchParams.set('token', sessionToken);
+
+  return url.toString();
 }
 
 /**
@@ -844,11 +912,8 @@ interface ImageGenerationStatus {
  */
 export function useImageGenerationStatus() {
   return useQuery({
-    queryKey: ['generated-media', 'status'],
-    queryFn: async (): Promise<ImageGenerationStatus> => {
-      const response = await apiClient.get('/api/generated-media/status');
-      return response.json();
-    },
+    queryKey: queryKeys.generatedMedia.status(),
+    queryFn: () => apiGet<ImageGenerationStatus>('/api/generated-media/status'),
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 }
@@ -864,14 +929,14 @@ export function useGenerateDomainImage() {
       domainId,
       ...request
     }: GenerateImageRequest & { domainId: string }): Promise<GenerateImageResponse> => {
-      const response = await apiClient.post(`/api/generated-media/generate/domain/${domainId}`, {
-        body: JSON.stringify(request),
-        headers: { 'Content-Type': 'application/json' },
-      });
-      return response.json();
+      const result = await apiPost<GenerateImageResponse>(
+        `/api/generated-media/generate/domain/${domainId}`,
+        request
+      );
+      return { ...result, url: toAuthenticatedGeneratedMediaUrl(result.url) };
     },
-    onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['domain-images', variables.domainId] });
+    onSuccess: (_data, _variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.generatedMedia.status() });
     },
   });
 }
@@ -883,31 +948,35 @@ export function useGeneratePageImage() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({
-      pageId,
-      ...request
-    }: GenerateImageRequest & { pageId: string }): Promise<GenerateImageResponse> => {
-      const response = await apiClient.post(`/api/generated-media/generate/page/${pageId}`, {
-        body: JSON.stringify(request),
-        headers: { 'Content-Type': 'application/json' },
-      });
-      return response.json();
+    mutationFn: async (request: GeneratePageImageRequest): Promise<GenerateImageResponse> => {
+      const result = await apiPost<GenerateImageResponse>(
+        `/api/generated-media/generate/page`,
+        request
+      );
+      return { ...result, url: toAuthenticatedGeneratedMediaUrl(result.url) };
     },
-    onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['page-images', variables.pageId] });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.generatedMedia.status() });
     },
   });
 }
 
 /**
- * Build image URL for display
+ * Build authenticated thumbnail URLs for display (works for <img> in Electron + web)
  */
-export function getGeneratedImageUrl(
-  entityType: 'domain' | 'page',
-  entityId: string,
-  filename: string
-): string {
-  return `/api/generated-media/${entityType}/${entityId}/${filename}`;
+export function getGeneratedDomainThumbnailUrl(domainId: string, v?: string): string {
+  const serverUrl = getServerUrlSync();
+  const url = new URL(`/api/generated-media/domain/${domainId}/thumbnail`, serverUrl);
+  if (v) url.searchParams.set('v', v);
+  return toAuthenticatedGeneratedMediaUrl(url.pathname + url.search);
+}
+
+export function getGeneratedPageThumbnailUrl(pageFilePath: string, v?: string): string {
+  const serverUrl = getServerUrlSync();
+  const url = new URL(`/api/generated-media/page/thumbnail`, serverUrl);
+  url.searchParams.set('path', pageFilePath);
+  if (v) url.searchParams.set('v', v);
+  return toAuthenticatedGeneratedMediaUrl(url.pathname + url.search);
 }
 ```
 
@@ -921,8 +990,11 @@ Update to show generated image when available:
 
 ```tsx
 // Add to imports
-import { useEffect, useState } from 'react';
-import { useGenerateDomainImage, useImageGenerationStatus } from '@/hooks/queries/use-generated-images';
+import { useEffect, useRef, useState } from 'react';
+import {
+  useGenerateDomainImage,
+  useImageGenerationStatus,
+} from '@/hooks/queries/use-generated-images';
 import { Spinner } from '@/components/ui/spinner';
 
 // Update DomainCard component
@@ -930,9 +1002,12 @@ export function DomainCard({ domain, onClick }: DomainCardProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(domain.imageUrl || null);
   const { data: imageStatus } = useImageGenerationStatus();
   const generateImage = useGenerateDomainImage();
+  const hasAttemptedRef = useRef(false);
 
   // Auto-generate image when sufficient context exists
   useEffect(() => {
+    if (hasAttemptedRef.current) return;
+
     // Only attempt if:
     // - No image exists yet
     // - Image generation is available
@@ -946,6 +1021,7 @@ export function DomainCard({ domain, onClick }: DomainCardProps) {
       domain.description.length >= 20 &&
       !generateImage.isPending
     ) {
+      hasAttemptedRef.current = true;
       generateImage.mutate(
         {
           domainId: domain.id,
@@ -963,17 +1039,34 @@ export function DomainCard({ domain, onClick }: DomainCardProps) {
         }
       );
     }
-  }, [imageUrl, imageStatus?.available, domain.fileCount, domain.description, domain.id]);
+  }, [
+    imageUrl,
+    imageStatus?.available,
+    domain.fileCount,
+    domain.description,
+    domain.id,
+    domain.name,
+    generateImage,
+  ]);
 
   return (
     <Card className="..." onClick={onClick}>
-      <div className={cn('h-32 bg-gradient-to-br flex items-center justify-center relative', domain.gradientClasses)}>
+      <div
+        className={cn(
+          'h-32 bg-gradient-to-br flex items-center justify-center relative',
+          domain.gradientClasses
+        )}
+      >
         {imageUrl ? (
           <img
             src={imageUrl}
             alt={domain.name}
             className="w-full h-full object-cover"
-            onError={() => setImageUrl(null)} // Fallback to icon on load error
+            onError={() => {
+              // Avoid retry loops; fall back to icon
+              hasAttemptedRef.current = true;
+              setImageUrl(null);
+            }}
           />
         ) : generateImage.isPending ? (
           <div className="flex flex-col items-center gap-2">
@@ -993,21 +1086,101 @@ export function DomainCard({ domain, onClick }: DomainCardProps) {
 
 ---
 
+## Step 11: Update Page Card with Image Support
+
+**File:** `apps/ui/src/components/views/knowledge-library/components/domain-detail/page-card.tsx`
+
+Update the page card to auto-generate an image when sufficient context exists:
+
+```tsx
+// Add to imports
+import { useEffect, useRef, useState } from 'react';
+import {
+  useGeneratePageImage,
+  useImageGenerationStatus,
+} from '@/hooks/queries/use-generated-images';
+import { Spinner } from '@/components/ui/spinner';
+
+export function PageCard({ page, onClick, isSelected }: PageCardProps) {
+  const [imageUrl, setImageUrl] = useState<string | null>(page.imageUrl || null);
+  const { data: imageStatus } = useImageGenerationStatus();
+  const generateImage = useGeneratePageImage();
+  const hasAttemptedRef = useRef(false);
+
+  useEffect(() => {
+    if (hasAttemptedRef.current) return;
+
+    if (
+      !imageUrl &&
+      imageStatus?.available &&
+      page.overview &&
+      page.overview.length >= 20 &&
+      !generateImage.isPending
+    ) {
+      hasAttemptedRef.current = true;
+      generateImage.mutate(
+        {
+          path: page.path,
+          title: page.title,
+          overview: page.overview,
+          // keywords optional; omit unless you have them on KLPageCard
+        },
+        {
+          onSuccess: (data) => setImageUrl(data.url),
+          onError: (error) => console.warn('Failed to generate page image:', error),
+        }
+      );
+    }
+  }, [imageUrl, imageStatus?.available, page.path, page.title, page.overview, generateImage]);
+
+  return (
+    <Card className="..." onClick={onClick} data-testid={`page-card-${page.path}`}>
+      <div className="h-32 bg-gradient-to-br from-muted/50 to-muted flex items-center justify-center relative">
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={page.title}
+            className="w-full h-full object-cover"
+            onError={() => {
+              hasAttemptedRef.current = true;
+              setImageUrl(null);
+            }}
+          />
+        ) : generateImage.isPending ? (
+          <div className="flex flex-col items-center gap-2">
+            <Spinner size="lg" />
+            <span className="text-xs text-muted-foreground">Generating...</span>
+          </div>
+        ) : (
+          <FileText className="h-12 w-12 text-muted-foreground/40" />
+        )}
+      </div>
+
+      {/* ...existing PageCard content... */}
+    </Card>
+  );
+}
+```
+
+---
+
 ## Storage Structure
 
 After implementation, generated images will be stored in team storage:
 
 ```
 TEAM_DATA_DIR/
-├── domain-images/
-│   └── {domainId}/
-│       ├── metadata.json
-│       └── thumbnail-{timestamp}.png
-├── page-images/
-│   └── {pageId}/
-│       ├── metadata.json
-│       └── thumbnail-{timestamp}.png
-└── ... other collections ...
+├── knowledge/
+│   └── generated-media/
+│       ├── domain-images/
+│       │   └── {domainId}/
+│       │       ├── metadata.json
+│       │       └── thumbnail-{timestamp}.png
+│       └── page-images/
+│           └── {pageStorageId}/
+│               ├── metadata.json
+│               └── thumbnail-{timestamp}.png
+└── ... other collections (agents, systems, knowledge entries, etc.) ...
 ```
 
 ---
@@ -1017,11 +1190,70 @@ TEAM_DATA_DIR/
 ```bash
 # Required for Imagen 3.0 via Vertex AI
 GOOGLE_CLOUD_PROJECT=your-gcp-project-id
+GOOGLE_CLOUD_LOCATION=us-central1
 GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
 
-# Alternative: Inline service account key (for containers/deployment)
-GOOGLE_SERVICE_ACCOUNT_KEY={"type":"service_account","project_id":"..."}
+# Optional overrides
+AUTOMAKER_IMAGEN_MODEL=imagen-3.0-generate-002
+
+# Kill switch
+AUTOMAKER_DISABLE_GENERATED_MEDIA=false
 ```
+
+---
+
+## Test Strategy (TDD)
+
+### Server (unit tests)
+
+**Create failing tests first (RED)**, then implement minimal code (GREEN).
+
+Suggested unit test file:
+
+- `apps/server/tests/unit/routes/generated-media.test.ts` (NEW FILE)
+
+Suggested test cases:
+
+- `GET /api/generated-media/status` returns `available: false` when `AUTOMAKER_DISABLE_GENERATED_MEDIA=true`
+- `POST /api/generated-media/generate/domain/:domainId` returns `503` when not available
+- `GET /api/generated-media/domain/:domainId/thumbnail` returns `404` when no metadata exists
+- `GET /api/generated-media/page/thumbnail?path=...` returns `400` when `path` is missing
+
+Run:
+
+```bash
+npm -w apps/server run test:unit -- tests/unit/routes/generated-media.test.ts
+```
+
+### UI (unit tests)
+
+Suggested unit test file:
+
+- `apps/ui/src/hooks/queries/use-generated-images.test.ts` (NEW FILE)
+
+Suggested test cases:
+
+- `getGeneratedPageThumbnailUrl()` includes `path` and preserves `v`
+- Auth query params are appended (`apiKey` when present, otherwise `token` when present)
+
+Run:
+
+```bash
+npx vitest run --root apps/ui -c vitest.config.ts src/hooks/queries/use-generated-images.test.ts
+```
+
+---
+
+## Rollback / Disable
+
+- Disable generation: set `AUTOMAKER_DISABLE_GENERATED_MEDIA=true` and restart the server; `/api/generated-media/status` must return `available: false`, and generation endpoints must return `503`.
+- Optional cleanup: delete generated media from team storage:
+
+```bash
+rm -rf "${TEAM_DATA_DIR:-./data/team}/knowledge/generated-media"
+```
+
+_(No DB migrations; rollback is just disabling + removing generated files.)_
 
 ---
 
@@ -1031,12 +1263,14 @@ GOOGLE_SERVICE_ACCOUNT_KEY={"type":"service_account","project_id":"..."}
 - [ ] Vertex AI API enabled in GCP project
 - [ ] Service account created with `aiplatform.user` role
 - [ ] Service account key downloaded and configured
-- [ ] `@google-cloud/vertexai` package installed
+- [ ] `google-auth-library` package installed in `apps/server`
 - [ ] Environment variables set correctly
-- [ ] Image generation service initializes without errors
+- [ ] `/api/generated-media/status` returns `available: true` when configured (and `available: false` when disabled/misconfigured)
+- [ ] Image generation service initializes without errors (no silent fallbacks)
 - [ ] Images generated from title + overview prompts
 - [ ] Images stored in team storage
-- [ ] Images served via API endpoint
+- [ ] Domain thumbnail served via `GET /api/generated-media/domain/:domainId/thumbnail`
+- [ ] Page thumbnail served via `GET /api/generated-media/page/thumbnail?path=...`
 - [ ] Domain cards display generated images
 - [ ] Page cards display generated images
 - [ ] Caching prevents duplicate generation
@@ -1047,18 +1281,23 @@ GOOGLE_SERVICE_ACCOUNT_KEY={"type":"service_account","project_id":"..."}
 ## Troubleshooting
 
 ### "Permission Denied" Error
+
 - Verify service account has `roles/aiplatform.user` permission
 - Check the project ID matches the service account's project
 
 ### "Model Not Found" Error
+
 - Ensure Vertex AI API is enabled: `gcloud services enable aiplatform.googleapis.com`
 - Verify you're using a supported region (us-central1 recommended)
+- Verify `AUTOMAKER_IMAGEN_MODEL` matches an available Imagen model in your project/region
 
 ### "Quota Exceeded" Error
+
 - Check Vertex AI quotas in GCP Console
 - Request quota increase if needed
 
 ### Images Not Loading in UI
+
 - Check browser console for CORS errors
 - Verify authentication is working for `/api/generated-media/` endpoints
 
@@ -1067,10 +1306,12 @@ GOOGLE_SERVICE_ACCOUNT_KEY={"type":"service_account","project_id":"..."}
 ## Cost Considerations
 
 **Imagen 3.0 Pricing (approximate):**
+
 - Standard quality: ~$0.020 per image
 - Higher quality: ~$0.040 per image
 
 **Optimization strategies:**
+
 - Cache images aggressively (inputHash comparison)
 - Only generate when overview is meaningful (>20 chars)
 - Batch generation during off-peak hours

@@ -12,6 +12,14 @@ KL_PORT="${API_PORT:-8002}"
 KL_HOST="${API_HOST:-0.0.0.0}"
 HEALTH_URL="http://localhost:${KL_PORT}/health"
 
+# Automaker integration: Set DATA_DIR to automaker's data directory
+# This allows the SDK to find credentials.json stored by automaker
+if [ -z "$DATA_DIR" ]; then
+    # Default to automaker's data directory (parent of 2.ai-library)
+    AUTOMAKER_ROOT="$(dirname "$SCRIPT_DIR")"
+    export DATA_DIR="${AUTOMAKER_ROOT}/data"
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -133,6 +141,23 @@ check_optional_deps() {
         log_warn "Qdrant not running on port 6333 - vector search will be disabled"
         has_warnings=true
     fi
+
+    # Check OAuth token availability
+    # Priority: ANTHROPIC_AUTH_TOKEN > CLAUDE_CODE_OAUTH_TOKEN > credentials.json
+    if [ -n "$ANTHROPIC_AUTH_TOKEN" ]; then
+        log_success "OAuth token found (ANTHROPIC_AUTH_TOKEN)"
+    elif [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+        log_success "OAuth token found (CLAUDE_CODE_OAUTH_TOKEN) - CLI will handle auth internally"
+    else
+        log_info "No OAuth token in environment - will try to load from:"
+        log_info "  1. ${DATA_DIR}/credentials.json (automaker credentials)"
+        log_info "  2. ~/.automaker/credentials.json (legacy fallback)"
+        log_info "If AI features fail, set CLAUDE_CODE_OAUTH_TOKEN or run 'claude login'"
+    fi
+
+    # Ensure API key auth is NOT used (OAuth only mode)
+    # This prevents ANTHROPIC_API_KEY from interfering with OAuth flow
+    unset ANTHROPIC_API_KEY
 
     if [ "$has_warnings" = true ]; then
         log_info "Knowledge Library will start with limited functionality"

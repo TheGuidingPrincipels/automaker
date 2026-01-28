@@ -84,17 +84,51 @@ python3 -m pytest -q
 
 ## Configuration
 
+### Authentication (OAuth Only)
+
+This system uses Claude OAuth authentication. **API keys are NOT supported.**
+
+#### Token Sources (in priority order):
+
+1. **Environment variable:** `ANTHROPIC_AUTH_TOKEN`
+2. **Automaker credentials:** `~/.automaker/credentials.json` → `anthropic_oauth_token`
+
+#### Setup Options:
+
+**Option A: With Automaker (Recommended)**
+If running alongside automaker, authentication is shared automatically from credentials.json.
+
+**Option B: Standalone**
+
+```bash
+# Authenticate via Claude CLI
+claude login
+
+# Export OAuth token (if needed explicitly)
+export ANTHROPIC_AUTH_TOKEN="<your-oauth-token>"
+
+# Start the server
+./start-api.sh
+```
+
+#### Verification:
+
+Check server logs for "Using OAuth token from..." message on startup.
+If you see "OAuth token not available" errors, ensure you've authenticated.
+
 ### Environment Variables
 
 Create a `.env` file in the `ai-library/` directory (if needed):
 
 ```bash
-# API Keys (if using external services)
-OPENAI_API_KEY=your-key-here
+# Required for embeddings/vector search
 MISTRAL_API_KEY=your-key-here
 
-# Optional: Anthropic for Claude SDK
-ANTHROPIC_API_KEY=your-key-here
+# Optional: OpenAI embeddings (alternative to Mistral)
+OPENAI_API_KEY=your-key-here
+
+# OAuth token (optional - can also load from automaker credentials.json)
+# ANTHROPIC_AUTH_TOKEN=<your-oauth-token>
 ```
 
 ### Settings

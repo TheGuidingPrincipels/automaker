@@ -26,6 +26,8 @@ else:  # pragma: no cover
 
 from ..utils.async_helpers import _run_sync
 from ..utils.validation import normalize_confidence
+from ..utils.similarity import find_similar_blocks, group_duplicates, build_similarity_map
+from .auth import load_oauth_token
 
 from ..models.cleanup_plan import (
     CleanupPlan,
@@ -38,7 +40,7 @@ from ..models.routing_plan import (
     BlockDestination,
     PlanSummary,
 )
-from .prompts.cleanup_mode import CLEANUP_SYSTEM_PROMPT, build_cleanup_prompt
+from .prompts.cleanup_mode import CLEANUP_SYSTEM_PROMPT, build_cleanup_prompt, CONTENT_PREVIEW_LIMIT
 from .prompts.routing_mode import ROUTING_SYSTEM_PROMPT, build_routing_prompt
 
 
@@ -70,6 +72,54 @@ class ClaudeCodeClient:
     ):
         self.model = model or os.getenv("CLAUDE_MODEL", "claude-opus-4-5-20251101")
         self.max_turns = max_turns
+
+        # Load and validate OAuth token (with fallback to credentials.json)
+        self._auth_token = load_oauth_token()
+        if not self._auth_token:
+            logger.error(
+                "OAuth token not available - AI suggestions will fail. "
+                "Set ANTHROPIC_AUTH_TOKEN env var or authenticate via automaker."
+            )
+
+    def _build_sdk_env(self) -> Dict[str, str]:
+        """
+        Build environment for SDK subprocess, prioritizing OAuth authentication.
+
+        This matches Automaker's buildEnv() behavior (claude-provider.ts:88-256):
+        - Pass through OAuth tokens for CLI's internal OAuth flow
+        - Explicitly clear ANTHROPIC_API_KEY to prevent it from overriding OAuth
+        - Pass through essential system variables
+
+        Returns:
+            Environment dictionary to pass to ClaudeCodeOptions
+        """
+        env: Dict[str, str] = {}
+
+        # Pass through OAuth token if available (CLI handles OAuth internally)
+        oauth_token = os.getenv("CLAUDE_CODE_OAUTH_TOKEN")
+        if oauth_token:
+            env["CLAUDE_CODE_OAUTH_TOKEN"] = oauth_token
+            logger.debug("SDK env: CLAUDE_CODE_OAUTH_TOKEN set (CLI will handle OAuth)")
+
+        # Pass through explicit auth token if set
+        auth_token = os.getenv("ANTHROPIC_AUTH_TOKEN")
+        if auth_token:
+            env["ANTHROPIC_AUTH_TOKEN"] = auth_token
+            logger.debug("SDK env: ANTHROPIC_AUTH_TOKEN set")
+
+        # CRITICAL: Explicitly clear API key to prevent it from overriding OAuth
+        # Even if it's set in parent environment, we don't want SDK to use it
+        # Setting to empty string overrides any inherited value
+        env["ANTHROPIC_API_KEY"] = ""
+
+        # Pass through essential system variables
+        for var in ["PATH", "HOME", "SHELL", "TERM", "USER", "LANG", "LC_ALL",
+                    "TMPDIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME"]:
+            value = os.environ.get(var)
+            if value:
+                env[var] = value
+
+        return env
 
     async def query_text(
         self,
@@ -111,11 +161,31 @@ class ClaudeCodeClient:
                 "install project dependencies to enable AI planning."
             ) from _CLAUDE_CODE_SDK_IMPORT_ERROR
 
+        # Check auth before attempting query
+        # Accept either:
+        # 1. ANTHROPIC_AUTH_TOKEN set (explicit token)
+        # 2. CLAUDE_CODE_OAUTH_TOKEN set (CLI handles OAuth internally)
+        # 3. Our auth token marker indicating CLI OAuth mode
+        has_auth = (
+            os.getenv("ANTHROPIC_AUTH_TOKEN")
+            or os.getenv("CLAUDE_CODE_OAUTH_TOKEN")
+            or self._auth_token == "__CLI_HANDLES_OAUTH__"
+        )
+        if not has_auth:
+            error_msg = (
+                "No OAuth authentication available. "
+                "Set CLAUDE_CODE_OAUTH_TOKEN environment variable "
+                "or authenticate via 'claude login'."
+            )
+            logger.error("SDK query failed: %s", error_msg)
+            return SDKResponse(success=False, error=error_msg)
+
         try:
             options = ClaudeCodeOptions(
                 system_prompt=system_prompt,
                 max_turns=self.max_turns,
                 model=self.model,
+                env=self._build_sdk_env(),
             )
 
             response_text = ""
@@ -123,8 +193,14 @@ class ClaudeCodeClient:
                 prompt=user_prompt,
                 options=options,
             ):
-                if getattr(message, "type", None) == "text":
-                    response_text += getattr(message, "content", "")
+                # SDK returns AssistantMessage objects with content lists
+                # containing TextBlock objects that have .text attributes
+                content = getattr(message, "content", None)
+                if isinstance(content, list):
+                    for block in content:
+                        # Extract text from TextBlock objects (skip ThinkingBlock, etc.)
+                        if hasattr(block, "text"):
+                            response_text += block.text
 
             # Try to extract JSON from response if expected
             data = None
@@ -150,6 +226,7 @@ class ClaudeCodeClient:
                 )
 
         except Exception as e:
+            logger.error("SDK query failed: %s", str(e))
             return SDKResponse(
                 success=False,
                 error=str(e),
@@ -225,6 +302,11 @@ class ClaudeCodeClient:
         Returns:
             CleanupPlan with AI suggestions
         """
+        # Run duplicate detection before AI analysis
+        similarities = find_similar_blocks(blocks, threshold=0.75)
+        duplicate_groups = group_duplicates(similarities)
+        similarity_map = build_similarity_map(similarities)
+
         user_prompt = build_cleanup_prompt(
             blocks=blocks,
             source_file=source_file,
@@ -234,6 +316,17 @@ class ClaudeCodeClient:
         )
 
         response = await self._query(CLEANUP_SYSTEM_PROMPT, user_prompt)
+
+        # Track generation status for transparency
+        ai_generated = response.success and response.data is not None
+        generation_error: Optional[str] = None
+
+        if not response.success:
+            generation_error = response.error
+            logger.warning(
+                "Cleanup AI generation failed: %s. Using default keep-all suggestions.",
+                response.error,
+            )
 
         block_map = {b["id"]: b for b in blocks}
         suggested_by_block_id: dict[str, dict[str, Any]] = {}
@@ -248,21 +341,32 @@ class ClaudeCodeClient:
         items = []
         for block in blocks:
             block_id = block["id"]
+            content = block.get("content", "")
+            content_length = len(content)
+            is_truncated = content_length > CONTENT_PREVIEW_LIMIT
+
+            # Get similarity data for this block
+            similar_ids, max_similarity = similarity_map.get(block_id, ([], None))
+
             item_data = suggested_by_block_id.get(block_id)
             if item_data:
+                # AI provided analysis for this block
                 suggested_disposition = item_data.get(
                     "suggested_disposition", CleanupDisposition.KEEP
                 )
                 suggestion_reason = item_data.get("suggestion_reason", "")
                 confidence = normalize_confidence(item_data.get("confidence"), log=logger)
+                ai_analyzed = True
             else:
+                # AI omitted this block - use defaults
                 suggested_disposition = CleanupDisposition.KEEP
                 suggestion_reason = (
-                    "Default: keep all content (model omitted this block)"
+                    "Default: keep all content (AI omitted this block from analysis)"
                     if response.success
-                    else "Default: keep all content"
+                    else "Default: keep all content (AI analysis unavailable)"
                 )
                 confidence = 0.5
+                ai_analyzed = False
                 if response.success:
                     logger.debug(
                         "Cleanup item omitted for block %s; defaulting confidence to 0.5",
@@ -273,10 +377,17 @@ class ClaudeCodeClient:
                 CleanupItem(
                     block_id=block_id,
                     heading_path=block.get("heading_path", []),
-                    content_preview=block["content"][:200],
+                    content_preview=content[:200],
                     suggested_disposition=suggested_disposition,
                     suggestion_reason=suggestion_reason,
                     confidence=confidence,
+                    # AI analysis tracking
+                    ai_analyzed=ai_analyzed,
+                    content_truncated=is_truncated,
+                    original_content_length=content_length,
+                    # Duplicate detection
+                    similar_block_ids=similar_ids,
+                    similarity_score=max_similarity,
                 )
             )
 
@@ -284,6 +395,9 @@ class ClaudeCodeClient:
             session_id=session_id,
             source_file=source_file,
             items=items,
+            ai_generated=ai_generated,
+            generation_error=generation_error,
+            duplicate_groups=duplicate_groups,
         )
 
     async def generate_routing_plan(
@@ -319,6 +433,13 @@ class ClaudeCodeClient:
         )
 
         response = await self._query(ROUTING_SYSTEM_PROMPT, user_prompt)
+
+        # Log routing generation failures for transparency
+        if not response.success:
+            logger.warning(
+                "Routing AI generation failed: %s. Returning empty routing options.",
+                response.error,
+            )
 
         block_map = {b["id"]: b for b in blocks}
         routing_by_block_id: dict[str, BlockRoutingItem] = {}

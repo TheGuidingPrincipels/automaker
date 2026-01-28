@@ -20,7 +20,8 @@ class SessionsConfig(BaseModel):
 class SDKConfig(BaseModel):
     model: str = Field(default_factory=lambda: os.getenv("CLAUDE_MODEL", "claude-opus-4-5-20251101"))
     max_turns: int = 6
-    auth_token_env_var: str = "ANTHROPIC_AUTH_TOKEN"
+    # Note: OAuth authentication via ANTHROPIC_AUTH_TOKEN env var (or automaker credentials.json)
+    # API keys are NOT supported - use 'claude login' for authentication
 
 
 class SafetyConfig(BaseModel):

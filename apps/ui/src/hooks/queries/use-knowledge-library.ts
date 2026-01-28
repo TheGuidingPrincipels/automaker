@@ -324,13 +324,39 @@ export function useKLGenerateRoutingPlan(sessionId: string) {
 }
 
 /**
- * Get routing plan for a session
+ * Valid session phases where routing plan exists
  */
-export function useKLRoutingPlan(sessionId: string | undefined) {
+const ROUTING_PLAN_PHASES = [
+  'routing_plan_ready',
+  'awaiting_approval',
+  'ready_to_execute',
+  'executing',
+  'verifying',
+  'completed',
+];
+
+export const isKLRoutingPlanPhase = (sessionPhase?: string): boolean =>
+  !!sessionPhase && ROUTING_PLAN_PHASES.includes(sessionPhase);
+
+/**
+ * Get routing plan for a session
+ *
+ * @param sessionId - The session ID
+ * @param sessionPhase - Optional session phase.
+ *   - If you pass this argument, the query only runs during routing-related phases
+ *     (routing_plan_ready, awaiting_approval, etc.) to avoid premature 404s.
+ *   - If you omit this argument, the query runs whenever `sessionId` exists.
+ */
+export function useKLRoutingPlan(sessionId: string | undefined, sessionPhase?: string) {
+  // If `sessionPhase` is provided, gate this query to routing phases to avoid 404s.
+  // If it is omitted, enable the query whenever `sessionId` exists.
+  const hasSessionPhaseArg = arguments.length >= 2;
+  const isRoutingPhase = isKLRoutingPlanPhase(sessionPhase);
+
   return useQuery({
     queryKey: queryKeys.knowledgeLibrary.routingPlan(sessionId ?? ''),
     queryFn: () => knowledgeLibraryApi.getRoutingPlan(sessionId!),
-    enabled: !!sessionId,
+    enabled: !!sessionId && (!hasSessionPhaseArg || isRoutingPhase),
     staleTime: KL_STALE_TIMES.SESSIONS,
   });
 }
